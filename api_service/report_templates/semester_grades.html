@@ -1,0 +1,167 @@
+<html>
+    <head>
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+    <title>Grade Sheet </title></head>        
+    <body>
+        <br><br><br><br><br><br><br>
+        <br><br><br><br><br><br><br><br><br>
+    <table border=0  height=80  style=font-family:Arial;>
+    <tr><td></td><td></td><td></td><td></td><td>&nbsp;</td><td>&nbsp;</td>
+    <td style = "font-size:13pt;">NAME</td>
+    <td style = "font-size:13pt;padding-left:100px;margin-left: 20px;">{{name.upper() | replace("_", "") }}</td></tr>
+    <tr rowspan=2><td></td><td></td><td></td><td></td>
+    <td>&nbsp;</td><td>&nbsp;</td><td style = "font-size:13pt;">ENTRY NO</td>
+    <td style = "font-size:13pt;padding-left:100px;margin-left: 20px">{{entry_no.upper()}}</td></tr>
+    <tr rowspan=2><td></td><td></td><td></td>
+    <td></td><td>&nbsp;</td><td>&nbsp;</td>
+    <td style = "font-size:13pt;">PROGRAMME</td>
+        {% set spec = "" %}
+        {% if "PHD" in degree %}
+            {% set degree = "Ph.D." + " " + "IN" %}
+        {% elif "M.SC" in degree %}
+            {% set degree = "M.Sc." %}
+        {% elif "B.TECH-M.TECH DUAL" in degree %}
+            {% set degree = "B.TECH.-M.TECH. (DUAL DEGREE)" + " " + "IN"  %}
+        {% elif "M.TECH(AI)" in degree %}
+            {% set degree = "M.TECH. ARTIFICIAL INTELLIGENCE" %}
+            {% set dept_name = "" %}
+        {% elif "M.TECH(SIGNAL PROCESSING)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN COMMUNICATION AND SIGNAL PROCESSING)" %}
+        {% elif "M.TECH(MICRO. & VLSI)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN MICROELECTRONICS AND VLSI DESIGN)" %}
+        {% elif "M.TECH(POWER ENGG.)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN POWER ENGINEERING)" %}
+        {% elif "M.TECH(THERMAL ENGG.)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN THERMAL & FLUIDS ENGINEERING)" %}
+        {% elif "M.TECH(MANUFACTURING)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN MANUFACTURING ENGINEERING)" %}
+        {% elif "M.TECH(MECHANICS AND DESIGN)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN MECHANICS AND DESIGN)" %}            
+        {% elif "M.TECH(WATER RESO. & ENVIRN.)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN WATER RESOURCES AND ENVIRONMENT)" %}
+        {% elif "M.TECH(STRUC. AND GEOMECH.)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN STRUCTURAL ENGINEERING AND GEOMECHANICS)" %}
+        {% elif "M.TECH(COMPUTATIONAL MECHANICS)" in degree %}
+            {% set degree = "M.TECH." %}
+            {% set specdegree = "(SPECIALIZATION IN COMPUTATIONAL MECHANICS)" %}
+        {% elif "M.TECH" in degree %}
+            {% set degree = degree + '.' +  " " %}
+        {% elif "B.TECH" in degree and "PHYSICS" in dept_name %}
+            {% set degree = degree + '.' +  " " + "IN" + " " + "ENGINEERING" %}
+        {% elif "B.TECH(M&C)" in degree %}
+            {% set degree = "B.TECH." + " " +  "IN" +  " " + "MATHEMATICS AND COMPUTING"%}
+            {% set dept_name = " " %}
+        {% else %}
+        {% set degree = degree + '.' +  " " + "IN" %}
+        {% endif %}
+<td style = "font-size:13pt;padding-left:100px;margin-left: 20px">{{degree}} {{dept_name}} {{specdegree}} </td></tr>
+    <tr rowspan=2><td></td><td></td><td></td>
+        <td></td><td>&nbsp;</td><td>&nbsp;</td>
+        <td style = "font-size:13pt;">&nbsp;</td>
+            {% if (enrol_type!= "C") and (deg_type_spec!="-SELECT-")%}
+            {% set specialization = deg_type_spec %}
+            {% endif %}
+        <td style = "font-size:13pt;padding-left:100px;margin-left: 20px">{{specialization}} </td></tr>
+    </table><br>
+            {%  set acad_session_list = last_acad_session.split('-') %}
+            {%  set next_acad_session =  acad_session_list[0] | int + 1 %}
+          
+            
+            {%  set acad_session_number = acad_session_list[1] %}
+          
+           {%  if "T1" in acad_session_list[1] %}
+           {% set acad_session_number = "I" %}
+           {% endif %}
+           {%  if "T2" in acad_session_list[1] %}
+           {% set acad_session_number = "II" %}
+           {% endif %}
+           {%  if "S" in acad_session_list[1] %}
+           {% set acad_session_number = "SUMMER" %}
+           {% endif %}
+
+            
+    <table border=0 style="font-family:Arial;width:600px">
+    <tr>
+    <td style = "font-size:13pt;padding-left:15px;"> &nbsp;&nbsp;&nbsp;&nbsp;{{ acad_session_number }} SEMESTER OF ACADEMIC YEAR {{acad_session_list[0] + "-" + next_acad_session | string }} </td>
+    </tr>
+    </table>
+    <br>_________________________________________________________________________________________________________________________________________________
+
+    <table border=0 width=1200 cellspacing=2 cellpadding=3  style=font-family:Arial;>
+        <tr><td width='160' align='left' style = font-size:13pt;">&nbsp;&nbsp;&nbsp; पाठ्यक्रम सं.</td>
+        <td width='600' align='center' style = font-size:13pt;">पाठ्यक्रम शीर्षक</td>
+        <td width='100'align=center style = font-size:13pt;" align='right'>क्रेडिट </td>
+        <td align='center' width='200' style = font-size:13pt;" >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ग्रेड </td>
+        </tr>
+        <tr><td width='160' align='left' style = font-size:13pt;">&nbsp;&nbsp;&nbsp; COURSE NO</td>
+        <td width='750' align='center' style = font-size:13pt;">COURSE TITLE</td>
+        <td width='80'align=center style = font-size:13pt;" align='right'> CREDITS</td>
+	 <td align='center' width='100' style = font-size:13pt;" >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; GRADE</td>
+        </tr>
+        </table>
+       ________________________________________________________________________________________________________________________________________________
+
+        <table border=0 width=1200 height=200 cellspacing=2 cellpadding=3  style=font-family:Arial;>
+            {% for c in courses %}
+            <tr align=left>
+                <td></td>
+                <td style = font-size:12pt;">&nbsp;&nbsp;&nbsp; {{ c.code.upper() }}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td style = font-size:12pt;">{{ c.title.upper() }}</td>
+                {% set list1 = c.ltp.split('-') %}
+                <td align=center style = font-size:12pt;" align='right'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{ list1[4] | replace(".00", "") | replace(".0", "") }}</td> 
+                <td></td>
+                <td></td>
+                <td align='center' width='200' style = font-size:12pt;" >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{ c.grade }}</td>
+            </tr>
+            {% endfor %}
+            </table>
+            
+            <br><br><br><br><br><br>
+            <table align=left border=0 style=font-family:Arial;>
+                <tr align=left><td style = font-size:13pt;">&nbsp;&nbsp;EARNED CREDITS (EC): </td><td style = font-size:13pt;">=&nbsp;&nbsp;&nbsp;</td><td style = font-size:13pt;">{{ ec }}</td></tr>
+                {% if enrol_type == "C" %}
+                <tr align=left><td style = font-size:13pt;">&nbsp;&nbsp;SEMESTER GRADE POINT AVERAGE (SGPA) : &nbsp; </td><td style = font-size:13pt;">=&nbsp;&nbsp;&nbsp;</td><td style = font-size:13pt;">{{ sgpa }}</td></tr>
+                {% endif %}
+                
+                <tr><td>&nbsp;</td></tr><tr align=left><td style = font-size:13pt;">&nbsp;&nbsp;CUMULATIVE EARNED CREDITS (CEC) : </td><td style = font-size:13pt;">=&nbsp;&nbsp;&nbsp;</td><td style = font-size:13pt;">{{ cec }}</td></tr>
+               
+                {% if enrol_type == "C" %}
+                <tr align=left><td style = font-size:13pt;">&nbsp;&nbsp;CUMULATIVE GRADE POINT AVERAGE (CGPA) :  &nbsp;</td><td style = font-size:13pt;">=&nbsp;&nbsp;&nbsp;</td><td style = font-size:13pt;">{{ cgpa }}</td></tr>
+                {% endif %}
+            </table><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
+            <table align=left border=0 cellspacing =1 cellpadding=4 style=font-family:Arial;>
+                <tr><td style = font-size:14pt>&nbsp;Date:  {{ date_issue }}</td>
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>                    
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>                                        
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td width='150'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+		<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+		<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+        <td style = font-size:15pt;">Authorised Signatory</td>
+                </tr>
+                <tr>
+                    <td>&nbsp;&nbsp;</td><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>                    
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>                    
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                <td style = font-size:13pt;"></td>
+                </tr>
+            </table>
+    </body></html>
+

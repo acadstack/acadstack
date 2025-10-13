@@ -1,0 +1,8 @@
+org_id,login_id,first_name,last_name,role,department,degree,year_of_entry,email
+S202000001,S202000001,Gurdeep,Singh,STU,CSE,BTE,2020,S202000001@iitrpr.ac.in
+S202000008,S202000008,Dilbagh,Durd,FAC,CSE,PHD,2021,S202000008@iitrpr.ac.in
+S202000009,S202000009,Milan,Singla,FAC,CSE,PHD,2021,S202000009@iitrpr.ac.in
+S202000010,S202000010,Jyoti,Mangala,DEA,MEC,PHD,2021,S202000010@iitrpr.ac.in
+S202000011,S202000011,Sandeep,Gill,ACA,ACA,MSC,2021,S202000011@iitrpr.ac.in
+S202000012,S202000012,Kulbhooshan,Sukh,ACA,ACA,MSC,2021,S202000012@iitrpr.ac.in
+S202000019,S202000019,Lata,Chang,HOD,HSS,PHD,2021,S202000019@iitrpr.ac.in

@@ -1,0 +1,10 @@
+Hello,
+
+Your login ID for AcadStack system is: {{login_id}}
+Please visit https://www.iitrpr.ac.in/acadstack to login. 
+You will have to request a new password by clicking Password Reset button.
+
+Please contact the academic section if you did not initiate this request.
+
+Thanks,
+AcadStack

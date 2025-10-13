@@ -1,0 +1,32 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"python.pythonPath": "./venv/bin/python"
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "acadstack_app",
+				"type": "debugpy",
+				"request": "launch",
+				"cwd": "${workspaceFolder}/api_service",
+				"program": "main.py",
+				"console": "integratedTerminal",
+				"envFile": "${workspaceFolder}/app_env_vars_debug.env"
+			},
+			{
+				"name": "grades_import",
+				"type": "debugpy",
+				"request": "launch",
+				"program": "grades_and_course_import.py",
+				"console": "integratedTerminal",
+				"args": ["grades_import_config.json"]
+			}
+		]
+	}
+}

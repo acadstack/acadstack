@@ -1,0 +1,60 @@
+{%  set AcadEvent = ({ 
+       "acad_session":"Academic Session",
+        "SESSION_S":"Academic Session Start",
+        "SESSION_E":"Academic Session End",
+        "COURSE_REG_S":"Course Pre-registration Start",
+        "COURSE_REG_E":"Course Pre-registration End",
+        "CLASSES_S":"Classes Start",
+        "CLASSES_E":"Classes End",
+        "ADD_DROP_S":"Course ADD/DROP Start",
+        "ADD_DROP_E":"Course ADD/DROP End",
+        "FEEDBACK_MID_S":"Mid Semester Course Feedback Start",
+        "FEEDBACK_MID_E":"Mid Semester Course Feedback End",
+        "MINOR_EXAM_S":"Mid Semester Exams Start",
+        "MINOR_EXAM_E":"Mid Semester Exams End",
+        "WITHDRAW_S":"Course Withdraw Start",
+        "WITHDRAW_E":"Course Withdraw End",
+        "MAJOR_EXAM_S":"End Semester Exams Start",
+        "MAJOR_EXAM_E":"End Semester Exams End",
+        "FEEDBACK_S":"End Semester Course Feedback Start",
+        "FEEDBACK_E":"End Semester course Feedback End",
+        "GRADE_SUB_S":"Grades Submission Start",
+        "GRADE_SUB_E":"Grades Submission End",
+        "SHOW_MIDSEM_FB_S":"Show Feedback(Mid Sem)",
+        "SHOW_ENDSEM_FB_S":"Show Feedback(End Sem)",
+        "RESULT_DECLARATION":"Results Declaration"
+}) %}
+
+Hello,
+
+
+{%- if events_today %}
+Following academic calendar events are starting/closing today:
+    {% for events_today_items in events_today %}
+            Academic Session : {{events_today_items['acad_session']}} 
+            {% for key in AcadEvent.keys() -%}
+                   {% if events_today_items['event_code'] in key -%}
+                        Event Name: '{{AcadEvent[key]}}'
+                    {%- endif %}
+            {%- endfor %}  
+            Event Date : {{events_today_items['event_value']}}
+    {% endfor %}
+{%- endif %}
+
+{%- if events_tomorrow %}
+Following academic calendar events are starting/closing tomorrow:
+   {% for events_tomorrow_items in events_tomorrow %}
+            Academic Session : {{events_tomorrow_items['acad_session']}} 
+            {% for key in AcadEvent.keys() -%}
+                {% if events_tomorrow_items['event_code'] in key -%}
+                    Event Name: '{{ AcadEvent[key] }}'
+                {%- endif %}
+            {%- endfor %}  
+            Event Date : {{events_tomorrow_items['event_value']}}   
+    {% endfor %}
+{%- endif %}
+
+Please visit academic calendar in acadstack portal for more details.
+
+Thanks,
+AcadStack

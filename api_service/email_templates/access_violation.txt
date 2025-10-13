@@ -1,0 +1,11 @@
+Hi,
+
+Access violation is observed in the system:
+-------------------
+{{message}}
+-------------------
+
+Please check system logs for more details.
+
+Thanks,
+AcadStack

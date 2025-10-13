@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <base href="/acadstack/default.html" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="IIT Ropar">
+    <title>AcadStack :: A System For Managing Academic Information</title>
+    <!-- Bootstrap core CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Favicons -->
+    <link rel="icon" href="favicon.ico">
+    <!-- <meta name="theme-color" content="#563d7c"> -->
+
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg" style="background-color: #b8d6d9;" data-bs-theme="light">
+        <div class="container-fluid">
+            <a class="navbar-brand mb-0" href="#">
+                <img src="./acadstack-logo-small.png" alt="Logo" width="30" height="30">
+                    AcadStack :: A System For Managing Academic Information
+                </img>
+            </a>
+        </div>
+    </nav>
+    <main role="main" class="container-fluid">
+        <div class="m-4">
+            <p id="statusMsg" class="text-center text-danger font-weight-bold"></p>
+            <p class="text-center font-weight-bold text-danger">
+                By proceeding with the login you agree to the
+                <a href="http://bit.ly/AcadStack_Terms" target="_blank">terms of use</a> 
+                of this service. 
+            </p>
+            <div class="row">
+                <div class="col-md-6 d-flex">
+                    <div class="card h-60 shadow-lg p-3 mb-5 bg-white rounded">
+                        <div class="card-header">
+                            Login with your institutional social ID such as Google, GitHub, etc.
+                        </div>
+                        <div class="card-body">
+                            <b>Before proceeding, please ensure that:</b>
+                            <ul>
+                                <li>JavaScript is not blocked by your browser</li>
+                                <li>Popups are not blocked by your browser</li>
+                                <li>You are not logged into multiple Google accounts</li>
+                                <li>Please try after clearing the browser cache if you get the <i>"popup closed by user"</i> error</li>
+                            </ul>
+                            <p>We strongly suggest that you open this website in an
+                                independent window.</p>
+
+                            <div id="g_id_onload"
+                                data-client_id="OAUTH_CLIENT_ID"
+                                data-callback="handleCredentialResponse">
+                            </div>
+                            <div class="g_id_signin"
+                                data-type="standard"
+                                data-size="large"
+                                data-theme="outline"
+                                data-text="sign_in_with"
+                                data-shape="rectangular"
+                                data-logo_alignment="left">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 d-flex">
+                    <div class="card h-60 shadow-lg p-3 mb-5 bg-white rounded">
+                        <div class="card-header">
+                            Login with AcadStack credentials
+                        </div>
+                        <div class="card-body">
+                            <b>Please note that:</b>
+                            <ul>
+                                <li>JavaScript is not blocked by your browser</li>
+                                <li>Reset your AcadStack password when using it first time.
+                                    You can do it by clicking
+                                    <a href="/acadstack/index.html">Password Reset</a> button.
+                                    Your login ID is your entry number (e.g., 2020MEB1234)
+                                </li>
+                            </ul>
+                            <a class="btn btn-outline-primary" href="/acadstack/index.html">Login</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center">
+                <p>
+                    <a href="https://bit.ly/AcadStackGuide" target="_blank">User Guide</a>
+                </p>
+                <span class="text-dark font-weight-bold">Contact us at:</span>
+                <span>acadstack_help @ [YOUR-DOMAIN]</span> (remove spaces)
+            </div>
+        </div>
+    </main>
+    <script>
+        function showMessage(msg) {
+            if (msg != undefined && msg.length > 0) {
+                $("#statusMsg").html(msg);
+                $("#statusMsg").show();
+            } else {
+                $("#statusMsg").html("");
+                $("#statusMsg").hide();
+            }
+        }
+
+        function handleCredentialResponse(response) {
+            let id_token = response.credential;
+            showMessage("Please wait...");
+            $.get("oauth/" + id_token,
+                function (data) {
+                    console.debug("Data: "+JSON.stringify(data));
+                    if (data.status == "OK") {
+                        const msg = "Logged in. Redirecting to app.";
+                        console.debug(msg);
+                        showMessage();
+                        window.location.replace("/acadstack/index.html");
+                    } else {
+                        showMessage(data.body);
+                    }
+                }
+            ).fail(function (error) {
+                console.error(JSON.stringify(error));
+                showMessage("Error when authenticating. Please ensure that you are using correct OAuth ID (e.g. Google, GitHub, etc.). "+JSON.stringify(error));
+            });
+        }
+
+    </script>
+    <script src="https://code.jquery.com/jquery-3.5.0.min.js"
+        integrity="sha256-xNzN2a4ltkB44Mc/Jz3pT4iU1cmeR0FkXs4pru/JxaQ=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+</body>
+
+</html>

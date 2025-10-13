@@ -1,0 +1,8 @@
+Hello {{author}},
+
+The status of course {{course}} has changed to {{status}}.
+
+Please contact the academic section if you did not intend this change.
+
+Thanks,
+AcadStack

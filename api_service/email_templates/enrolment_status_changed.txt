@@ -1,0 +1,23 @@
+Hello,
+
+Enrollment of {{student}} in course {{course}} of academic session {{acad_session}} 
+has changed.
+
+Current record:
+    Enrollment status: {{enrol_status}}
+    Enrollment type: {{enrol_type}}
+    Grade: {{grade}}
+    Remarks: {{remarks}}
+    
+{% if old_rec %}
+Previous record:
+    Enrollment status: {{old_rec['enrol_status']}}
+    Enrollment type: {{old_rec['enrol_type']}}
+    Grade: {{old_rec['grade']}}
+    Remarks: {{old_rec['remarks']}}
+{% endif %}
+
+Please contact the course instructor or the academic section if you did not intend this change.
+
+Thanks,
+AcadStack

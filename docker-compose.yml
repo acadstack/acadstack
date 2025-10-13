@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:17
+    env_file:
+    # Must define POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DB_HOST, DB_PORT
+      - ./app_env_vars.env
+    container_name: acadstack_postgres
+    restart: always
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+      # - ./initdb:/docker-entrypoint-initdb.d
+    ports:
+      - "${DB_PORT}:5432"
+
+  backend:
+    # Update the tag as needed based on the architecture of deployment host
+    image: sodhix/acadstack-backend:v.01
+    env_file:
+    # Must define APP_PORT
+      - ./app_env_vars.env
+    container_name: acadstack_backend
+    restart: always
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    depends_on:
+      - db
+
+  frec_service:
+    # Update the tag as needed based on the architecture of deployment host
+    image: sodhix/acadstack-frec-service:v.01
+    env_file:
+    # Must define FREC_PORT
+      - ./app_env_vars.env
+    container_name: frec_svc
+    restart: always
+    ports:
+      - "${FREC_PORT}:${FREC_PORT}"
+
+volumes:
+  pgdata:
