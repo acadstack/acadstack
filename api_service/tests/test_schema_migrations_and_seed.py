@@ -1,0 +1,117 @@
+"""Tests for the Phase 1 migration runner (schema_migrations.py) and
+default-data seeder (default_seed_data.py).
+
+Both modules are pure DB-side tooling with no route/RBAC surface, so
+these tests drive them directly against the real test database (via the
+`db` fixture from conftest.py) rather than through HTTP.
+"""
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import models as DB  # noqa: E402
+from default_seed_data import run_seed_defaults  # noqa: E402
+from schema_migrations import run_pending_migrations  # noqa: E402
+
+
+# ===================== default_seed_data =====================
+
+def test_seed_defaults_inserts_only_missing_rows(db):
+    rows = [
+        {"group": "test_grp", "name": "k1", "is_json": False, "value_text": "v1"},
+        {"group": "test_grp", "name": "k2", "is_json": False, "value_text": "v2"},
+    ]
+
+    counts = run_seed_defaults([(DB.SystemSetting, rows)])
+    assert counts == {"SystemSetting": 2}
+    assert DB.SystemSetting.select().where(
+        DB.SystemSetting.group == "test_grp").count() == 2
+
+    # Re-running with an extra new row: only the new one should insert.
+    rows2 = rows + [
+        {"group": "test_grp", "name": "k3", "is_json": False, "value_text": "v3"},
+    ]
+    counts2 = run_seed_defaults([(DB.SystemSetting, rows2)])
+    assert counts2 == {"SystemSetting": 1}
+    assert DB.SystemSetting.select().where(
+        DB.SystemSetting.group == "test_grp").count() == 3
+
+
+def test_seed_defaults_never_overwrites_a_customized_value(db):
+    DB.SystemSetting.create(group="test_grp", name="k1", is_json=False,
+                             value_text="customized_by_institution")
+
+    counts = run_seed_defaults([(DB.SystemSetting, [
+        {"group": "test_grp", "name": "k1", "is_json": False,
+         "value_text": "seeder_default"},
+    ])])
+
+    # Already present -> zero rows inserted, and left untouched.
+    assert counts == {"SystemSetting": 0}
+    row = DB.SystemSetting.get(DB.SystemSetting.group == "test_grp",
+                                DB.SystemSetting.name == "k1")
+    assert row.value_text == "customized_by_institution"
+
+
+def test_seed_defaults_empty_specs_is_a_noop(db):
+    assert run_seed_defaults([]) == {}
+    assert run_seed_defaults() == {}  # production SEED_SPECS is empty today
+
+
+# ===================== schema_migrations =====================
+
+def test_run_pending_migrations_applies_once_in_filename_order(db, tmp_path):
+    (tmp_path / "0002_second.sql").write_text(
+        "ALTER TABLE systemsetting ADD COLUMN IF NOT EXISTS mig_test_col TEXT;"
+    )
+    (tmp_path / "0001_first.sql").write_text(
+        "-- comment-only file must not error (regression: psycopg2 raises\n"
+        "-- 'can't execute an empty query' if the whole file is a comment)\n"
+    )
+
+    applied = run_pending_migrations(tmp_path)
+    assert applied == ["0001_first.sql", "0002_second.sql"]
+
+    versions = {r.version for r in DB.SchemaMigration.select()}
+    assert versions == {"0001_first.sql", "0002_second.sql"}
+
+    cols = [c.name for c in DB.db.get_columns("systemsetting")]
+    assert "mig_test_col" in cols
+
+
+def test_run_pending_migrations_skips_already_applied_files(db, tmp_path):
+    mig = tmp_path / "0001_add_col.sql"
+    mig.write_text(
+        "ALTER TABLE systemsetting ADD COLUMN IF NOT EXISTS mig_test_col2 TEXT;"
+    )
+
+    first = run_pending_migrations(tmp_path)
+    assert first == ["0001_add_col.sql"]
+
+    # Second run against the same directory: nothing pending.
+    second = run_pending_migrations(tmp_path)
+    assert second == []
+    assert DB.SchemaMigration.select().where(
+        DB.SchemaMigration.version == "0001_add_col.sql").count() == 1
+
+
+def test_migration_is_safe_to_replay_against_an_already_current_schema(db, tmp_path):
+    """Simulates a fresh install: create_schema() already built the column
+    from models.py, so a guarded (IF NOT EXISTS) migration replaying on
+    top of it must no-op instead of erroring."""
+    DB.db.execute_sql(
+        "ALTER TABLE systemsetting ADD COLUMN IF NOT EXISTS mig_test_col3 TEXT;"
+    )
+    (tmp_path / "0001_add_col.sql").write_text(
+        "ALTER TABLE systemsetting ADD COLUMN IF NOT EXISTS mig_test_col3 TEXT;"
+    )
+
+    applied = run_pending_migrations(tmp_path)
+    assert applied == ["0001_add_col.sql"]  # recorded, did not error
+
+
+def test_run_pending_migrations_with_no_files_is_a_noop(db, tmp_path):
+    assert run_pending_migrations(tmp_path) == []

@@ -51,7 +51,7 @@ def create_schema():
                           StudentSupervisor, CourseSlotTiming,
                           FeesTransaction, StudentCredits, DcForStudent,
                           DcMember, PhDProgressReport, AcademicMilestone,
-                          AttendancePhoto, SystemSetting])
+                          AttendancePhoto, SystemSetting, SchemaMigration])
         logging.info("DB tables created.")
 
 
@@ -619,3 +619,15 @@ class SystemSetting(BaseModel):
             # Unique index
             (('group', 'name', 'is_json'), True),
         )
+
+
+class SchemaMigration(ORM.Model):
+    """Bookkeeping table recording which files under migrations/ have
+    already been applied. Not a BaseModel: this is tooling state, not a
+    business entity, so it skips is_deleted/txn_no/ins_ts/etc."""
+    version = ORM.CharField(max_length=255, unique=True)
+    applied_ts = ORM.DateTimeField(default=DT.now)
+
+    class Meta:
+        database = db
+        table_name = "schema_migrations"

@@ -25,6 +25,9 @@ import api_reports as apiRP
 import api_wflow as apiWF
 import api_common as apiVC
 import common as C
+import models as M
+from default_seed_data import run_seed_defaults
+from schema_migrations import run_pending_migrations
 
 from quart import Quart
 
@@ -74,6 +77,28 @@ def setup_app_state(app):
     print("Added tasks holder to app extensions.")
 
 
+def run_startup_db_tasks(cfg):
+    """Brings an existing deployment's schema/default-data up to date on
+    every app startup: ensures any brand-new tables exist (create-if-not
+    -exists, same as demo_data.py), applies any pending versioned
+    migrations under migrations/ (see schema_migrations.py), then inserts
+    any missing default rows (see default_seed_data.py). All three steps
+    are idempotent and never touch data an institution has already
+    configured, so this is safe to run on every restart.
+    """
+    M.db.init(cfg['db_name'], **cfg['db_args'])
+    M.db.connect()
+    try:
+        M.create_schema()
+        applied = run_pending_migrations()
+        if applied:
+            logging.info(f"Applied {len(applied)} pending schema "
+                         f"migration(s): {applied}")
+        run_seed_defaults()
+    finally:
+        M.db.close()
+
+
 def create_app(is_testing=False):
     myapp = Quart(__name__, static_folder="./app", static_url_path="/acadstack/")
     myapp.secret_key = C.get_rand_str(size=30)
@@ -82,6 +107,9 @@ def create_app(is_testing=False):
 
     cfg = _load_config_from_env()
     myapp.config.update(cfg)
+
+    if not is_testing:
+        run_startup_db_tasks(cfg)
 
     myapp.context_processor(C.add_user_to_session)
     myapp.before_request(C.init_db_connection)

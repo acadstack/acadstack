@@ -1,0 +1,3 @@
+-- Baseline marker: no schema change. Recorded once so schema_migrations
+-- has a row after the first startup with this tooling, and so later
+-- migrations have a fixed point to number from. See README.md.
