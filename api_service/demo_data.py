@@ -21,6 +21,8 @@ from passlib.handlers.pbkdf2 import pbkdf2_sha256
 import common as C
 import models as M
 import api_reports as R
+from default_seed_data import run_seed_defaults
+from schema_migrations import run_pending_migrations
 
 with open('static_data.json', 'r') as file:
     static_data = json.load(file)
@@ -69,6 +71,10 @@ def recreate_db(config):
 
     M.create_schema()
     print("Created DB tables.")
+
+    run_pending_migrations()
+    run_seed_defaults()
+    print("Applied schema migrations and default seed data.")
 
 
 def setup_db_with_demo_data(config):

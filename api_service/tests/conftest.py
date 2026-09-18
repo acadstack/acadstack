@@ -120,7 +120,7 @@ def db(_db_schema):
         DB.StudentFeedbackStatus, DB.StudentSupervisor, DB.CourseSlotTiming,
         DB.FeesTransaction, DB.StudentCredits, DB.DcForStudent,
         DB.DcMember, DB.PhDProgressReport, DB.AcademicMilestone,
-        DB.AttendancePhoto, DB.SystemSetting,
+        DB.AttendancePhoto, DB.SystemSetting, DB.SchemaMigration,
     ]
     quoted = ", ".join(f'"{m._meta.table_name}"' for m in models_to_truncate)
     _db_schema.execute_sql(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE;")
