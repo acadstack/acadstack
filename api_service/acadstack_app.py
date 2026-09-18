@@ -150,4 +150,10 @@ def create_app(is_testing=False):
     return myapp
 
 
-app = create_app()
+# create_app() registers routes on the module-level Blueprint in
+# api_common.py, which Quart only allows once per process. The test suite
+# needs to control its own single create_app(is_testing=True) call, so it
+# sets ACADSTACK_SKIP_APP_INIT before importing this module to skip the
+# instantiation below (see tests/conftest.py).
+if not os.environ.get("ACADSTACK_SKIP_APP_INIT"):
+    app = create_app()

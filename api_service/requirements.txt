@@ -3,7 +3,7 @@ psycopg2-binary
 cryptography
 quart
 passlib
-peewee
+peewee==3.17.6
 apscheduler[asyncio]
 toml
 google-api-python-client
