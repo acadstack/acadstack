@@ -7,11 +7,12 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging, re, random, string, toml
+import logging, re, random, string, threading, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
 from functools import wraps
+from pathlib import Path
 from quart import current_app
 from quart import (jsonify, session)
 
@@ -62,9 +63,42 @@ class AcadStackException(Exception):
 def current_dt_str():
     return DT.now().strftime("%Y-%m-%d")
 
+# sql_statements.toml is a ~1000-line static file read by nearly every
+# query in the app. Parsing it per call was costing a full TOML parse on
+# every DB access, so it is parsed once per process and held here. The
+# path is resolved relative to this module rather than the working
+# directory, which is what the rest of the app assumes but does not
+# guarantee (background jobs, scripts).
+_SQL_STATEMENTS_PATH = Path(__file__).resolve().parent / "sql_statements.toml"
+_sql_statements = None
+_sql_statements_lock = threading.Lock()
+
+
+def sql_statements() -> dict:
+    """Returns the parsed sql_statements.toml, loading it on first use."""
+    global _sql_statements
+    if _sql_statements is None:
+        with _sql_statements_lock:
+            # Re-checked under the lock: two threads can race the check
+            # above, and the loser must not re-parse the file.
+            if _sql_statements is None:
+                _sql_statements = toml.load(_SQL_STATEMENTS_PATH)
+                logging.info(f"Loaded {len(_sql_statements)} SQL statement(s) "
+                             f"from {_SQL_STATEMENTS_PATH}")
+    return _sql_statements
+
+
+def reload_sql_statements() -> dict:
+    """Forces a re-read of sql_statements.toml. For tests and for editing
+    queries without restarting a dev server."""
+    global _sql_statements
+    with _sql_statements_lock:
+        _sql_statements = None
+    return sql_statements()
+
+
 def sql_by_id(sid):
-    sql_map = toml.load("sql_statements.toml")
-    return sql_map[sid]
+    return sql_statements()[sid]
 
 def add_user_to_session():
     if "user" in session:

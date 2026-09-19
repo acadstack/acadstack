@@ -28,6 +28,7 @@ import common as C
 import models as M
 from default_seed_data import run_seed_defaults
 from schema_migrations import run_pending_migrations
+from settings_store import validate_stored_settings
 
 from quart import Quart
 
@@ -85,6 +86,12 @@ def run_startup_db_tasks(cfg):
     any missing default rows (see default_seed_data.py). All three steps
     are idempotent and never touch data an institution has already
     configured, so this is safe to run on every restart.
+
+    Finally it checks the stored system settings against their declared
+    schema (see settings_store.py) and logs anything invalid. That check
+    only reports: a value that predates its declaration, or was edited
+    directly in the DB, must be visible at boot rather than surfacing
+    mid-request, but it is not a reason to refuse to start.
     """
     M.db.init(cfg['db_name'], **cfg['db_args'])
     M.db.connect()
@@ -95,6 +102,11 @@ def run_startup_db_tasks(cfg):
             logging.info(f"Applied {len(applied)} pending schema "
                          f"migration(s): {applied}")
         run_seed_defaults()
+        problems = validate_stored_settings()
+        if problems:
+            logging.warning(f"{len(problems)} stored system setting(s) fail "
+                            f"validation; their declared defaults will be "
+                            f"used at read time.")
     finally:
         M.db.close()
 

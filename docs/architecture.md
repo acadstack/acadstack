@@ -163,6 +163,46 @@ Models are defined in the module `models.py`. The Postgresql schema ERD
 is shown in Fig. 2 below.
 ![Fig. 2](./images/acadstack_db_schema.png)
 
+### Statement cache
+`sql_statements.toml` is parsed once per process and cached (`common.sql_statements()`);
+`sql_by_id()` reads from that cache. Use `common.reload_sql_statements()` after editing
+the file in a running dev server.
+
+
+## System settings (database-backed configuration)
+Academic policy that an institution can change lives in the `SystemSetting` table, not
+in `config.json`. Only bootstrap items stay in config/env: DB connection, secrets,
+ports, upload paths, and anything needed by code that runs before the app does
+(`create_schema()`, `demo_data.py`).
+
+Reading a setting (`settings_store.py`):
+
+```python
+from settings_store import setting
+
+if setting("enrolment.disable_fees_check", False):
+    ...
+```
+
+A key is `"<group>.<name>"`, matching the row's `group`/`name` columns. Values come
+back already typed. Precedence: stored row, then the caller's `default` argument, then
+the declared default, then `None`.
+
+Every writable setting must first be declared with a `Spec` in the DECLARATIONS section
+at the bottom of `settings_store.py` (type, default, bounds/choices, optional
+validator, plus an optional cross-field validator per group). Saves go through
+`save_setting()`/`save_settings()`, which validate and reject bad values at write time
+— including any undeclared key — so reads can never fail on a bad value. Startup logs
+(but does not reject) any stored value that fails its declaration.
+
+Settings are cached per worker process, keyed by a single `_sys.policy_version` row
+that every write bumps inside the writing transaction. A request that reads any setting
+costs one small indexed query for that row, and re-reads the table only when the
+version has moved; the snapshot is pinned on `g` for the request, so a request sees one
+consistent set of values throughout. That is what keeps multiple hypercorn workers in
+step without a restart. Code outside a request context re-checks the version at most
+every `NON_REQUEST_RECHECK_SECS`.
+
 
 ## Frontend implementation
 The frontend GUI is built using [VueJS Router](https://router.vuejs.org/guide/)
