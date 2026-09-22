@@ -1,7 +1,8 @@
 -- Adds Course.s_hours/credits, computed once server-side from ltp's L/T/P
 -- (S = 2L - T + 0.5P, C = L + 0.5P) instead of being re-derived by every
--- query that needs them. See common.compute_course_ltp() and
--- docs/refactor-plan.md Phase 4's credit-formula duplication decision.
+-- query that needs them. See common.compute_course_ltp(), which is now the
+-- only place that formula is evaluated (it used to be implemented twice,
+-- once in Python and again in SQL).
 --
 -- Backfills existing rows using the same formula, applied to whatever L/T/P
 -- is already stored (ltp's first three dash-separated fields), regardless

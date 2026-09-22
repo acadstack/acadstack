@@ -24,8 +24,9 @@ else derives from it instead of restating the list by hand:
 Deliberately excluded (out of scope for this consolidation): course-slot
 DAY/TIME mappings (CourseSlotTiming, an already-genuine DB table, not a
 static list), and status/code vocabularies that are pure workflow
-plumbing not exposed anywhere as a pick-list (see docs/refactor-plan.md
-Phase 9 for turning those into real transition tables).
+plumbing not exposed anywhere as a pick-list -- those want real workflow
+transition tables rather than a vocabulary list, which is its own piece
+of work.
 
 Each vocabulary is a list of ``{"code": ..., "label": ...}`` dicts (plus
 extra keys where a vocabulary needs more than a label -- see GRADES'
