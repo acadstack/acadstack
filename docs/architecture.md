@@ -191,10 +191,15 @@ the file in a running dev server.
 
 
 ## System settings (database-backed configuration)
-Academic policy that an institution can change lives in the `SystemSetting` table, not
-in `config.json`. Only bootstrap items stay in config/env: DB connection, secrets,
+Institution-configurable settings live in the `SystemSetting` table, not in
+`config.json`. Only bootstrap items stay in config/env: DB connection, secrets,
 ports, upload paths, and anything needed by code that runs before the app does
 (`create_schema()`, `demo_data.py`).
+
+Note the boundary with the versioned policy store described below: `SystemSetting`
+holds *current* values that an admin may overwrite. Rules whose past values must keep
+applying to past academic sessions — grade point maps, earned-credit grade sets — are
+not settings; they belong in `policy_store`.
 
 Reading a setting (`settings_store.py`):
 
@@ -270,6 +275,45 @@ values against hardcoded string literals rather than the `SD` vocab data, so the
 work today but would need a matching manual edit if a code set changes. Fixing those
 belongs with the move to permission-based RBAC, not with the vocabulary work.
 
+
+## Versioned academic policy (effective-dated)
+
+Rules that change over time, where the old rules must keep applying to the sessions
+they governed, are stored as versions rather than settings. The driving case is the
+"PhD passing grades introduced in 2021" branch in `domain/policy.py`: a 2019
+transcript has to keep computing under the 2019 rules forever.
+
+A **policy group** (e.g. `"grading"`) has an ordered series of `PolicyVersion` rows,
+each stating the academic session it takes effect from and carrying the whole ruleset
+as one JSON payload. A version is in force until the next one begins; that end is
+*derived, never stored*, which is what makes superseding a pure insert that changes no
+existing row.
+
+```python
+import policy_store as PS
+
+ruleset = PS.policy_for("grading", "2021-I")   # typed, immutable
+PS.supersede("grading", "2024-II", payload, note="Senate resolution 2024/7")
+PS.close_session("2023-II")                    # seals policy up to that session
+```
+
+Closing an academic session (`ClosedAcademicSession`) seals every version effective
+from at or before it: no update, no delete, and no new version backdated into it.
+That is enforced in `policy_store`, again in `models.py`, and again by Postgres
+triggers from `migrations/0003_versioned_policy_store.sql` — the last because this
+codebase runs hand-written SQL and peewee bulk updates that never reach
+`Model.save()`.
+
+Effective-dating is keyed on academic session (`YYYY-S`), following
+`AcademicCalendar`'s precedent, not on wall-clock dates. `acad_session.py` defines the
+total order (`T1 < T2 < T3 < T4 < I < II < S` within a year — the same order the
+transcript code sorts by) and the integer ordinal that resolution binary-searches, so
+resolving per course during transcript building costs no query.
+
+Nothing has been migrated onto this store yet: `compute_cgpa_sgpa_ec` still holds
+the live rules. See **docs/versioned-policy.md** for the design argument, the
+`SystemSetting`-vs-`PolicyVersion` boundary, what must happen before the rules move,
+and the recommendation on freezing `StudentCredits`.
 
 ## Frontend implementation
 The frontend GUI is built using [VueJS Router](https://router.vuejs.org/guide/)

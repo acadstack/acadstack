@@ -14,6 +14,7 @@ import peewee as ORM
 from playhouse.postgres_ext import JSONField
 from playhouse.pool import PooledPostgresqlExtDatabase
 
+import acad_session as AS
 import vocab_defaults as VD
 
 # Deferred initialization
@@ -49,7 +50,9 @@ def create_schema():
                           StudentSupervisor, CourseSlotTiming,
                           FeesTransaction, StudentCredits, DcForStudent,
                           DcMember, PhDProgressReport, AcademicMilestone,
-                          AttendancePhoto, SystemSetting, SchemaMigration])
+                          AttendancePhoto, SystemSetting,
+                          PolicyVersion, ClosedAcademicSession,
+                          SchemaMigration])
         logging.info("DB tables created.")
 
 
@@ -583,6 +586,159 @@ class SystemSetting(BaseModel):
             # Unique index
             (('group', 'name', 'is_json'), True),
         )
+
+
+# ====== Versioned, effective-dated academic policy =========
+# See policy_store.py for the read/write API and docs/versioned-policy.md
+# for why this is a separate concept from SystemSetting.
+
+
+class ImmutablePolicyError(Exception):
+    """Raised when a write would alter policy that a closed academic
+    session has already been computed under.
+
+    Deliberately not an ``AcadStackException``: ``common`` imports
+    ``models``, so this module cannot import that exception type without
+    a cycle. ``policy_store`` re-raises these as ``PolicyImmutableError``,
+    which subclasses BOTH this and ``AcadStackException``, so a caller can
+    catch either one.
+    """
+
+
+def max_closed_session_ord():
+    """The highest ordinal among closed academic sessions, or None when
+    no session has been closed yet.
+
+    This is the "seal line": policy effective from at or before it has
+    already been used to compute results that must never change.
+    """
+    return (ClosedAcademicSession
+            .select(ORM.fn.MAX(ClosedAcademicSession.session_ord))
+            .scalar())
+
+
+class PolicyVersion(BaseModel):
+    """One immutable version of one policy group's ruleset.
+
+    A version is in force from ``effective_from_session`` until the next
+    version of the same group begins -- a half-open interval whose end is
+    DERIVED, never stored. That is the structural reason superseding is
+    the only write: introducing a new version writes exactly one new row
+    and touches no existing one, so no existing row's meaning changes.
+    (Storing an ``effective_to`` would mean every supersede UPDATEd the
+    previous row, which is precisely the mutation we are preventing.)
+
+    ``effective_from_ord`` is the session's ordinal (see acad_session.py),
+    denormalised so that resolution and the write guards are plain integer
+    comparisons on an index. Migration 0003 adds a CHECK constraint tying
+    it to ``effective_from_session``, so the two cannot disagree.
+    """
+
+    policy_group = ORM.CharField(max_length=60, index=True)
+    effective_from_session = ORM.CharField(max_length=10)
+    effective_from_ord = ORM.IntegerField(index=True)
+
+    #: The whole ruleset as one JSON document. A ruleset is atomic: its
+    #: parts (e.g. a grade->point map and the grade sets that go with it)
+    #: are only meaningful together, so they version together.
+    payload = JSONField(default={})
+
+    #: Free text: the authority for the change (circular, minute number).
+    note = ORM.TextField(null=True)
+
+    class Meta:
+        indexes = (
+            # Unique index: one version per group per session boundary.
+            (('policy_group', 'effective_from_ord'), True),
+        )
+
+    @property
+    def is_sealed(self):
+        """Whether a closed session sits at or after this version's start,
+        making the row historical and therefore frozen.
+
+        Conservative on purpose: a version superseded before any session
+        it governed was closed is still treated as sealed, because it was
+        in force and may have been referenced while it was.
+        """
+        seal = max_closed_session_ord()
+        return seal is not None and seal >= self.effective_from_ord
+
+    def _reject_if_sealed(self, verb):
+        seal = max_closed_session_ord()
+        if seal is None:
+            return
+        # For an UPDATE, the row is protected if EITHER its stored start
+        # or the proposed new start is inside sealed territory -- so a
+        # sealed version cannot be edited, and an unsealed one cannot be
+        # moved back into history.
+        ords = [self.effective_from_ord]
+        if self._pk is not None:
+            stored = (PolicyVersion
+                      .select(PolicyVersion.effective_from_ord)
+                      .where(PolicyVersion.id == self._pk)
+                      .scalar())
+            if stored is not None:
+                ords.append(stored)
+        if min(ords) <= seal:
+            raise ImmutablePolicyError(
+                f"Cannot {verb} policy version for group "
+                f"{self.policy_group!r} effective {self.effective_from_session}"
+                f": academic session {AS.from_ordinal(seal)} is closed, so "
+                f"policy from that session or earlier is final. Supersede it "
+                f"with a version effective from a later session instead.")
+
+    def save(self, force_insert=False, **kwargs):
+        """Blocks writes into sealed history.
+
+        Covers both directions: inserting a version effective from an
+        already-closed session (which would retroactively restate that
+        session's rules) and updating/soft-deleting a sealed row. Rows
+        that govern only open sessions stay writable.
+
+        This is the ORM-level guard; migration 0003 installs equivalent
+        triggers so that raw SQL -- which this codebase does use -- cannot
+        go around it, and so that bulk ``.update()``/``.delete()`` queries,
+        which never call this method, are caught too.
+        """
+        self._reject_if_sealed("insert" if self._pk is None else "modify")
+        return super().save(force_insert=force_insert, **kwargs)
+
+    def delete_instance(self, *args, **kwargs):
+        self._reject_if_sealed("delete")
+        return super().delete_instance(*args, **kwargs)
+
+
+class ClosedAcademicSession(BaseModel):
+    """Append-only record that an academic session's results are final.
+
+    Closing is an explicit administrative act rather than a date going
+    past, for two reasons: a date-derived rule would un-close a session
+    the moment somebody corrected a calendar row, and the close event is
+    the natural hook for freezing per-student records once results are
+    out (see the StudentCredits recommendation in
+    docs/versioned-policy.md).
+
+    Rows are never updated or deleted -- the seal only ever advances.
+    """
+
+    acad_session = ORM.CharField(max_length=10, unique=True)
+    session_ord = ORM.IntegerField(index=True)
+    closed_ts = ORM.DateTimeField(default=DT.now)
+    note = ORM.TextField(null=True)
+
+    def save(self, force_insert=False, **kwargs):
+        if self._pk is not None and not force_insert:
+            raise ImmutablePolicyError(
+                f"Academic session {self.acad_session} is already recorded as "
+                f"closed; closure records are append-only and cannot be "
+                f"edited or reopened.")
+        return super().save(force_insert=force_insert, **kwargs)
+
+    def delete_instance(self, *args, **kwargs):
+        raise ImmutablePolicyError(
+            f"Academic session {self.acad_session} cannot be reopened: "
+            f"closure records are append-only.")
 
 
 class SchemaMigration(ORM.Model):

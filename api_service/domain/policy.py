@@ -27,6 +27,7 @@ import logging
 from dataclasses import dataclass
 from typing import Mapping, Optional, Sequence
 
+import policy_store as PS
 import settings_store as ST
 
 # ---------------------------------------------------------------- grading
@@ -157,6 +158,170 @@ def load_grading_policy(acad_session: Optional[str] = None) -> GradingPolicy:
     without touching them.
     """
     return DEFAULT_GRADING_POLICY
+
+
+# ------------------------------------------- grading, effective-dated
+
+#: Name of the versioned grading policy group (see policy_store.py).
+GRADING = "grading"
+
+#: Payload keys holding a set of codes, stored as JSON arrays.
+_GRADING_SET_KEYS = ("ug_ec_grades", "pg_ec_grades", "pass_grades",
+                     "phd_ec_grades", "phd_ec_pass_grades",
+                     "excluded_grades", "passed_course_grades",
+                     "credit_enrol_types")
+
+_GRADING_REQUIRED = ("grade_points",) + _GRADING_SET_KEYS + (
+    "counted_enrol_status", "satisfactory_grade")
+
+
+def grading_payload_from(policy: GradingPolicy, phd_ec_grades=None,
+                         phd_ec_pass_grades=None) -> dict:
+    """A storable payload for one version of the grading rules.
+
+    Takes the PhD grade sets explicitly because that is precisely what
+    the 2021 amendment varies: one call per effective range, with the
+    sets already resolved for that range. Everything else is carried
+    across from ``policy``.
+
+    Note what is NOT stored: ``ug_degree_code``/``phd_degree_code`` (which
+    degree codes map to which rules is institution configuration, not
+    academic policy) and the ``phd_amendment_*`` fields (the amendment
+    becomes the sequence of versions itself).
+    """
+    def items(value):
+        return list(value) if not isinstance(value, str) else value.split(",")
+
+    return {
+        "grade_points": dict(policy.grade_points),
+        "ug_ec_grades": items(policy.ug_ec_grades),
+        "pg_ec_grades": items(policy.pg_ec_grades),
+        "pass_grades": items(policy.pass_grades),
+        "phd_ec_grades": items(phd_ec_grades or policy.phd_ec_grades),
+        "phd_ec_pass_grades": items(
+            phd_ec_pass_grades or policy.phd_ec_pass_grades),
+        "excluded_grades": items(policy.excluded_grades),
+        "passed_course_grades": items(policy.passed_course_grades),
+        "credit_enrol_types": items(policy.credit_enrol_types),
+        "counted_enrol_status": policy.counted_enrol_status,
+        "satisfactory_grade": policy.satisfactory_grade,
+    }
+
+
+def build_grading_policy(payload) -> GradingPolicy:
+    """Stored payload -> :class:`GradingPolicy`.
+
+    Two translations happen here, and both are deliberate.
+
+    **Arrays back to comma-separated strings.** The computation tests
+    membership with ``in`` -- substring matching, not set membership --
+    and that quirk is load-bearing (``tests/test_gpa_computation.py``
+    characterises it). Storage uses JSON arrays because that is the right
+    shape; this joins them so the computation is bit-for-bit unchanged.
+    Fixing the quirk is a separate change that touches this function and
+    the membership tests together.
+
+    **The 2021 amendment is neutralised.** ``phd_ec_grades_amended`` is
+    set equal to ``phd_ec_grades`` (and likewise for the pass set), so
+    every branch of :func:`apply_phd_amendment` returns the same pair for
+    any session. The store has already answered the question the branch
+    was asking, so leaving the branch in place changes nothing --
+    which is what lets the rules move onto the store without touching
+    ``compute_cgpa_sgpa_ec`` in the same change.
+    """
+    missing = [k for k in _GRADING_REQUIRED if k not in payload]
+    if missing:
+        raise ValueError(f"missing key(s): {', '.join(sorted(missing))}")
+
+    def joined(key):
+        return ",".join(payload[key])
+
+    phd_ec = joined("phd_ec_grades")
+    phd_pass = joined("phd_ec_pass_grades")
+
+    return GradingPolicy(
+        grade_points={str(k): v for k, v in payload["grade_points"].items()},
+        ug_ec_grades=joined("ug_ec_grades"),
+        pg_ec_grades=joined("pg_ec_grades"),
+        pass_grades=joined("pass_grades"),
+        phd_ec_grades=phd_ec,
+        phd_ec_pass_grades=phd_pass,
+        phd_ec_grades_amended=phd_ec,
+        phd_ec_pass_grades_amended=phd_pass,
+        credit_enrol_types=joined("credit_enrol_types"),
+        counted_enrol_status=str(payload["counted_enrol_status"]),
+        satisfactory_grade=str(payload["satisfactory_grade"]),
+        excluded_grades=tuple(payload["excluded_grades"]),
+        passed_course_grades=joined("passed_course_grades"),
+    )
+
+
+def validate_grading_payload(payload):
+    """Structural checks beyond what the builder enforces. Deliberately
+    does not police WHICH grades an institution recognises: that is
+    exactly the kind of rule that legitimately changes between
+    versions."""
+    errors = []
+
+    points = payload.get("grade_points")
+    if not isinstance(points, Mapping) or not points:
+        errors.append("grade_points must be a non-empty object")
+    else:
+        for grade, value in points.items():
+            if not isinstance(grade, str) or not grade.strip():
+                errors.append(f"grade_points has a blank grade key: {grade!r}")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                errors.append(f"grade_points[{grade!r}] must be a number, "
+                              f"got {value!r}")
+
+    for key in _GRADING_SET_KEYS:
+        items = payload.get(key)
+        if items is None:
+            continue  # the builder already reports it as missing
+        if isinstance(items, str) or not isinstance(items, (list, tuple)):
+            errors.append(f"{key} must be an array of codes, not a "
+                          f"{type(items).__name__} -- the comma-separated "
+                          f"strings used in code are not accepted here")
+            continue
+        if any(not isinstance(i, str) or not i.strip() for i in items):
+            errors.append(f"{key} must contain only non-empty strings")
+        if len(set(items)) != len(items):
+            errors.append(f"{key} contains duplicate entries")
+
+    for key in ("counted_enrol_status", "satisfactory_grade"):
+        value = payload.get(key)
+        if value is not None and (not isinstance(value, str)
+                                  or not value.strip()):
+            errors.append(f"{key} must be a non-empty string")
+
+    return errors
+
+
+GRADING_GROUP = PS.declare_policy_group(
+    GRADING,
+    doc="Grade vocabulary, grade points and earned-credit rules used to "
+        "compute SGPA, CGPA and earned credits. Versioned per academic "
+        "session: a transcript is always computed under the ruleset in "
+        "force for the session being reported.",
+    builder=build_grading_policy,
+    validator=validate_grading_payload,
+)
+
+
+def resolve_grading_policy(acad_session: str) -> GradingPolicy:
+    """The stored grading ruleset in force for ``acad_session``.
+
+    This is the effective-dated replacement for :func:`load_grading_policy`.
+    It is NOT yet what computation calls: no ruleset has been seeded, so
+    it would raise. Switching over means seeding a baseline version and
+    changing load_grading_policy() below to delegate here -- a change that
+    alters how transcripts compute and needs its own verification against
+    real grade data. See docs/versioned-policy.md section 8.
+
+    Raises:
+        PolicyNotFoundError: if no version covers the session.
+    """
+    return PS.policy_for(GRADING, acad_session)
 
 
 # -------------------------------------------------------------- enrolment

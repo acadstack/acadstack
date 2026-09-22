@@ -41,6 +41,22 @@ def _has_executable_sql(sql_text: str) -> bool:
     return bool(_LINE_COMMENT_RE.sub("", sql_text).strip())
 
 
+def _execute_script(sql_text: str) -> None:
+    """Runs a whole migration file as one script.
+
+    Deliberately NOT M.db.execute_sql(): peewee passes `params or ()` down
+    to the driver, and psycopg2 treats '%' as a placeholder introducer
+    whenever a parameter sequence is present, even an empty one -- so a
+    migration is free to contain a literal percent sign (a LIKE pattern,
+    a to_char() format, a plpgsql RAISE ... % substitution) only if no
+    parameter argument is passed at all. That is what this function does:
+    it skips client-side interpolation entirely, which is what a DDL
+    script wants.
+    """
+    cursor = M.db.cursor()
+    cursor.execute(sql_text)
+
+
 def run_pending_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> list:
     """Applies every *.sql file under migrations_dir that is not yet
     recorded in schema_migrations, in filename order. Returns the list of
@@ -63,7 +79,7 @@ def run_pending_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> list:
         sql_text = path.read_text()
         with M.db.atomic():
             if _has_executable_sql(sql_text):
-                M.db.execute_sql(sql_text)
+                _execute_script(sql_text)
             M.SchemaMigration.create(version=path.name)
         logging.info(f"Applied schema migration: {path.name}")
         applied_now.append(path.name)

@@ -91,6 +91,7 @@ _apply_env_from_test_config()
 # every other module imports a reference to.
 import models as DB  # noqa: E402
 from acadstack_app import create_app  # noqa: E402
+from schema_migrations import run_pending_migrations  # noqa: E402
 
 
 # ===================== DB schema lifecycle =====================
@@ -103,6 +104,13 @@ def _db_schema():
     DB.db.connect()
     DB.db.execute_sql("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
     DB.create_schema()
+    # Same order production uses (acadstack_app.run_startup_db_tasks,
+    # demo_data.recreate_db, migrate.py): create_schema() first, then the
+    # versioned migrations. Without this the test schema would be missing
+    # everything peewee cannot express -- CHECK constraints, functions and
+    # the triggers that enforce policy immutability -- so tests would pass
+    # against a schema no deployment actually runs.
+    run_pending_migrations()
     yield DB.db
     DB.db.close()
 
@@ -120,7 +128,9 @@ def db(_db_schema):
         DB.StudentFeedbackStatus, DB.StudentSupervisor, DB.CourseSlotTiming,
         DB.FeesTransaction, DB.StudentCredits, DB.DcForStudent,
         DB.DcMember, DB.PhDProgressReport, DB.AcademicMilestone,
-        DB.AttendancePhoto, DB.SystemSetting, DB.SchemaMigration,
+        DB.AttendancePhoto, DB.SystemSetting,
+        DB.PolicyVersion, DB.ClosedAcademicSession,
+        DB.SchemaMigration,
     ]
     quoted = ", ".join(f'"{m._meta.table_name}"' for m in models_to_truncate)
     _db_schema.execute_sql(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE;")

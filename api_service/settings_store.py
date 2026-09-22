@@ -789,6 +789,24 @@ def _bump_policy_version() -> int:
     return int(cur.fetchone()[0])
 
 
+def bump_policy_version() -> int:
+    """Bumps the shared configuration version counter.
+
+    Public because ``policy_store`` (the effective-dated academic policy
+    store) is keyed on the same counter: one number answers "is my cached
+    configuration current?" for both stores, which is what makes a reader
+    that sees version N+1 guaranteed to see everything that transaction
+    wrote. Must be called inside the writing transaction.
+    """
+    return _bump_policy_version()
+
+
+def current_login_id() -> Optional[str]:
+    """The logged-in user's id when called during a request, else None.
+    Public for the same reason as bump_policy_version()."""
+    return _current_login_id()
+
+
 def save_settings(values: dict, login_id: Optional[str] = None) -> dict:
     """Validates and stores several settings atomically.
 
