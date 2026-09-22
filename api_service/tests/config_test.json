@@ -15,6 +15,5 @@
         "host": "localhost",
         "port": 587
     },
-    "hide_course_stats_from": ["STU"],
     "upload_folder": "./tests/tmp_uploads"
 }

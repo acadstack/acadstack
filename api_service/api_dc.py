@@ -194,7 +194,7 @@ async def get_instructor_academics(my_id):
                                                               == DB.CourseOffering.id))\
                                     .where(DB.CourseInstructor.instructor_id == my_id)
 
-        courses = query.order_by(DB.CourseOffering.course_id).paginate(pg_no, apiVC.PAGE_SIZE)
+        courses = query.order_by(DB.CourseOffering.course_id).paginate(pg_no, apiVC.page_size())
 
         serialized = [{"id": r['course_offering_id'], "code": r['course'], 
                        "session": r['acad_session'], "classSize": r['classSize'], 
@@ -202,8 +202,8 @@ async def get_instructor_academics(my_id):
                        "insId": r['instructor'], "feedback": 'NA'}
                       for r in courses.dicts()]
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= apiVC.page_size()
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
                "has_next": has_next}
 
         return apiVC.ok_json(res)
@@ -231,12 +231,12 @@ async def attendance_find():
         if title:
             query = query.where(DB.CourseOffering.course.title.contains(title))
 
-        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.page_size())
         serialized = [apiVC.model_to_dict(r, exclude=[DB.CourseOffering.course.author]) 
                       for r in courses]
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= apiVC.page_size()
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
                "has_next": has_next}
         return apiVC.ok_json(res)
 

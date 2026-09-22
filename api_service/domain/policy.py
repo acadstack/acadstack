@@ -27,7 +27,7 @@ import logging
 from dataclasses import dataclass
 from typing import Mapping, Optional, Sequence
 
-import common as C
+import settings_store as ST
 
 # ---------------------------------------------------------------- grading
 
@@ -187,23 +187,11 @@ class EnrolmentPolicy:
 
 
 def load_enrolment_policy() -> EnrolmentPolicy:
-    """Reads the effective enrolment policy from ambient configuration.
+    """Reads the effective enrolment policy from the settings store.
 
-    ``disable_fees_check`` still comes from ``config.json`` ->
-    ``current_app.config`` (it predates the settings store). Phase 4
-    moves that one read to
-    ``settings_store.setting("enrolment.disable_fees_check", False)``;
-    this function is the single place that has to change.
+    This is the only place in the enrolment domain that touches ambient
+    configuration; everything downstream receives the resulting
+    :class:`EnrolmentPolicy` as an argument.
     """
-    return EnrolmentPolicy(disable_fees_check=bool(_app_flag("disable_fees_check")))
-
-
-def _app_flag(key: str, default=None):
-    """``current_app.config`` read that tolerates having no app context,
-    so jobs and scripts can load policy too."""
-    try:
-        return C.app_config(key, default)
-    except Exception:
-        logging.debug(f"No app context while reading config '{key}'; "
-                      f"using default {default!r}.")
-        return default
+    return EnrolmentPolicy(
+        disable_fees_check=ST.setting("enrolment.disable_fees_check"))

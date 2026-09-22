@@ -16,6 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import common as C  # noqa: E402
 import models as DB  # noqa: E402
 from conftest import create_user, login_as  # noqa: E402
 
@@ -26,8 +27,14 @@ _seq = 0
 def _course(ltp="3-1-0-5-3"):
     global _seq
     _seq += 1
-    return DB.Course.create(code=f"SM{100 + _seq}", title="Smoke Course",
-                            ltp=ltp, status="APP")
+    # Goes through apply_computed_course_credits() like every real course
+    # save does, so Course.credits is populated -- the enrolled-credits
+    # cap query sums that column.
+    course = DB.Course(code=f"SM{100 + _seq}", title="Smoke Course",
+                       ltp=ltp, status="APP")
+    C.apply_computed_course_credits(course)
+    course.save()
+    return course
 
 
 def _offering(status="E", slot="A", acad_session=ACAD_SESSION):

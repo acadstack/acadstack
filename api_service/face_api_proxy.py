@@ -4,6 +4,8 @@ import glob
 import os
 import logging
 
+import settings_store as ST
+
 API_URL = "http://frec_service:5060"  # See service name in docker-compose.yml
 
 
@@ -45,7 +47,9 @@ def get_faces_from_photo(group_photo_path):
         return data["encodings"], data["locations"]
 
 
-def is_person_in_photo(person_photo_path, group_photo_path, tolerance=0.45):
+def is_person_in_photo(person_photo_path, group_photo_path, tolerance=None):
+    if tolerance is None:
+        tolerance = ST.setting("faces.match_tolerance")
     with open(person_photo_path, "rb") as person_file, open(group_photo_path, "rb") as group_file:
         files = {
             "person_photo": ("person.jpg", person_file, "image/jpeg"),
@@ -57,7 +61,9 @@ def is_person_in_photo(person_photo_path, group_photo_path, tolerance=0.45):
         return response.json()["match"]
 
 
-def find_persons_in_photo(group_photo_path, known_faces_data, tolerance=0.45):
+def find_persons_in_photo(group_photo_path, known_faces_data, tolerance=None):
+    if tolerance is None:
+        tolerance = ST.setting("faces.match_tolerance")
     known_faces, known_names = known_faces_data
     data = {
         "tolerance": tolerance,
@@ -90,7 +96,9 @@ def write_text_on_image(photo_path, txt, bottom_left):
         return io.BytesIO(response.content)
 
 
-def mark_person_in_photo(person_photo_path, group_photo_path, tolerance=0.45):
+def mark_person_in_photo(person_photo_path, group_photo_path, tolerance=None):
+    if tolerance is None:
+        tolerance = ST.setting("faces.match_tolerance")
     with open(person_photo_path, "rb") as person_file, open(group_photo_path, "rb") as group_file:
         files = {
             "person_photo": ("person.jpg", person_file, "image/jpeg"),

@@ -196,6 +196,14 @@ class Course(BaseModel):
     title = ORM.CharField(max_length=200)
     ltp = ORM.CharField(max_length=40, null=True)
 
+    # S (session/teaching hours) and C (credits), computed ONCE from ltp's
+    # L/T/P components server-side (see common.compute_course_ltp) and
+    # stored here so no query has to re-derive them by re-running the
+    # formula or by parsing ltp's string positions -- see
+    # docs/refactor-plan.md Phase 4's credit-formula duplication decision.
+    s_hours = ORM.FloatField(null=True)
+    credits = ORM.FloatField(null=True)
+
     status = ORM.CharField(max_length=4, default="DRA",
                        choices=COURSE_STATUSES)
 
