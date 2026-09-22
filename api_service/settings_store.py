@@ -95,6 +95,7 @@ from typing import Any, Callable, Iterable, Optional, Sequence
 from quart import g, has_app_context, has_request_context, session
 
 import models as M
+import vocab_defaults as VD
 from common import AcadStackException
 
 # The settings group reserved for this module's own bookkeeping. It is
@@ -724,6 +725,39 @@ def all_settings() -> dict:
     return {group: settings_in_group(group) for group in sorted(groups)}
 
 
+# ===================== Vocabularies =====================
+#
+# Controlled vocabularies (degrees, roles, statuses, grades, ...) are
+# ordinary "vocab.<name>" settings: list-of-{code,label} values declared
+# below with vocab_defaults.py's lists as their Spec defaults. These
+# helpers are the read-side seam other modules use instead of reaching
+# into `setting("vocab....")` directly.
+
+def vocab(name: str) -> list:
+    """Effective items for one controlled vocabulary: a list of
+    {"code", "label", ...} dicts, DB-stored value if present, else the
+    vocab_defaults.py default. See vocab_defaults.ALL for the valid
+    names."""
+    return setting(f"vocab.{name}")
+
+
+def vocab_codes(name: str) -> list:
+    """Just the codes for one controlled vocabulary, in effective order."""
+    return [item["code"] for item in vocab(name)]
+
+
+def valid_grade_codes() -> list:
+    """All valid grade codes, DB-effective (replaces the old
+    common.VALID_GRADES list)."""
+    return vocab_codes("grades")
+
+
+def valid_audit_grade_codes() -> list:
+    """Grade codes valid for an audited ('A') enrolment, DB-effective
+    (replaces the old common.VALID_AUDIT_GRADES list)."""
+    return [g["code"] for g in vocab("grades") if g.get("audit_ok")]
+
+
 # ===================== Write =====================
 
 def _current_login_id():
@@ -840,9 +874,39 @@ def delete_setting(key: str, login_id: Optional[str] = None) -> bool:
 #              doc="Skip the outstanding-fees check when enrolling."),
 #     ], doc="Course enrolment policy.")
 #
-# Intentionally empty for now: this phase builds the seam only. No policy
-# value has moved to the database yet (see docs/refactor-plan.md -- Phase
-# 3 moves the controlled vocabularies, Phase 4 the scalar thresholds), and
-# the two flags currently living in config.json (hide_course_stats_from,
-# disable_fees_check) still read from current_app.config. A setting must be
-# declared here BEFORE any value for it can be saved.
+# The two flags currently living in config.json (hide_course_stats_from,
+# disable_fees_check) still read from current_app.config; moving them here
+# is Phase 4 (docs/refactor-plan.md).
+
+
+def _validate_vocab_items(items):
+    """Shared Spec.validator for every "vocab.*" setting: each item must
+    be a {"code": str, "label": str, ...} object, and codes must be
+    unique within the list. Anything beyond code/label (e.g. grades'
+    audit_ok) is the individual vocabulary's business, not checked here.
+    """
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict):
+            return f"every item must be an object, got {item!r}"
+        code, label = item.get("code"), item.get("label")
+        if not isinstance(code, str) or not code:
+            return f"item {item!r}: 'code' must be a non-empty string"
+        if not isinstance(label, str) or not label:
+            return f"item {item!r}: 'label' must be a non-empty string"
+        if code in seen:
+            return f"duplicate code {code!r}"
+        seen.add(code)
+    return None
+
+
+declare_group(
+    "vocab",
+    [Spec(name, list, default=items, item_type=dict,
+          validator=_validate_vocab_items,
+          doc=f"Controlled vocabulary: {name}.")
+     for name, items in VD.ALL.items()],
+    doc="Controlled vocabularies (degrees, roles, statuses, grades, ...). "
+        "Seeded from vocab_defaults.py by default_seed_data.py; served to "
+        "the frontend by api_common.static_data_dict()."
+)

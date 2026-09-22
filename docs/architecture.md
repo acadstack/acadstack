@@ -204,6 +204,53 @@ step without a restart. Code outside a request context re-checks the version at 
 every `NON_REQUEST_RECHECK_SECS`.
 
 
+### Controlled vocabularies
+
+Every controlled vocabulary (degrees, roles, course/offering/enrolment statuses,
+enrolment types, grades, attendance codes, DC roles/statuses, departments, course types,
+course slots, and the smaller lookup lists like `PersonCategories`) is single-sourced in
+`vocab_defaults.py` and served as `"vocab.<name>"` settings through `settings_store.py`,
+exactly like any other setting group. Nothing else restates these lists:
+
+- `models.py` builds its `choices=` tuples from `vocab_defaults.choices(name)`. These are
+  fixed at import time (before any DB connection exists, since `create_schema()` and
+  `demo_data.py` need them first) and are documentation only — peewee does not enforce
+  `choices` at save time — so an institution's DB-side edits to a vocabulary are not
+  reflected here, only in the two items below.
+- `default_seed_data.py`'s `SEED_SPECS` seeds one `SystemSetting` row (`group="vocab"`)
+  per vocabulary from the same lists, so a fresh or upgraded install has them in the DB
+  without ever overwriting an institution's own customization.
+- `api_common.static_data_dict()` (served at `GET /acadstack/get_static_data`) builds the
+  frontend's dropdown/label data from `settings_store.vocab(name)` — the DB-effective
+  value, falling back to `vocab_defaults.py` when nothing is stored. `static_data.json`
+  no longer exists as a hand-maintained file; `vocab_defaults.STATIC_DATA_KEYS` maps each
+  vocabulary to the JSON key name and "-Select-" placeholder behaviour the old file used,
+  so the frontend (`webapp/src/main.js`'s `SD` mixin) needed no changes.
+- `demo_data.py` reads `vocab_defaults.py` directly (it runs before the schema/seed rows
+  exist, so it can't use `settings_store.vocab()`).
+- Grade validity specifically: `settings_store.valid_grade_codes()` /
+  `valid_audit_grade_codes()` replace the old `common.VALID_GRADES` /
+  `VALID_AUDIT_GRADES` constants, deriving from `vocab_defaults.GRADES`'s `audit_ok` flag
+  on each grade instead of a separately maintained audit-grade list.
+
+**Known remaining duplication.** `sql_statements.toml` still has three hand-typed grade
+lists that were deliberately left as-is (they'd need a way to parameterize SQL from
+runtime config, which is a separate, harder problem — see `docs/refactor-plan.md`
+Phase 4's "SQL question"):
+- `filtered_categorized_credits_enrolled`: `ce.grade IN ('A', 'A-', 'B', 'B-', 'C', 'C-', 'D', 'S', 'NP')`
+- `grades_status_pending`: `ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I ','W')`
+- `download_filtered_categorized_credits_enrolled`: `ce.grade IN ('A','A-','B','B-','C','C-','D','S','NP')`
+
+(`student_cgpa`'s parameterized `NOT IN (%s, %s, %s, %s, %s, %s)` was also checked — it
+has no caller anywhere in the codebase, so it carries no live duplication.) Also
+unchanged: role/status/DC-role literals inside `webapp/src/main.js` (role-check computed
+properties), `webapp/src/components/UserDetails.vue`, `GradesUpload.vue` (a duplicate
+grade list used for client-side validation) and `DcSearch.vue` — these read session
+values against hardcoded string literals rather than the `SD` vocab data, so they still
+work today but would need a matching manual edit if a code set changes. Fixing those is
+in scope for the RBAC phase (`docs/refactor-plan.md` Phase 8), not this one.
+
+
 ## Frontend implementation
 The frontend GUI is built using [VueJS Router](https://router.vuejs.org/guide/)
 based single page application (see the project structure).

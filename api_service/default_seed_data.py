@@ -9,11 +9,12 @@ its own value under the same unique key -- is left untouched. This is
 purely additive: it never issues UPDATE/DELETE, so it is always safe to
 run, in any order, any number of times.
 
-SEED_SPECS is intentionally empty right now: no policy has been moved to
-a database-backed table yet (see docs/refactor-plan.md, Phase 1 builds
-the tooling; Phases 2-4 move actual values). Later phases append entries
-here as they introduce settings/vocabulary rows that need to reach
-existing installs on upgrade.
+SEED_SPECS currently seeds one SystemSetting row per controlled
+vocabulary (see vocab_defaults.py and settings_store.py's "vocab" group):
+a fresh install gets vocab_defaults.py's lists in the DB on first boot; an
+institution that later edits/extends a vocabulary through the admin GUI
+keeps its own rows forever, since this seeder never overwrites an
+existing row.
 
 __author__ = "Balwinder Sodhi"
 __copyright__ = "Copyright 2025"
@@ -26,9 +27,17 @@ from typing import Type
 
 import peewee as ORM
 
+import models as M
+import vocab_defaults as VD
+
 # List of (Model, [row_dict, ...]) pairs. Populated by later phases as
 # they introduce DB-backed defaults that must reach existing installs.
-SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = []
+SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = [
+    (M.SystemSetting, [
+        dict(group="vocab", name=name, is_json=True, value_json=items)
+        for name, items in VD.ALL.items()
+    ]),
+]
 
 
 def run_seed_defaults(seed_specs=None) -> dict:

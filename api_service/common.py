@@ -41,8 +41,12 @@ emailer = Emailer()
 TS_FORMAT = "%Y%m%d_%H%M%S"
 WEEK_DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 
-VALID_GRADES = ['A','A-','B','B-','C','C-','D','E','F','I','W','NP', 'NF','S','NA', 'U']
-VALID_AUDIT_GRADES = ["NP", "NF", "NA", "I", "W"]
+# The grade vocabulary (formerly VALID_GRADES/VALID_AUDIT_GRADES here) now
+# lives in vocab_defaults.GRADES; read it via
+# settings_store.valid_grade_codes()/valid_audit_grade_codes() rather than
+# importing constants from this module. Not re-exported here to avoid a
+# settings_store <-> common import cycle (settings_store already imports
+# AcadStackException from this module).
 
 ACAD_EVENT_CODES = ['ADD_DROP_E', 'ADD_DROP_S',
                     'CLASSES_E', 'CLASSES_S', 'COURSE_REG_E',

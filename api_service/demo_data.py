@@ -20,24 +20,26 @@ from passlib.handlers.pbkdf2 import pbkdf2_sha256
 
 import common as C
 import models as M
+import vocab_defaults as VD
 import api_reports as R
 from default_seed_data import run_seed_defaults
 from schema_migrations import run_pending_migrations
 
-with open('static_data.json', 'r') as file:
-    static_data = json.load(file)
-
-
-DEPTS = [entry.get('id') for entry in static_data.get('Departments', []) if entry.get('id')][1:]
-DEG_TYPES = [entry.get('id') for entry in static_data.get('DegreeType', []) if entry.get('id')][1:]
-DEGREES = [entry.get('id') for entry in static_data.get('Degrees', []) if entry.get('id')][1:]
-DEG_SPL = [entry.get('id') for entry in static_data.get('MinorConcSpecialization', []) if entry.get('id')][1:]
-COURSE_CAT = [entry.get('id') for entry in static_data.get('CourseTypes', []) if entry.get('id')][1:]
-PERSON_CAT = [entry.get('id') for entry in static_data.get('PersonCategories', []) if entry.get('id')][1:]
-ENROL_TYPES = [entry.get('id') for entry in static_data.get('EnrolTypes', []) if entry.get('id')][1:]
-ENROL_STATUSES = [entry.get('id') for entry in static_data.get('EnrolStatuses', []) if entry.get('id')][1:]
-CO_STATUSES = [entry.get('id') for entry in static_data.get('OfferingStatuses', []) if entry.get('id')][1:]
-GRADES = [entry.get('id') for entry in static_data.get('CourseGrades', []) if entry.get('id')][2:]
+# Demo data is generated before the schema/seed rows exist (recreate_db()
+# below runs AFTER this module-level code), so these come straight from
+# vocab_defaults.py rather than the DB-effective settings_store.vocab().
+DEPTS = VD.codes("departments")
+DEG_TYPES = VD.codes("degree_types")
+DEGREES = VD.codes("degrees")
+DEG_SPL = VD.codes("minor_conc_specializations")
+COURSE_CAT = VD.codes("course_types")
+PERSON_CAT = VD.codes("person_categories")
+ENROL_TYPES = VD.codes("enrolment_types")
+ENROL_STATUSES = VD.codes("enrolment_statuses")
+CO_STATUSES = VD.codes("offering_statuses")
+# "NA" (not yet graded) is excluded -- it's not a grade demo data should
+# ever randomly assign as a final outcome.
+GRADES = [g["code"] for g in VD.GRADES if g["code"] != "NA"]
 
 current_year = C.DT.now().year
 ACAD_YEARS = [str(year) for year in range(current_year - 5, current_year + 1)]

@@ -11,6 +11,8 @@ import json, logging, os, re, uuid
 import numpy as np
 import common as C
 import models as M
+import settings_store as ST
+import vocab_defaults as VD
 from typing import Any, Dict, Type
 from pathlib import Path
 from io import BytesIO
@@ -136,11 +138,23 @@ async def index():
 
 
 def static_data_dict():
+    """Builds the dropdown/label data the frontend calls "static data",
+    from the DB-effective controlled vocabularies (settings_store.vocab(),
+    falling back to vocab_defaults.py) rather than a hand-maintained JSON
+    file. Key names and shape (including which groups get a leading
+    {"id": "", "value": "-Select-"} entry) are preserved exactly, so
+    nothing on the frontend needs to change -- see
+    vocab_defaults.STATIC_DATA_KEYS."""
+    sd = {}
+    for vocab_name, (json_key, with_blank) in VD.STATIC_DATA_KEYS.items():
+        rows = [{"id": item["code"], "value": item["label"]}
+                for item in ST.vocab(vocab_name)]
+        if with_blank:
+            rows = [{"id": "", "value": "-Select-"}] + rows
+        sd[json_key] = rows
     acs = __acad_sessions_nearby()
-    with open(os.path.join(APP.root_path, "static_data.json"), "r") as str_json:
-        sd = json.load(str_json)
-        sd["AcademicSessions"] = acs if acs else []
-        return sd
+    sd["AcademicSessions"] = acs if acs else []
+    return sd
 
 
 def academic_session_valid(ac_sess:str)->bool:

@@ -14,26 +14,24 @@ import peewee as ORM
 from playhouse.postgres_ext import JSONField
 from playhouse.pool import PooledPostgresqlExtDatabase
 
+import vocab_defaults as VD
+
 # Deferred initialization
 # db = ORM.PostgresqlDatabase(None)
 db = PooledPostgresqlExtDatabase(None)
 
-# List of degree programs
-DEGREES = [
-    ("BTE", "B.Tech"),
-    ("MTE", "M.Tech"),
-    ("MSR", "M.S (Research)"),
-    ("MSC", "M.Sc"),
-    ("BMD", "B.Tech-M.Tech Dual"),
-    ("PHD", "PhD"),
-    ("MCS_AI", "M.Tech(AI)"),
-    ("MEE_SIGNAL", "M.Tech(Signal Processing)"),
-    ("MEE_MICRO", "M.Tech(Micro. & VLSI)"),
-    ("MEE_POWER", "M.Tech(Power Engg.)"),
-    ("MME_THERM", "M.Tech(Thermal Engg.)"),
-    ("MME_MANUF", "M.Tech(Manufacturing)"),
-    ("MCE_MECHA", "M.Tech(Mechanics And Design)")
-]
+# Every choices= list below is derived from vocab_defaults.py (the single
+# source of truth for controlled vocabularies -- see that module's
+# docstring) instead of being retyped here. These stay as plain class/
+# module attributes -- not a live DB read -- because they must exist at
+# import time, before any DB connection exists (create_schema() and
+# demo_data.py both need them before the schema they live in has even
+# been created). An institution's DB-side additions/edits to a vocabulary
+# (via settings_store.vocab()) are reflected in api_common.static_data_dict()
+# and at runtime, but not in these bootstrap choices= lists; peewee does
+# not enforce `choices` at save time, so this does not restrict what can
+# actually be stored.
+DEGREES = VD.choices("degrees")
 
 
 def create_schema():
@@ -91,14 +89,17 @@ class Person(BaseModel):
     org_id = ORM.CharField(max_length=40, unique=True)
     gender = ORM.FixedCharField(max_length=1, null=True)
 
-    # Dept. code defined in static_data.json
-    dept_name = ORM.CharField(max_length=10)
+    dept_name = ORM.CharField(max_length=10, choices=VD.choices("departments"))
     year_of_entry = ORM.CharField(max_length=4, null=True)  # yyyy
     degree = ORM.CharField(max_length=20, choices=DEGREES, null=True)
-    category = ORM.CharField(max_length=10, null=True) # SC, ST, OBC, EWS, GEN, PWD
-    deg_type = ORM.CharField(max_length=10, null=True) # REG, DWM, DWC
-    deg_type_spec = ORM.CharField(max_length=10, null=True)
-    current_status = ORM.CharField(max_length=10, null=True) # REG, WTH, MDL
+    category = ORM.CharField(max_length=10, null=True,
+                         choices=VD.choices("person_categories"))
+    deg_type = ORM.CharField(max_length=10, null=True,
+                         choices=VD.choices("degree_types"))
+    deg_type_spec = ORM.CharField(max_length=10, null=True,
+                              choices=VD.choices("minor_conc_specializations"))
+    current_status = ORM.CharField(max_length=10, null=True,
+                               choices=VD.choices("student_statuses"))
 
     def get_degree_label(self):
         return dict(self.DEGREES)[self.degree]
@@ -112,18 +113,7 @@ class User(BaseModel):
     last_name = ORM.CharField(max_length=100, null=True)
     is_locked = ORM.BooleanField(default=False)
     person = ORM.ForeignKeyField(Person, backref='users', unique=True, null=True)
-    ROLES = [
-        ("STU", 'Student'),
-        ("ACA", 'Academic Section'),
-        ("FAC", 'Faculty'),
-        ("HOD", 'Head of Dept.'),
-        ("DEA", 'Dean of Academics'),
-        ("SUP", 'Superuser'),
-        ("GUE", 'Guest'),
-        ("PLA", 'Placement Cell'),
-        ("ADV", 'Advisor'),
-        ("RES", 'Research Section')
-    ]
+    ROLES = VD.choices("roles")
     role = ORM.CharField(max_length=4, choices=ROLES, default="GUE")
 
     def get_role_label(self):
@@ -201,15 +191,7 @@ class UserDoc(BaseModel):
 # ====== Courses related models =========
 
 class Course(BaseModel):
-    COURSE_STATUSES = [
-        ("DRA", "Draft"),
-        ("APP", "Approved"),
-        ("HAP", "HoD Approval Pending"),
-        ("HAR", "HoD Rejected"),
-        ("CAP", "Council Approval Pending"),
-        ("CAR", "Council Rejected"),
-        ("RET", "Retired")
-    ]
+    COURSE_STATUSES = VD.choices("course_statuses")
     code = ORM.CharField(max_length=20, unique=True)
     title = ORM.CharField(max_length=200)
     ltp = ORM.CharField(max_length=40, null=True)
@@ -221,8 +203,8 @@ class Course(BaseModel):
                              backref='authored_courses',
                              on_delete='SET NULL')
 
-    # E: Even, O: Odd, S: Summer, A: Any
-    freq = ORM.CharField(max_length=1, default="A")
+    freq = ORM.CharField(max_length=1, default="A",
+                     choices=VD.choices("course_freqs"))
     has_lab = ORM.BooleanField(default=False)
 
     # Can be course numbers or arbitrary text
@@ -252,24 +234,18 @@ class Course(BaseModel):
 
 
 class CourseOffering(BaseModel):
-    CO_STATUSES = [
-        ("E", "Enrolling"),
-        ("R", "Running"),
-        ("F", "Finished"),
-        ("P", "Proposed"),
-        ("D", "Declined"),
-        ("C", "Canceled")
-    ]
+    CO_STATUSES = VD.choices("offering_statuses")
     # Academic session start date in which course is floated
     acad_session = ORM.CharField(max_length=10)
     course = ORM.ForeignKeyField(Course, backref='offerings',
                              null=True, on_delete='SET NULL')
     status = ORM.CharField(max_length=2, choices=CO_STATUSES,
                        default="E")
-    slot = ORM.CharField(max_length=10, null=True)
+    slot = ORM.CharField(max_length=10, null=True,
+                     choices=VD.choices("course_slots"))
     section = ORM.CharField(max_length=2, default="A")
-    # Dept. code defined in static_data.json
-    dept_name = ORM.CharField(max_length=10, null=True)
+    dept_name = ORM.CharField(max_length=10, null=True,
+                          choices=VD.choices("departments"))
 
     def get_status_label(self):
         return dict(self.CO_STATUSES)[self.status]
@@ -287,7 +263,8 @@ class CourseCategory(BaseModel):
                                on_delete='SET NULL')
     degree = ORM.CharField(max_length=20, choices=DEGREES, default="ALL")
     dept = ORM.CharField(max_length=4, null=True)
-    category = ORM.CharField(max_length=4, null=True)
+    category = ORM.CharField(max_length=4, null=True,
+                         choices=VD.choices("course_types"))
     for_entry_years = ORM.CharField(max_length=100, null=True)
 
     class Meta:
@@ -314,27 +291,20 @@ class CourseInstructor(BaseModel):
 
 
 class CourseEnrollment(BaseModel):
-    ENROL_STATUSES = [
-        ("IPEN", 'Pending Instructor Approval'),
-        ("IREJ", 'Instructor Rejected'),
-        ("APEN", 'Pending Advisor Approval'),
-        ("AREJ", 'Advisor Rejected'),
-        ("ENRO", 'Enrolled'),
-        ("DROP", 'Dropped by Student'),
-        ("ASREJ", 'Acadmic section Rejected'),
-        ("WDRAW", 'Withdrawn by Student')
-    ]
+    ENROL_STATUSES = VD.choices("enrolment_statuses")
     course_offering = ORM.ForeignKeyField(CourseOffering,
                                       backref='enrollments',
                                       on_delete='CASCADE')
     student = ORM.ForeignKeyField(User, backref='enrollments',
                               on_delete='CASCADE')
-    # (C)redit, (A)udit, 
+    # (C)redit, (A)udit,
     # Credit for minor (CM), Credit for concentration (CC)
-    enrol_type = ORM.CharField(max_length=20)
+    enrol_type = ORM.CharField(max_length=20,
+                           choices=VD.choices("enrolment_types"))
     enrol_status = ORM.CharField(max_length=10, choices=ENROL_STATUSES,
                              default="IPEN")
-    grade = ORM.CharField(max_length=2, default="NA")
+    grade = ORM.CharField(max_length=2, default="NA",
+                      choices=VD.choices("grades"))
     current_score = ORM.FloatField(null=True)
     remarks = ORM.TextField(null=True)
 
@@ -349,11 +319,7 @@ class CourseEnrollment(BaseModel):
 
 
 class StudentAttendance(BaseModel):
-    ATT_STATUS = [
-        ("A", 'Absent'),
-        ("L", 'On Leave'),
-        ("P", 'Present'),
-    ]
+    ATT_STATUS = VD.choices("attendance_codes")
     attend = ORM.CharField(max_length=2, choices=ATT_STATUS,
                        default="A")
     enrollment = ORM.ForeignKeyField(CourseEnrollment,
@@ -373,7 +339,7 @@ class FeedbackForm(BaseModel):
     form_name = ORM.CharField(max_length=50)
     is_active = ORM.BooleanField(default=True)
     # END_SEM_FB or MID_SEM_FB
-    form_type = ORM.CharField(max_length=45)
+    form_type = ORM.CharField(max_length=45, choices=VD.choices("form_types"))
 
     class Meta:
         indexes = (
@@ -454,7 +420,7 @@ class StudentSupervisor(BaseModel):
 
 
 class CourseSlotTiming(BaseModel):
-    slot = ORM.CharField(max_length=40)
+    slot = ORM.CharField(max_length=40, choices=VD.choices("course_slots"))
     week_day = ORM.SmallIntegerField()
     start_time = ORM.SmallIntegerField()
     end_time = ORM.SmallIntegerField()
@@ -508,8 +474,7 @@ class DcForStudent(BaseModel):
     student = ORM.ForeignKeyField(User,
                               backref='student_dcs',
                               on_delete='CASCADE')
-    # Status can be: Proposed, Returned, Approved
-    status = ORM.CharField(max_length=40)
+    status = ORM.CharField(max_length=40, choices=VD.choices("dc_statuses"))
     effective_from = ORM.DateField(default=DT.now)
     effective_to = ORM.DateField(null=True)
     remarks = ORM.TextField(null=True)
@@ -522,12 +487,7 @@ class DcForStudent(BaseModel):
 
 
 class DcMember(BaseModel):
-    DC_ROLES = [
-        ("ME", 'Member'),
-        ("SU", 'Supervisor'),
-        ("CO", 'Co-Supervisor'),
-        ("CP", 'Chairperson'),
-    ]
+    DC_ROLES = VD.choices("dc_roles")
     role = ORM.CharField(max_length=2, choices=DC_ROLES,
                        default="ME")
     member = ORM.ForeignKeyField(User, null=True,
@@ -548,12 +508,7 @@ class DcMember(BaseModel):
 
 
 class PhDProgressReport(BaseModel):
-    PPR_STATUSES = [
-        ("DRA", 'Draft'),
-        ("RET", 'Returned'),
-        ("SUB", 'Submitted'),
-        ("APP", 'Approved'),
-    ]
+    PPR_STATUSES = VD.choices("ppr_statuses")
     status = ORM.CharField(max_length=10, choices=PPR_STATUSES,
                        default="DRA")
     student = ORM.ForeignKeyField(User,
