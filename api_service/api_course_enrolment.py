@@ -105,6 +105,8 @@ async def get_passed_courses(user_id):
             "Student attempted to access passed courses data for someone else.")
 
         codes = ENR.passed_course_codes(user_id)
+        if codes is None:
+            return apiVC.error_json(f"Student not found for ID {user_id}")
         return apiVC.ok_json({"codes": codes})
     except AcadStackException as ae:
         return apiVC.error_json(str(ae))
@@ -134,7 +136,23 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
 
 
 @rbac
-async def download_course_enrollments(co_id, is_grades=False):
+async def download_course_enrollments(co_id):
+    return await _enrolments_csv_response(co_id, is_grades=False)
+
+
+@rbac(roles=["FAC", "ACA", "DEA"])
+async def download_enrollments_for_grades(co_id):
+    return await _enrolments_csv_response(co_id, is_grades=True)
+
+
+async def _enrolments_csv_response(co_id, is_grades):
+    """Shared body of the two enrolment CSV downloads.
+
+    Both routes used to call the same decorated view function, and the
+    grades one did so without awaiting it, so it returned a coroutine
+    instead of a response and never produced a file. One plain helper
+    that both handlers await removes the trap.
+    """
     try:
         if apiVC.is_user_in_role("STU"):
             return apiVC.error_json("Students cannot download!")
@@ -142,13 +160,7 @@ async def download_course_enrollments(co_id, is_grades=False):
         colnames, rows = ENR.enrolment_export_rows(
             co_id, is_grades, actor=apiVC.current_actor())
 
-        result = [','.join(colnames)]
-        for row in rows:
-            result.append(','.join(row))
-        fp = BytesIO()
-        fp.write('\n'.join(result).encode('utf-8'))
-        fp.flush()
-        fp.seek(0)
+        fp = _rows_to_csv_file(colnames, rows)
         return await send_file(fp, attachment_filename=f"{co.course.code}_students.csv",
                          as_attachment=True)
 
@@ -156,15 +168,6 @@ async def download_course_enrollments(co_id, is_grades=False):
         msg = "Error when loading enrolment data as CSV."
         logging.exception(msg)
         return apiVC.error_json(msg)
-
-
-@rbac(roles=["FAC", "ACA", "DEA"])
-async def download_enrollments_for_grades(co_id):
-    # NOTE: the missing `await` here is pre-existing -- this returns the
-    # coroutine rather than the response. Preserved deliberately: this
-    # phase is behaviour-preserving. Listed in docs/service-layer.md
-    # under "bugs found, not fixed".
-    return download_course_enrollments(co_id, True)
 
 
 @rbac
@@ -195,11 +198,10 @@ async def get_student_academics(my_id):
         VAL.is_current_user_in_role_and_id("STU", "user_id", my_id, 
             "Student attempted to access other's academics details.")
 
-        stu = DB.User.get_by_id(my_id)
-        if stu:
-            return apiVC.ok_json(TR.courses_perf(stu, True))
-        else:
+        stu = DB.User.get_or_none(my_id)
+        if not stu:
             return apiVC.error_json(f"Student not found for ID {my_id}")
+        return apiVC.ok_json(TR.courses_perf(stu, True))
     except AcadStackException as ae:
         return apiVC.error_json(str(ae))
     except Exception as ex:
@@ -281,6 +283,8 @@ async def change_enroll_status():
 async def course_enrollment_view(my_id):
     try:
         res = ENR.enrolment_for_view(apiVC.current_actor(), my_id)
+        if not res:
+            return apiVC.error_json(f"Enrollment record not found for ID {my_id}")
         obj = model_to_dict(res,
                             exclude=[DB.CourseEnrollment.course_offering.course.author,
                                      DB.CourseEnrollment.student.password_hashed])

@@ -412,7 +412,7 @@ generate_semester_grade_query = """
         from courseoffering cf 
         join course co on cf.course_id = co.id
         join courseenrollment ce on cf.id= ce.course_offering_id
-        join user u on ce.student_id = u.id  
+        join public.user u on ce.student_id = u.id  
         join person p on p.id = u.person_id
         where u.login_id=%s AND acad_session=%s;"""
 
@@ -489,9 +489,9 @@ generate_course_enrolments = """
             FROM courseoffering co
         JOIN courseenrollment ce on co.id = ce.course_offering_id
         JOIN course c on c.id = co.course_id
-        JOIN user stu on stu.id = ce.student_id
+        JOIN public.user stu on stu.id = ce.student_id
         JOIN person p on stu.person_id = p.id
-        JOIN user u on p.id=u.person_id
+        JOIN public.user u on p.id=u.person_id
         WHERE ce.enrol_status IN ('ENRO', 'IPEN', 'APEN') 
         AND (p.year_of_entry=%s OR %s = '')
         AND (p.dept_name=%s OR %s = '')

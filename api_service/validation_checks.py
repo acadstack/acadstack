@@ -307,7 +307,13 @@ def check_enrolled_credits(user_id,acad_session):
     sql_qry = sql_by_id("credits_enrolled_by_student")
     cursor = DB.db.execute_sql(sql_qry, [user_id,acad_session])
     res = cursor.fetchall()
-    total_credits = res[0][0]
+    # SUM() over no matching rows is NULL, which this then compared to an
+    # int. It happens whenever the student has no credit-bearing
+    # enrolment in the session -- notably when the enrolment being
+    # checked is an audit ('A'), which the query excludes -- and the
+    # TypeError surfaced to the student as "Error when saving course
+    # enrollment details", with their enrolment rolled back.
+    total_credits = res[0][0] or 0
     max_credits = ST.setting("enrolment.max_credits_per_session")
     if total_credits > max_credits:
         raise AcadStackException(

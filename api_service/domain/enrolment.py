@@ -13,12 +13,13 @@ Two things worth knowing before editing:
   must get the same atomicity. See docs/service-layer.md, Q2.
 * **Some failures return, others raise.** Raising out of the
   ``db.atomic()`` block rolls the whole batch back; returning from
-  inside it commits the work done so far. The original handlers relied
-  on both -- notably ``enroll_in_courses``, which returned an error
+  inside it commits the work done so far. That distinction used to be
+  implicit and got ``enroll_in_courses`` wrong: it returned an error
   response from inside the transaction on a slot clash, committing the
-  courses it had already enrolled the student in. That is why
-  :func:`request_enrolment` returns an outcome object instead of raising
-  on a clash.
+  courses it had already enrolled the student in.
+  :func:`request_enrolment` now rolls back explicitly and still returns
+  an outcome object rather than raising, because the response body is
+  the list of clashes rather than a message.
 """
 
 import logging
@@ -296,11 +297,15 @@ def request_enrolment(actor: Actor, student_id, co_ids, enrol_type,
                 outcome.allowed_courses.append(ccode)
             conflicts = slot_conflicts(co_id, student_id, pol, static_data)
             if len(conflicts) > 0:
-                # Deliberately a return, not a raise: leaving the atomic
-                # block normally commits the enrolments written for the
-                # earlier offerings in this request, which is what the
-                # original handler did.
+                # The request is rejected as a whole. This used to return
+                # straight out of the atomic block, which COMMITS -- so a
+                # student enrolling in four courses where the third
+                # clashed was told the request failed while keeping the
+                # first two. Roll back explicitly, then return the
+                # conflicts (rather than raising) so the response body
+                # stays the list of clashes the frontend renders.
                 outcome.conflicts = conflicts
+                txn.rollback()
                 return outcome
 
             coe = DB.CourseEnrollment()
@@ -408,11 +413,12 @@ def save_enrolment(actor: Actor, form_data) -> SaveOutcome:
 def enrolment_for_view(actor: Actor, enrolment_id):
     """One enrolment record, if the actor is entitled to see it.
 
-    Uses ``get_by_id``, so a missing id raises ``DoesNotExist`` rather
-    than returning None -- which is what the handler has always done
-    (its "record not found" branch was already unreachable).
+    Returns None when there is no such record, so the caller can say so;
+    raises when the record exists but is none of the actor's business.
     """
-    res = DB.CourseEnrollment.get_by_id(enrolment_id)
+    res = DB.CourseEnrollment.get_or_none(enrolment_id)
+    if not res:
+        return None
     if not VAL.is_enrollment_owner_valid(res, actor=actor):
         raise PermissionDenied("You are not allowed to view this enrolment!")
     return res
@@ -488,9 +494,12 @@ def pending_enrolments_for_approver(actor: Actor) -> list:
 
 
 def passed_course_codes(student_id, policy=None) -> list:
-    """Course codes the student has a passing grade in."""
+    """Course codes the student has a passing grade in, or None when
+    there is no such student."""
     pol = policy or POL.load_grading_policy()
-    stu = DB.User.get_by_id(student_id)
+    stu = DB.User.get_or_none(student_id)
+    if not stu:
+        return None
     return [se.course_offering.course.code for se in stu.enrollments
             if se.grade in pol.passed_course_grades]
 

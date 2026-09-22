@@ -41,9 +41,11 @@ def update(entity: Type[M.BaseModel], obj: M.BaseModel,
     obj.txn_no = 1 + txn_no  # For optimistic locking
     obj.upd_ts = DT.now()
     obj.txn_login_id = actor.login_id if actor else "Out of request"
-    # NOTE: callers may pass a list they own; it is appended to, matching
-    # the long-standing behaviour of api_common.update_entity.
-    exclude = [] if exclude is None else exclude
+    # Copied, not appended to: api_common.update_entity used to declare
+    # `exclude=[]` and append to it, so the shared default list grew for
+    # the life of the process and a caller's own list came back longer
+    # than they passed it.
+    exclude = list(exclude) if exclude else []
     # We exclude the insert timestamp from the update
     exclude.append(getattr(entity, "ins_ts"))
     mdict = model_to_dict(obj, recurse=False, exclude=exclude)

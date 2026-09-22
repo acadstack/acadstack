@@ -333,13 +333,10 @@ def test_students_cannot_download_enrolment_csv(client):
     assert res.json["body"] == "Students cannot download!"
 
 
-def test_department_enrolment_export_is_broken_by_unquoted_user_join(client):
-    """Characterises a PRE-EXISTING bug, unrelated to this refactor: the
-    generate_course_enrolments query in sql_statements.toml joins
-    `user` unquoted, and `user` is reserved in Postgres, so the route
-    has never produced a file. Locked in here rather than fixed, so the
-    fix (quoting the identifier) is a deliberate change with a test to
-    flip. See docs/service-layer.md, "bugs found, not fixed"."""
+def test_department_enrolment_export(client):
+    """Regression test: generate_course_enrolments used to join the bare
+    identifier `user`, which is reserved in Postgres, so this route had
+    never produced a file -- it always returned the generic CSV error."""
     offering = _offering()
     _enrolment(offering, _student("stu_export"))
     login_as(client, create_user("ACA", "aca_export").login_id)
@@ -347,5 +344,100 @@ def test_department_enrolment_export_is_broken_by_unquoted_user_join(client):
     res = client.get(
         f"/acadstack/download_course_enrolments/-/-/{ACAD_SESSION}")
 
+    assert res.status_code == 200
+    assert "attachment" in res.headers["Content-Disposition"]
+
+
+def test_download_enrollments_for_grades_returns_a_file(client):
+    """Regression test: this handler called the other download view
+    without awaiting it, so the route returned a coroutine instead of a
+    response and never produced a file."""
+    offering = _offering()
+    _enrolment(offering, _student("stu_grades_dl"))
+    login_as(client, create_user("ACA", "aca_grades_dl").login_id)
+
+    res = client.get(f"/acadstack/download_enrollments_for_grades/{offering.id}")
+
+    assert res.status_code == 200
+    assert "attachment" in res.headers["Content-Disposition"]
+
+
+# ===================== regression tests for fixed bugs =====================
+
+def test_slot_clash_rolls_back_the_entire_request(client):
+    """A clash on the third course used to leave the first two enrolled:
+    the handler returned from inside its db.atomic() block, and leaving
+    an atomic block by returning COMMITS. The request is rejected as a
+    whole, so nothing should survive it."""
+    _open_session()
+    _open_add_drop()
+    first = _offering(slot="A")
+    clashing = _offering(slot="B")
+    DB.CourseSlotTiming.create(slot="A", week_day=0, start_time=900,
+                               end_time=1000)
+    DB.CourseSlotTiming.create(slot="B", week_day=0, start_time=930,
+                               end_time=1030)
+    student = _student("stu_clash")
+    for co in (first, clashing):
+        DB.CourseCategory.create(offering=co, degree="BTE", dept="CSE",
+                                 category="PC", for_entry_years="2022")
+    _paid_fees(student, "TXN_CLASH")
+    login_as(client, student.login_id)
+
+    res = client.post("/acadstack/enroll_in_courses",
+                      json={"user_id": student.id,
+                            "co_ids": [first.id, clashing.id],
+                            "enrol_type": "C"})
+
     assert res.json["status"] == "ERROR"
-    assert res.json["body"] == "Error when loading enrolment data as CSV."
+    assert isinstance(res.json["body"], list) and res.json["body"]
+    assert DB.CourseEnrollment.select().count() == 0
+
+
+def test_audit_only_enrolment_is_not_blocked_by_the_credit_cap(client):
+    """The enrolled-credits query excludes audits, so SUM() returned
+    NULL for a student whose only enrolment that session is an audit,
+    and the cap check compared None to an int. The student saw "Error
+    when saving course enrollment details" and got nothing."""
+    _open_session()
+    today = date.today()
+    DB.AcademicCalendar.create(acad_session=ACAD_SESSION, event_code="WITHDRAW_S",
+                               event_value=(today - timedelta(days=5)).strftime("%Y-%m-%d"))
+    DB.AcademicCalendar.create(acad_session=ACAD_SESSION, event_code="WITHDRAW_E",
+                               event_value=(today + timedelta(days=5)).strftime("%Y-%m-%d"))
+    offering = _offering(slot="A")
+    DB.CourseSlotTiming.create(slot="A", week_day=0, start_time=900,
+                               end_time=1000)
+    student = _student("stu_audit")
+    DB.CourseCategory.create(offering=offering, degree="BTE", dept="CSE",
+                             category="PC", for_entry_years="2022")
+    _paid_fees(student, "TXN_AUDIT")
+    login_as(client, student.login_id)
+
+    res = client.post("/acadstack/enroll_in_courses",
+                      json={"user_id": student.id, "co_ids": [offering.id],
+                            "enrol_type": "A"})
+
+    assert res.json["status"] == "OK", res.json
+    ce = DB.CourseEnrollment.get(
+        DB.CourseEnrollment.course_offering == offering)
+    assert (ce.enrol_type, ce.enrol_status) == ("A", "IPEN")
+
+
+def test_missing_enrolment_reports_not_found(client):
+    login_as(client, create_user("ACA", "aca_404").login_id)
+
+    res = client.get("/acadstack/coe_view/999999")
+
+    assert res.json["status"] == "ERROR"
+    assert res.json["body"] == "Enrollment record not found for ID 999999"
+
+
+def test_missing_student_reports_not_found(client):
+    login_as(client, create_user("ACA", "aca_404b").login_id)
+
+    academics = client.get("/acadstack/get_student_academics/999999")
+    passed = client.get("/acadstack/get_passed_courses/999999")
+
+    assert academics.json["body"] == "Student not found for ID 999999"
+    assert passed.json["body"] == "Student not found for ID 999999"

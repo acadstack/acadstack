@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import models as DB  # noqa: E402
 from conftest import create_user, login_as  # noqa: E402
 from domain import enrolment as ENR  # noqa: E402
+from domain import persistence  # noqa: E402
 from domain import plugins  # noqa: E402
 from domain.context import Actor  # noqa: E402
 from domain.errors import PermissionDenied  # noqa: E402
@@ -119,3 +120,18 @@ def test_plugin_override_changes_what_the_http_route_does(client):
                       json={"ids": [ce.id], "status": "approve"})
     assert res.json["status"] == "OK", res.json
     assert DB.CourseEnrollment.get_by_id(ce.id).enrol_status == "ENRO"
+
+
+def test_update_does_not_mutate_the_callers_exclude_list(db):
+    """api_common.update_entity used to declare `exclude=[]` and append
+    the model's ins_ts field to it, so the shared default list grew for
+    the life of the process and a caller's own list came back longer
+    than they passed it."""
+    course = DB.Course.create(code="EXCL1", title="Exclude Test", status="APP")
+    exclude = [DB.Course.title]
+
+    persistence.update(DB.Course, course, Actor.system(), exclude)
+
+    assert exclude == [DB.Course.title]
+    # The insert timestamp is still excluded from the UPDATE itself.
+    assert DB.Course.get_by_id(course.id).title == "Exclude Test"

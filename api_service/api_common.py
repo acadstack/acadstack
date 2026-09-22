@@ -243,14 +243,15 @@ def save_entity(obj: M.BaseModel, outside_request=False):
     return persistence.save(obj, actor)
 
 
-def update_entity(entity:Type[M.BaseModel], obj:M.BaseModel, exclude=[],
+def update_entity(entity:Type[M.BaseModel], obj:M.BaseModel, exclude=None,
                   outside_request=False)->int:
     """Updates the supplied model in the DB.
 
     Args:
         entity (Type[M.BaseModel]): Type of the model being updated.
         obj (M.BaseModel): Model instance to update.
-        exclude (list, optional): List of props/columns to skip. Defaults to [].
+        exclude (list, optional): List of props/columns to skip. Not
+            mutated by this call.
         outside_request (bool): Whether invoked outside of HTTP request context.
 
     Returns:
