@@ -58,7 +58,23 @@ def test_seed_defaults_never_overwrites_a_customized_value(db):
 
 def test_seed_defaults_empty_specs_is_a_noop(db):
     assert run_seed_defaults([]) == {}
-    assert run_seed_defaults() == {}  # production SEED_SPECS is empty today
+
+
+def test_seed_defaults_seeds_vocab_rows(db):
+    # Phase 3 populates SEED_SPECS with one SystemSetting row per
+    # controlled vocabulary (see vocab_defaults.ALL); a fresh DB should
+    # get all of them on first run, and none again on a second run.
+    import vocab_defaults as VD
+
+    counts = run_seed_defaults()
+    assert counts == {"SystemSetting": len(VD.ALL)}
+    assert run_seed_defaults() == {"SystemSetting": 0}
+
+    row = DB.SystemSetting.get(DB.SystemSetting.group == "vocab",
+                                DB.SystemSetting.name == "degrees")
+    assert row.is_json is True
+    assert {d["code"] for d in row.value_json} == \
+        {d["code"] for d in VD.DEGREES}
 
 
 # ===================== schema_migrations =====================

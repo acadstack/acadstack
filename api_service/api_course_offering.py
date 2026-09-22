@@ -10,6 +10,7 @@ import api_common as apiVC
 import validation_checks as VAL
 import common as C
 import models as DB
+import settings_store as ST
 import logging
 
 def init_routes(bp:Blueprint):
@@ -230,14 +231,15 @@ async def grades_upload():
             if not lines[0].replace(' ', '').startswith("FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"):
                 return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
 
+            valid_grades = ST.valid_grade_codes()
             invalid_rows = []
             for ll in lines[1:]:
-                if ll.split(',')[3].strip() not in C.VALID_GRADES:
+                if ll.split(',')[3].strip() not in valid_grades:
                     invalid_rows.append(ll)
 
             if invalid_rows:
                 return apiVC.error_json(f"Found invalid grades in rows: {invalid_rows}. "
-                                     f"Allowed grades values are: {C.VALID_GRADES}")
+                                     f"Allowed grades values are: {valid_grades}")
 
 
         with open(file_path, 'w') as out:
@@ -280,10 +282,10 @@ async def grades_upload():
                         (DB.CourseEnrollment.student == stu.id)
                     )[0]
 
-                    if coe.enrol_type == "A" and grade not in C.VALID_AUDIT_GRADES:
+                    if coe.enrol_type == "A" and grade not in ST.valid_audit_grade_codes():
                         raise C.AcadStackException(f"Invalid grade {grade} assigned "
                                 f"to {roll_no} for audited course. "
-                                f"Allowed audit grades are: {C.VALID_AUDIT_GRADES}")
+                                f"Allowed audit grades are: {ST.valid_audit_grade_codes()}")
 
                     if coe.grade == grade:
                         logging.debug("Grade unchanged, skipping the update.")
