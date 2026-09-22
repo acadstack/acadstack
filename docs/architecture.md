@@ -102,6 +102,27 @@ def init_routes(bp: Blueprint):
     ...
 ```
 
+## Service (domain) layer
+Business logic lives in the `api_service/domain/` package, not inside the Quart view
+functions. The `api_*.py` modules are HTTP adapters: they parse the request, call a
+domain function, and map the result (or the exception) onto the
+`{"status": "OK"|"ERROR", "body": ...}` envelope.
+
+Domain modules are plain synchronous functions over the models. They never import
+`quart` or `api_common` and never read the session: the acting user is passed in as a
+`domain.context.Actor`, built at the boundary by `api_common.current_actor()` (or as
+`Actor.system()` by background jobs). Policy is passed in as frozen dataclasses from
+`domain.policy` rather than read ad hoc from the settings store, and the domain
+function — not the adapter — owns the `db.atomic()` transaction.
+
+`api_course_enrolment.py` + `domain/enrolment.py` are the reference example.
+`domain/plugins.py` is the in-process seam institutions use to override specific
+domain behaviour. The detail lives with the code: `domain/__init__.py` states the
+rules the package keeps to (and `tests/test_domain_boundaries.py` enforces them),
+`domain/context.py` explains how the acting user reaches a domain function,
+`domain/policy.py` the shape policy arrives in, and `domain/plugins.py` the
+extension-point contract.
+
 ## Handling role based access control (RBAC)
 Roles are central to the entire functionality of the AcadStack application.
 RBAC is implemented via the decorator `rbac()` defined in `common.py`.
@@ -235,8 +256,7 @@ exactly like any other setting group. Nothing else restates these lists:
 
 **Known remaining duplication.** `sql_statements.toml` still has three hand-typed grade
 lists that were deliberately left as-is (they'd need a way to parameterize SQL from
-runtime config, which is a separate, harder problem — see `docs/refactor-plan.md`
-Phase 4's "SQL question"):
+runtime config, which is a separate and harder problem):
 - `filtered_categorized_credits_enrolled`: `ce.grade IN ('A', 'A-', 'B', 'B-', 'C', 'C-', 'D', 'S', 'NP')`
 - `grades_status_pending`: `ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I ','W')`
 - `download_filtered_categorized_credits_enrolled`: `ce.grade IN ('A','A-','B','B-','C','C-','D','S','NP')`
@@ -247,8 +267,8 @@ unchanged: role/status/DC-role literals inside `webapp/src/main.js` (role-check 
 properties), `webapp/src/components/UserDetails.vue`, `GradesUpload.vue` (a duplicate
 grade list used for client-side validation) and `DcSearch.vue` — these read session
 values against hardcoded string literals rather than the `SD` vocab data, so they still
-work today but would need a matching manual edit if a code set changes. Fixing those is
-in scope for the RBAC phase (`docs/refactor-plan.md` Phase 8), not this one.
+work today but would need a matching manual edit if a code set changes. Fixing those
+belongs with the move to permission-based RBAC, not with the vocabulary work.
 
 
 ## Frontend implementation

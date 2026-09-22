@@ -199,8 +199,9 @@ class Course(BaseModel):
     # S (session/teaching hours) and C (credits), computed ONCE from ltp's
     # L/T/P components server-side (see common.compute_course_ltp) and
     # stored here so no query has to re-derive them by re-running the
-    # formula or by parsing ltp's string positions -- see
-    # docs/refactor-plan.md Phase 4's credit-formula duplication decision.
+    # formula or by parsing ltp's string positions. The formula used to be
+    # implemented twice, once in Python and again in SQL; storing the
+    # result is what removed the second copy.
     s_hours = ORM.FloatField(null=True)
     credits = ORM.FloatField(null=True)
 

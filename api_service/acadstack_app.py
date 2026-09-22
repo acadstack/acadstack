@@ -27,6 +27,7 @@ import api_common as apiVC
 import common as C
 import models as M
 from default_seed_data import run_seed_defaults
+from domain import plugins
 from schema_migrations import run_pending_migrations
 from settings_store import validate_stored_settings
 
@@ -118,6 +119,10 @@ def create_app(is_testing=False):
 
     cfg = _load_config_from_env()
     myapp.config.update(cfg)
+
+    # Institution-specific domain overrides, if any are installed. Safe
+    # to call when none are: it is a no-op. See domain/plugins.py.
+    plugins.load_plugins()
 
     if not is_testing:
         run_startup_db_tasks(cfg)

@@ -13,6 +13,9 @@ import common as C
 import models as M
 import settings_store as ST
 import vocab_defaults as VD
+from domain import academic_calendar as CAL
+from domain import persistence
+from domain.context import Actor
 from typing import Any, Dict, Type
 from pathlib import Path
 from io import BytesIO
@@ -20,7 +23,8 @@ from quart import current_app as APP
 from quart import (jsonify, session)
 from quart.blueprints import Blueprint
 from datetime import datetime as DT
-from playhouse.shortcuts import model_to_dict
+# Re-exported on purpose: several api_* modules call apiVC.model_to_dict().
+from playhouse.shortcuts import model_to_dict  # noqa: F401
 
 # logger = logging.getLogger('peewee')
 # logger.addHandler(logging.StreamHandler())
@@ -128,6 +132,40 @@ def logged_in_user():
         return M.User.get(M.User.login_id == u["login_id"])
 
 
+#: Stand-in for "nobody is logged in". Its role code is not a real role,
+#: so has_role() never matches; routes behind @rbac never see it.
+ANONYMOUS = Actor(login_id="", role="ANON")
+
+
+def current_actor() -> Actor:
+    """The acting user as a domain-layer :class:`Actor`.
+
+    This is the ONE place the session is turned into something the
+    domain can use. The role comes from the session (so role checks
+    behave exactly as is_user_in_role() always has) while the ids come
+    from the User row, at the cost of the same single query
+    logged_in_user() already makes.
+    """
+    if "user" not in session:
+        return ANONYMOUS
+    su = session['user']
+    u = M.User.get(M.User.login_id == su["login_id"])
+    person = u.person
+    return Actor(login_id=u.login_id,
+                 role=su["role"],
+                 user_id=u.id,
+                 degree=person.degree if person else su.get("degree"),
+                 dept_name=person.dept_name if person else su.get("dept"),
+                 org_id=person.org_id if person else None)
+
+
+def actor_or_current(actor=None) -> Actor:
+    """Returns the actor passed in, or the session's actor when the
+    caller did not supply one. Lets a function serve both a domain
+    caller (explicit actor) and a not-yet-migrated HTTP caller."""
+    return actor if actor is not None else current_actor()
+
+
 def get_current_user_and_nav():
     if "user" in session:
         u = session['user']
@@ -200,38 +238,30 @@ def save_entity(obj: M.BaseModel, outside_request=False):
         Any: PK of the record inserted in DB.
     """
     curr_user = logged_in_user() if not outside_request else None
-    obj.txn_login_id = curr_user.login_id if curr_user else "None"
-    obj.upd_ts = DT.now()
-    obj.ins_ts = DT.now()
-    return obj.save()
+    actor = Actor(login_id=curr_user.login_id, role=curr_user.role,
+                  user_id=curr_user.id) if curr_user else None
+    return persistence.save(obj, actor)
 
 
-def update_entity(entity:Type[M.BaseModel], obj:M.BaseModel, exclude=[],
+def update_entity(entity:Type[M.BaseModel], obj:M.BaseModel, exclude=None,
                   outside_request=False)->int:
     """Updates the supplied model in the DB.
 
     Args:
         entity (Type[M.BaseModel]): Type of the model being updated.
         obj (M.BaseModel): Model instance to update.
-        exclude (list, optional): List of props/columns to skip. Defaults to [].
+        exclude (list, optional): List of props/columns to skip. Not
+            mutated by this call.
         outside_request (bool): Whether invoked outside of HTTP request context.
 
     Returns:
         int: No. of rows affected in DB.
     """
-    txn_no = int(obj.txn_no)
-    obj.txn_no = 1 + txn_no # For optimistic locking
-    obj.upd_ts = DT.now()
+    actor = None
     if not outside_request:
-        obj.txn_login_id = logged_in_user().login_id
-    else:
-        obj.txn_login_id = "Out of request"
-    # We exclude the insert timestamp from the update
-    exclude.append(getattr(entity, "ins_ts"))
-    mdict = model_to_dict(obj, recurse=False, exclude=exclude)
-    return entity.update(mdict).where(
-        (entity.txn_no == obj.txn_no - 1) & # Optimistic locking check
-        (entity.id == obj.id)).execute()
+        u = logged_in_user()
+        actor = Actor(login_id=u.login_id, role=u.role, user_id=u.id)
+    return persistence.update(entity, obj, actor, exclude)
 
 
 def ok_json(obj):
@@ -334,26 +364,12 @@ def init_navbar_items(role_code:str, degree:str)->Dict[str, Any]:
         logging.exception("Error occurred when loading nav data.")
 
 
-def __current_acad_sessions_with_dates(sem_only=True):
-    sql_qry = C.sql_by_id("current_acad_sessions")
-    cursor = C.db.execute_sql(sql_qry, [sem_only])
-    cas = []
-    for row in cursor.fetchall():
-        # Row has: (acad_session, start_dt, end_dt)
-        cas.append((row[0], row[1], row[2]))
-    return cas
-
-
-def current_acad_session_list(sem_only=True):
-    casd = __current_acad_sessions_with_dates(sem_only)
-    # Return the earliest starting acad session
-    return [x[0] for x in casd]
-
-
-def current_acad_session():
-    casd = __current_acad_sessions_with_dates()
-    # Return the earliest starting acad session
-    return casd[0][0]
+# Implemented in domain.academic_calendar so the domain layer can read
+# the calendar without importing this module; re-exported here because
+# the api_* modules already import these names from api_common.
+__current_acad_sessions_with_dates = CAL.current_acad_sessions_with_dates
+current_acad_session_list = CAL.current_acad_session_list
+current_acad_session = CAL.current_acad_session
 
 
 def __next_acad_session(cas):

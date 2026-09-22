@@ -183,7 +183,7 @@ def compute_course_ltp(ltp_str):
     importer, demo data) must route through this so Course.s_hours/credits
     are always server-computed from L/T/P, never trusted from the client
     or re-derived by parsing string positions elsewhere (SQL used to do
-    both -- see docs/refactor-plan.md Phase 4).
+    both, which is the duplication this replaced).
 
     Returns (full_ltp_str, s, c), where full_ltp_str is 'L-T-P-S-C' with
     freshly computed S/C (replacing any S/C the input string already

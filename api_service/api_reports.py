@@ -10,7 +10,7 @@ __status__ = "Development"
 import json
 from quart import Blueprint, request
 from create_email import send_credit_violation_email
-from api_course_enrolment import __get_student_courses_perf
+from domain import transcript as TR
 
 import logging
 import api_common as apiVC
@@ -369,7 +369,7 @@ def __process_credits_gen_request(acad_session):
             for (user_id, roll_no) in entry_nos:
                 stu = DB.User.get_by_id(user_id)
                 # Fetch the student's credits data                
-                data = __get_student_courses_perf(stu, False)
+                data = TR.courses_perf(stu, False)
                 if not (data['enrollments']["CC"] or data['enrollments']["CM"] 
                         or data['enrollments']["C"]):
                     logging.error(f"Student record not found for entry no. {roll_no}")
