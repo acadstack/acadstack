@@ -1,7 +1,6 @@
 from io import BytesIO
 import logging
 from quart import Blueprint, request
-from quart import current_app as APP
 from quart.helpers import send_file
 from peewee import IntegrityError
 from common import AcadStackException, rbac, sql_by_id
@@ -11,6 +10,7 @@ import api_common as apiVC
 import validation_checks as VAL
 import models as DB
 import common as C
+import settings_store as ST
 
 
 def __get_ce_ownership(eids):
@@ -668,7 +668,7 @@ async def enroll_in_courses():
         std_id = int(fd["user_id"])
         VAL.is_current_user_in_role_and_id("STU", "user_id", std_id, 
             "Student attempted to enrol someone else in a course.")
-        if not APP.config.get("disable_fees_check"):
+        if not ST.setting("enrolment.disable_fees_check"):
             __check_student_fees_status()
         CREDIT_NA_ALLOWED_MSG = ""
         ALLOWED_COURSES = []

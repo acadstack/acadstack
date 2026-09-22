@@ -873,10 +873,62 @@ def delete_setting(key: str, login_id: Optional[str] = None) -> bool:
 #         Spec("disable_fees_check", bool, default=False,
 #              doc="Skip the outstanding-fees check when enrolling."),
 #     ], doc="Course enrolment policy.")
-#
-# The two flags currently living in config.json (hide_course_stats_from,
-# disable_fees_check) still read from current_app.config; moving them here
-# is Phase 4 (docs/refactor-plan.md).
+
+declare_group(
+    "enrolment",
+    [
+        Spec("disable_fees_check", bool, default=False,
+             doc="Skip the outstanding-fees check when enrolling."),
+        Spec("max_credits_per_session", int, default=24,
+             min_value=1, max_value=60,
+             doc="Maximum total credits a student may be enrolled in "
+                 "within one academic session."),
+    ],
+    doc="Course enrolment policy."
+)
+
+declare_group(
+    "course_offering",
+    [
+        Spec("hide_stats_from", list, default=["STU"], item_type=str,
+             choices=VD.codes("roles"),
+             doc="Roles for which course offering stats are hidden."),
+    ],
+    doc="Course offering policy."
+)
+
+declare_group(
+    "auth",
+    [
+        Spec("password_reset_lockout_attempts", int, default=4, min_value=1,
+             doc="Lock the account once more than this many password-reset "
+                 "keys have been requested."),
+    ],
+    doc="Authentication and account-lockout policy."
+)
+
+declare_group(
+    "app",
+    [
+        Spec("page_size", int, default=25, min_value=1, max_value=500,
+             doc="Default page size for paginated list endpoints."),
+        Spec("active_user_window_secs", int, default=1800, min_value=1,
+             doc="How many seconds since last access a user still counts "
+                 "as active."),
+    ],
+    doc="General application-wide operational settings."
+)
+
+declare_group(
+    "faces",
+    [
+        Spec("match_tolerance", float, default=0.45,
+             min_value=0.0, max_value=1.0,
+             doc="Face-recognition match tolerance passed to frec_service; "
+                 "lower is stricter."),
+    ],
+    doc="Photo-based attendance / face-recognition policy."
+)
 
 
 def _validate_vocab_items(items):

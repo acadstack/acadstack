@@ -9,6 +9,7 @@ from validation_checks import is_course_status_valid_for_current_user
 import api_common as apiVC
 import models as DB
 import common as C
+from common import AcadStackException
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/cour/<int:my_id>', view_func=course_view, methods=['GET'])
@@ -67,6 +68,7 @@ async def course_save():
                 return apiVC.error_json("You can edit only PG/PhD courses!")
 
             C.update_model_skip_unknown(crs, fd)
+            C.apply_computed_course_credits(crs)
 
             if apiVC.update_entity(DB.Course, crs) != 1:  # if rc != 1:
                 return apiVC.error_json("Could not update. Please try again.")
@@ -74,6 +76,7 @@ async def course_save():
             send_course_updated_email(crs_id, old_status)
         else:
             C.update_model_skip_unknown(crs, fd)
+            C.apply_computed_course_credits(crs)
             apiVC.save_entity(crs)
             logging.debug("Inserted course details: {}".format(crs))
 
@@ -113,11 +116,11 @@ async def course_find():
         if dept:
             query = query.where(DB.Person.dept_name == dept)
 
-        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.page_size())
         serialized = [apiVC.model_to_dict(r, exclude=[DB.Course.author]) for r in courses]
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= apiVC.page_size()
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
                "has_next": has_next}
         return apiVC.ok_json(res)
 
@@ -183,14 +186,14 @@ async def bulk_add_courses():
             reader = csv.DictReader(csvfile)
             with DB.db.atomic() as txn:
                 for row in reader:
-                    l, t, p, *x = row["ltp"].split("-")
-                    l, t, p = C.parse_number(l), C.parse_number(t), \
-                                C.parse_number(p)
-                    s = round(2 * l - t + 0.5 * p, 2)
-                    c = round(l + 0.5 * p, 2)
-                    ltpsc = f"{l}-{t}-{p}-{s}-{c}"
+                    computed = C.compute_course_ltp(row["ltp"])
+                    if not computed:
+                        raise AcadStackException(
+                            f"Course {row['code']}: could not parse L-T-P "
+                            f"from ltp {row['ltp']!r}.")
+                    ltpsc, s, c = computed
                     cou = DB.Course(code=row["code"], title=row["title"],
-                                 ltp=ltpsc, status="APP", 
+                                 ltp=ltpsc, s_hours=s, credits=c, status="APP",
                                  author=apiVC.logged_in_user())
                     cou.save()
                 txn.commit()

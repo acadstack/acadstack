@@ -4,6 +4,7 @@ import logging
 from common import AcadStackException, sql_by_id, current_dt_str
 import models as DB
 import api_common as apiVC
+import settings_store as ST
 
 
 def validate_course_instructor(co_id, allowed_role="*", coordinator_only=True):
@@ -326,5 +327,7 @@ def check_enrolled_credits(user_id,acad_session):
     cursor = DB.db.execute_sql(sql_qry, [user_id,acad_session])
     res = cursor.fetchall()
     total_credits = res[0][0]
-    if total_credits > 24:
-        raise AcadStackException("Max. 24 credits allowed! Please remove course enrolments.")
+    max_credits = ST.setting("enrolment.max_credits_per_session")
+    if total_credits > max_credits:
+        raise AcadStackException(
+            f"Max. {max_credits} credits allowed! Please remove course enrolments.")
