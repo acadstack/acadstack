@@ -131,3 +131,50 @@ def test_migration_is_safe_to_replay_against_an_already_current_schema(db, tmp_p
 
 def test_run_pending_migrations_with_no_files_is_a_noop(db, tmp_path):
     assert run_pending_migrations(tmp_path) == []
+
+
+def test_migration_containing_a_percent_sign_is_applied_verbatim(db, tmp_path):
+    """Regression: the runner used to hand the script to peewee's
+    execute_sql(), which passes `params or ()` to psycopg2 -- and an empty
+    but present parameter sequence still makes psycopg2 treat '%' as a
+    placeholder. Any migration with a LIKE pattern, a to_char() format or
+    a plpgsql RAISE ... % substitution died with "IndexError: tuple index
+    out of range" before reaching the server. 0003 is such a migration."""
+    (tmp_path / "0001_percent.sql").write_text(
+        "CREATE OR REPLACE FUNCTION mig_pct_test(x text) RETURNS text\n"
+        "LANGUAGE plpgsql IMMUTABLE AS $fn$\n"
+        "BEGIN\n"
+        "    IF x LIKE 'a%' THEN\n"
+        "        RAISE EXCEPTION 'got %', x;\n"
+        "    END IF;\n"
+        "    RETURN x;\n"
+        "END;\n"
+        "$fn$;\n"
+    )
+
+    assert run_pending_migrations(tmp_path) == ["0001_percent.sql"]
+
+    cur = DB.db.execute_sql("SELECT mig_pct_test(%s)", ("bee",))
+    assert cur.fetchone()[0] == "bee"
+
+
+def test_the_real_migrations_replay_cleanly(db):
+    """migrations/README.md requires every file to be safe to run against
+    a schema create_schema() already built in its current shape. The `db`
+    fixture truncates schema_migrations, so this re-applies the whole real
+    directory on top of the schema conftest already migrated -- which is
+    exactly that scenario, and the only check that 0003's functions,
+    CHECK constraints and triggers are genuinely idempotent."""
+    from schema_migrations import MIGRATIONS_DIR
+
+    expected = sorted(p.name for p in MIGRATIONS_DIR.glob("*.sql"))
+    assert run_pending_migrations() == expected
+
+    # And the immutability machinery still works afterwards.
+    DB.db.execute_sql(
+        "INSERT INTO closedacademicsession (acad_session, session_ord, "
+        "closed_ts, is_deleted, txn_no, ins_ts, upd_ts) "
+        "VALUES ('2020-II', 20205, now(), false, 1, now(), now())")
+    with pytest.raises(Exception, match="append-only"):
+        with DB.db.atomic():
+            DB.db.execute_sql("DELETE FROM closedacademicsession")
