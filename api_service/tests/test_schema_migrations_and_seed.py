@@ -134,12 +134,10 @@ def test_run_pending_migrations_with_no_files_is_a_noop(db, tmp_path):
 
 
 def test_migration_containing_a_percent_sign_is_applied_verbatim(db, tmp_path):
-    """Regression: the runner used to hand the script to peewee's
-    execute_sql(), which passes `params or ()` to psycopg2 -- and an empty
-    but present parameter sequence still makes psycopg2 treat '%' as a
-    placeholder. Any migration with a LIKE pattern, a to_char() format or
-    a plpgsql RAISE ... % substitution died with "IndexError: tuple index
-    out of range" before reaching the server. 0003 is such a migration."""
+    """A migration may contain a literal percent sign -- a LIKE pattern,
+    a to_char() format, a plpgsql RAISE ... % substitution -- without it
+    being misread as a parameter placeholder (see _execute_script's
+    docstring in schema_migrations.py). 0003 is such a migration."""
     (tmp_path / "0001_percent.sql").write_text(
         "CREATE OR REPLACE FUNCTION mig_pct_test(x text) RETURNS text\n"
         "LANGUAGE plpgsql IMMUTABLE AS $fn$\n"

@@ -280,14 +280,15 @@ rejects the string shape outright, so whoever moves the live rules across
 must also change those membership tests to real containment and re-verify
 the affected grades. The two changes cannot be made independently.
 
-**3. The migration runner could not run any SQL containing `%`** (fixed
-here). `schema_migrations.py` passed each script to peewee's
-`execute_sql()`, which hands psycopg2 `params or ()` — and an empty but
-*present* parameter sequence still makes psycopg2 treat `%` as a
-placeholder introducer. Any migration with a `LIKE` pattern, a `to_char()`
-format or a plpgsql `RAISE ... %` died with `IndexError: tuple index out
-of range` before reaching the server. Migration `0003` is such a file.
-Regression test:
+**3. The migration runner did not support SQL containing a literal `%`.**
+`schema_migrations.py` ran each script through peewee's `execute_sql()`,
+which always passes a parameter sequence to psycopg2, even an empty one —
+so psycopg2 treated every `%` in the script as a placeholder introducer.
+That ruled out a `LIKE` pattern, a `to_char()` format, or the plpgsql
+`RAISE ... %` substitutions migration `0003` needs. Fixed by running
+migration scripts through a plain cursor with no parameter argument
+(`schema_migrations._execute_script`), which skips client-side
+interpolation entirely. Regression test:
 `test_migration_containing_a_percent_sign_is_applied_verbatim`.
 
 ---

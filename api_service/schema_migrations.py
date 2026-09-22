@@ -45,13 +45,13 @@ def _execute_script(sql_text: str) -> None:
     """Runs a whole migration file as one script.
 
     Deliberately NOT M.db.execute_sql(): peewee passes `params or ()` down
-    to the driver, and psycopg2 with an empty (but present) parameter
-    sequence still treats '%' as a placeholder introducer -- so any
-    migration containing a literal percent sign (a LIKE pattern, a
-    to_char() format, a plpgsql RAISE ... % substitution) died with
-    "IndexError: tuple index out of range" before reaching the server.
-    Passing no parameter argument at all skips client-side interpolation
-    entirely, which is what a DDL script wants.
+    to the driver, and psycopg2 treats '%' as a placeholder introducer
+    whenever a parameter sequence is present, even an empty one -- so a
+    migration is free to contain a literal percent sign (a LIKE pattern,
+    a to_char() format, a plpgsql RAISE ... % substitution) only if no
+    parameter argument is passed at all. That is what this function does:
+    it skips client-side interpolation entirely, which is what a DDL
+    script wants.
     """
     cursor = M.db.cursor()
     cursor.execute(sql_text)
