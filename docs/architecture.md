@@ -102,6 +102,24 @@ def init_routes(bp: Blueprint):
     ...
 ```
 
+## Service (domain) layer
+Business logic lives in the `api_service/domain/` package, not inside the Quart view
+functions. The `api_*.py` modules are HTTP adapters: they parse the request, call a
+domain function, and map the result (or the exception) onto the
+`{"status": "OK"|"ERROR", "body": ...}` envelope.
+
+Domain modules are plain synchronous functions over the models. They never import
+`quart` or `api_common` and never read the session: the acting user is passed in as a
+`domain.context.Actor`, built at the boundary by `api_common.current_actor()` (or as
+`Actor.system()` by background jobs). Policy is passed in as frozen dataclasses from
+`domain.policy` rather than read ad hoc from the settings store, and the domain
+function — not the adapter — owns the `db.atomic()` transaction.
+
+`api_course_enrolment.py` + `domain/enrolment.py` are the reference example.
+`domain/plugins.py` is the in-process seam institutions use to override specific
+domain behaviour. The reasoning behind all of this, and the order in which the
+remaining modules get extracted, is in [service-layer.md](./service-layer.md).
+
 ## Handling role based access control (RBAC)
 Roles are central to the entire functionality of the AcadStack application.
 RBAC is implemented via the decorator `rbac()` defined in `common.py`.

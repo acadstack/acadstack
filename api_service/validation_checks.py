@@ -1,23 +1,40 @@
+"""Shared validation and access checks.
+
+These are called from both the HTTP adapters and the domain layer, so
+every function that needs to know who is acting takes an optional
+``actor`` (a :class:`domain.context.Actor`). When it is not supplied the
+actor is resolved from the Quart session, exactly as before -- that is
+what keeps the modules that have not been through the service-layer
+extraction yet working untouched.
+
+This module is scheduled to move under ``domain/`` once the extraction
+has propagated past course enrolment; it is shared by nearly every
+api_* module, so moving it early would have dragged all of them into
+this phase. See docs/service-layer.md.
+"""
 from create_email import send_access_violation_alert
 import logging
 
-from common import AcadStackException, sql_by_id, current_dt_str
+from common import AcadStackException, sql_by_id
 import models as DB
 import api_common as apiVC
+from domain import academic_calendar as CAL
 
 
-def validate_course_instructor(co_id, allowed_role="*", coordinator_only=True):
-    if allowed_role != "*" and apiVC.is_user_in_role(allowed_role):
+def validate_course_instructor(co_id, allowed_role="*", coordinator_only=True,
+                               actor=None):
+    actor = apiVC.actor_or_current(actor)
+    if allowed_role != "*" and actor.has_role(allowed_role):
         return True
     ci = DB.CourseInstructor.select().where(
         (DB.CourseInstructor.offering == co_id)
-        & (DB.CourseInstructor.instructor == apiVC.logged_in_user().id))
+        & (DB.CourseInstructor.instructor == actor.user_id))
     
     if coordinator_only:
         ci = ci.where(DB.CourseInstructor.is_coordinator == True)
 
     if not ci.exists():
-        msg = "Detected attempt by user {0} to edit/access (other's) course offering ID {1}.".format(apiVC.current_login_id(), co_id)
+        msg = "Detected attempt by user {0} to edit/access (other's) course offering ID {1}.".format(actor.login_id, co_id)
         logging.error(msg)
         send_access_violation_alert(msg)
         return False
@@ -39,7 +56,7 @@ def is_course_status_valid_for_current_user(status_old):
         return True
 
 
-def validate_coff_status(co):
+def validate_coff_status(co, actor=None):
     """Checks the status of supplied course offering by considering the role
     of current user and the status of the supplied offering.
 
@@ -55,11 +72,11 @@ def validate_coff_status(co):
         co = DB.CourseOffering.get_by_id(co)
  
     if co.status in ["F", "C"] and \
-            not apiVC.is_user_in_role(["ACA", "DEA"]):
+            not apiVC.actor_or_current(actor).has_role(["ACA", "DEA"]):
         raise AcadStackException("Cannot change data for a course that has ended/canceled!")
 
 
-def check_enrollment_allowed(co):
+def check_enrollment_allowed(co, actor=None):
     """Checks if currentl user is allowed to enrol in the supplied course
     offering by considering the role of current user and the status of 
     the supplied offering.
@@ -77,27 +94,25 @@ def check_enrollment_allowed(co):
     if type(co) is int:
         co = DB.CourseOffering.get_by_id(co)
  
-    if apiVC.is_user_in_role(["STU"]) and co.status not in ["E", "R"]:
+    actor = apiVC.actor_or_current(actor)
+    if actor.has_role(["STU"]) and co.status not in ["E", "R"]:
         msg = "User {0} forcibly attempted to enrol in course {1}.".format(
-            apiVC.current_login_id(), co.course.code)
+            actor.login_id, co.course.code)
         logging.error(msg)
         send_access_violation_alert(msg)
         raise AcadStackException("You are not allowed to make this change. Incident has been reported!")
  
 
-def is_course_add_drop_open(for_acad_session):
-    return is_today_between_events("COURSE_REG_S", 
-                "COURSE_REG_E", for_acad_session) or \
-           is_today_between_events("ADD_DROP_S", 
-                "ADD_DROP_E", for_acad_session)
+# The academic-calendar reads below live in domain.academic_calendar now
+# (the domain layer needs them and must not import api_common). These
+# remain as the names the api_* modules already import.
+is_course_add_drop_open = CAL.is_course_add_drop_open
+is_course_withdraw_open = CAL.is_course_withdraw_open
+is_today_between_events = CAL.is_today_between_events
+get_event_date = CAL.event_date
 
 
-def is_course_withdraw_open(for_acad_session):
-    return is_today_between_events("WITHDRAW_S", 
-            "WITHDRAW_E", for_acad_session)
-
-
-def validate_enrolment_change(enrl, status):
+def validate_enrolment_change(enrl, status, actor=None):
     """Checks if the supplied status can be assigned to the given enrollment
     record. The checks take into consideration the role of the current user,
     the status of the course offerring (i.e., whether the course has finished
@@ -119,8 +134,9 @@ def validate_enrolment_change(enrl, status):
     if not any(s[0] == status for s in DB.CourseEnrollment.ENROL_STATUSES):
         raise AcadStackException("Unknown enrolment status: "+status)
     
+    actor = apiVC.actor_or_current(actor)
     # Academic section and dean can make a change
-    if apiVC.is_user_in_role(["ACA", "DEA"]):
+    if actor.has_role(["ACA", "DEA"]):
         return True
 
     if isinstance(enrl, int):
@@ -138,10 +154,8 @@ def validate_enrolment_change(enrl, status):
         if not is_course_withdraw_open(acad_sess):
             raise AcadStackException(f"Course withdrawals not open for {acad_sess}.")
         # Student can drop/withdraw only their own enrollment
-        if (apiVC.is_user_in_role("STU") and ce.student.id != 
-            apiVC.logged_in_user().id):
-            
-            logging.error(f"User {apiVC.current_login_id()} attempted changing"
+        if actor.has_role("STU") and ce.student.id != actor.user_id:
+            logging.error(f"User {actor.login_id} attempted changing"
                           f" enrolment of user {ce.student.login_id}.")
             raise AcadStackException("Cannot change others' enrolment. Your attempt to do so has been reported.")
 
@@ -153,50 +167,14 @@ def validate_enrolment_change(enrl, status):
         elif "WDRAW" != status and not is_course_add_drop_open(acad_sess):
             raise AcadStackException(f"Course add/drop not open for {acad_sess}")
         # Student can drop/withdraw only their own enrollment
-        if (apiVC.is_user_in_role("STU") and ce.student.id != 
-            apiVC.logged_in_user().id):
-            logging.error(f"User {apiVC.current_login_id()} attempted to drop"
+        if actor.has_role("STU") and ce.student.id != actor.user_id:
+            logging.error(f"User {actor.login_id} attempted to drop"
                           f" courses of user {ce.student.login_id}")
             raise AcadStackException("Cannot change others' enrolment. Your "
                                 "attempt to do so has been reported.")
 
 
-def is_today_between_events(event1, event2, for_acad_session=None):
-    acad_session = for_acad_session or apiVC.current_acad_session()
-    if not acad_session:
-        return False
-
-    res1 = DB.AcademicCalendar.select(DB.AcademicCalendar.event_value).where(
-        (DB.AcademicCalendar.acad_session == acad_session) & 
-        (DB.AcademicCalendar.event_code == event1))
-    res2 = DB.AcademicCalendar.select(DB.AcademicCalendar.event_value).where(
-        (DB.AcademicCalendar.acad_session == acad_session) & 
-        (DB.AcademicCalendar.event_code == event2))
-
-    now_str = current_dt_str()
-    if res1.exists() and res2.exists():
-        if res1[0].event_value <= now_str <= res2[0].event_value:
-            return True
-    return False
-
-
-def get_event_date(event_code, for_acad_session=None):
-    acad_session = for_acad_session or apiVC.current_acad_session()
-    if not acad_session:
-        raise AcadStackException("Current academic session not configured.")
-
-    res1 = DB.AcademicCalendar.select(DB.AcademicCalendar.event_value).where(
-        (DB.AcademicCalendar.acad_session == acad_session) & 
-        (DB.AcademicCalendar.event_code == event_code))
-
-    if res1.exists():
-        return res1[0].event_value
-    else:
-        raise AcadStackException("Event {0} not configured in {1}."\
-                            .format(event_code, acad_session))
-
-
-def is_enrollment_owner_valid(coe):
+def is_enrollment_owner_valid(coe, actor=None):
     """Checks whther currently logged in user is the owner of the supplied
     enrollment. If the current user has a role such as DEA or ACA then we
     always return True.
@@ -210,21 +188,22 @@ def is_enrollment_owner_valid(coe):
         bool: True when the current user can be considered the owner of the
         supplied enrollment, else False.
     """
-    if apiVC.is_user_in_role("STU") and coe.student.id == apiVC.logged_in_user().id:
+    actor = apiVC.actor_or_current(actor)
+    if actor.has_role("STU") and coe.student.id == actor.user_id:
         valid = True
-    elif apiVC.is_user_in_role("FAC") and validate_course_instructor(coe.course_offering):
+    elif actor.has_role("FAC") and validate_course_instructor(
+            coe.course_offering, actor=actor):
         valid = True
-    elif apiVC.is_user_in_role(["DEA", "ACA"]):
+    elif actor.has_role(["DEA", "ACA"]):
         valid = True
-    elif apiVC.is_user_in_role("HOD"):
-        valid = is_hod_for_course_offering(coe.course_offering, 
-                                           apiVC.logged_in_user().id)
+    elif actor.has_role("HOD"):
+        valid = is_hod_for_course_offering(coe.course_offering, actor.user_id)
     else:
         valid = False
     
     if not valid:
         msg = "DB.User {0} attempted to access enrollment ID {1}." \
-            .format(apiVC.current_login_id(), coe.id)
+            .format(actor.login_id, coe.id)
         logging.error(msg)
         send_access_violation_alert(msg)
     return valid
@@ -257,7 +236,8 @@ def is_feedback_open(acad_session, fb_form_type):
             fb_form_type))
 
 
-def is_current_user_in_role_and_id(role, get_by, arg_for_get_by, error_msg):
+def is_current_user_in_role_and_id(role, get_by, arg_for_get_by, error_msg,
+                                   actor=None):
     """Checks whether the currently logged in user has the given role and
     the supplied identity matches the corresponding identity of the current
     user.
@@ -272,22 +252,23 @@ def is_current_user_in_role_and_id(role, get_by, arg_for_get_by, error_msg):
         AcadStackException: When the currently logged in user does not have
         supplied role and identity.
     """
-    if not apiVC.is_user_in_role(role):
+    actor = apiVC.actor_or_current(actor)
+    if not actor.has_role(role):
         return
     
     key = None
     if get_by == "user_id":
-        key = apiVC.logged_in_user().id
+        key = actor.user_id
     elif get_by == "login_id":
-        key = apiVC.logged_in_user().login_id
+        key = actor.login_id
     elif get_by == "org_id":
-        key = apiVC.logged_in_user().person.org_id
+        key = actor.org_id
     else:
         raise AcadStackException(f"Invalid query type {get_by} for check.")
 
     if key != arg_for_get_by:
         msg = "Illegal access! {0} Logged-in user {1}. Target user {2}." \
-            .format(error_msg, apiVC.current_login_id(), arg_for_get_by)
+            .format(error_msg, actor.login_id, arg_for_get_by)
         logging.error(msg)
         send_access_violation_alert(msg)
         raise AcadStackException(msg)

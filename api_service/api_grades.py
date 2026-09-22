@@ -8,7 +8,7 @@ from io import BytesIO
 
 from validation_checks import is_current_user_in_role_and_id
 from api_auth import get_user_by_org_id
-from api_course_enrolment import get_student_courses_perf_filtered
+from domain import transcript as TR
 
 import datetime
 import shutil
@@ -79,7 +79,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
                 return apiVC.error_json(msg)
             # Fill the sudents personal info
             # report_data = _get_student_courses_perf(stu, True)
-            report_data = get_student_courses_perf_filtered(stu, False, enrol_type)
+            report_data = TR.courses_perf_filtered(stu, False, enrol_type)
             sem_courses = []
             for index,courses in report_data["enrollments"].items():
                 sem_courses = courses
@@ -200,7 +200,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
         report_data["deg_type_spec"] = deg_type_spec
 
    #TODo: check method calling with three parameters.
-    all_data = get_student_courses_perf_filtered(stu, False, enrol_type)
+    all_data = TR.courses_perf_filtered(stu, False, enrol_type)
     if not all_data["enrollments"]:
         raise C.AcadStackException("Records not found for this degree "
                                 f"type for student {entry_no}")
