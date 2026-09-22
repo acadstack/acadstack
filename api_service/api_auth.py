@@ -93,7 +93,7 @@ async def gen_prk():
                 return apiVC.error_json(
                     f"Too many attempts (more than {max_attempts})! "
                     f"Your account has been locked.")
-            prk_str = C.C.random_str(size=8)
+            prk_str = C.get_rand_str(size=8)
             CM.send_password_reset_code(email, prk_str)
             obj = DB.PasswordResetKey(login_id=login_id, prk=prk_str)
             apiVC.save_entity(obj)

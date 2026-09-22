@@ -164,31 +164,21 @@ def test_mark_person_in_photo_uses_configured_tolerance(db, two_photos, monkeypa
 # ===================== auth.password_reset_lockout_attempts =====================
 
 def test_password_reset_lockout_threshold_is_configurable(client):
-    # NOTE: gen_prk's success path (api_auth.py) currently crashes on an
-    # unrelated pre-existing bug -- `C.C.random_str(...)` where `C` is the
-    # `common` module, which has no nested `C` attribute -- so a request
-    # that passes the lockout check never actually reaches "OK" today; it
-    # falls through to the generic error handler instead, and no
-    # PasswordResetKey row ever gets inserted via the live endpoint. That
-    # bug is out of scope here (Phase 4 is the threshold migration, not a
-    # bug fix), so attempts are seeded directly to exercise the lockout
-    # threshold itself, independent of it.
     create_user("STU", "lockstu")
     email = "lockstu@example.com"
 
     ST.save_setting("auth.password_reset_lockout_attempts", 2)
 
-    for _ in range(2):
-        DB.PasswordResetKey.create(login_id="lockstu", prk="x")
+    for _ in range(3):
+        # attempts == 0, 1, then 2: none yet OVER the (2) limit.
+        res = client.post("/acadstack/gen_prk",
+                          json={"login_id": "lockstu", "email": email})
+        assert res.json["status"] == "OK"
 
-    # attempts == 2, threshold == 2: not yet over the limit.
-    res = client.post("/acadstack/gen_prk",
-                      json={"login_id": "lockstu", "email": email})
-    assert res.json["status"] == "ERROR"
-    assert "locked" not in res.json["body"].lower()
+    assert DB.PasswordResetKey.select().where(
+        DB.PasswordResetKey.login_id == "lockstu").count() == 3
 
-    DB.PasswordResetKey.create(login_id="lockstu", prk="x")  # attempts == 3
-
+    # attempts == 3, which IS over the (2) limit -> locked.
     res2 = client.post("/acadstack/gen_prk",
                        json={"login_id": "lockstu", "email": email})
     assert res2.json["status"] == "ERROR"

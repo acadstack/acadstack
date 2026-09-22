@@ -66,14 +66,17 @@ student_cgpa = """SELECT ce.student_id, u.first_name, u.last_name,
     JOIN course c ON c.id = co.course_id
     JOIN "user" u ON u.id = ce.student_id
     WHERE co.acad_session IN (
-            SELECT a.acad_session FROM acadsessions a WHERE a.end_date <= %s
+            SELECT a.acad_session FROM public.academiccalendar a
+            WHERE a.event_code = 'SESSION_E' AND a.event_value::date <= %s
         )
         AND ce.enrol_type = %s
         AND ce.grade NOT IN (%s, %s, %s, %s, %s, %s);"""
 
-cgpa_decline = """SELECT t.acad_session from 
-    (select * from acadsessions where end_date <= %s 
-    order by end_date desc) as t WHERE %s <= 3 
+cgpa_decline = """SELECT t.acad_session from
+    (SELECT acad_session, event_value::date AS end_date
+     FROM public.academiccalendar
+     WHERE event_code = 'SESSION_E' AND event_value::date <= %s
+     order by end_date desc) as t WHERE %s <= 3
     order by t.end_date DESC;"""
 
 course_lectures_in_session = """SELECT count(*) as Lecture, 
