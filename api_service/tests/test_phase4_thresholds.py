@@ -49,7 +49,8 @@ def _reset_settings_cache():
 
 def _enrol_student_with_credits(student, credits, acad_session=ACAD_SESSION):
     course = DB.Course.create(code=f"CS{credits}00", title="Heavy Course",
-                              status="APP", ltp=f"10-0-0-0-{credits}")
+                              status="APP", ltp=f"10-0-0-0-{credits}",
+                              credits=credits, s_hours=20)
     offering = DB.CourseOffering.create(course=course, acad_session=acad_session,
                                         status="R")
     DB.CourseEnrollment.create(course_offering=offering, student=student,

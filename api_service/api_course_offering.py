@@ -314,7 +314,7 @@ def __fill_co_search_result(row, enrol_count):
     obj = apiVC.model_to_dict(row, recurse=False)
     obj["EnrollmentsCount"] = enrol_count or 0
     obj["course"] = apiVC.model_to_dict(row.course, recurse=False)
-    obj["credits"] = row.course.ltp.split("-")[-1]
+    obj["credits"] = row.course.credits
     obj["instructors"] = ", ".join([x.instructor.get_full_name()
                                     for x in row.instructors])
     obj["instructors_info"] = [{"id":x.instructor.id, "name": 

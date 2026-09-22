@@ -59,8 +59,7 @@ course_attendance = """
     ORDER BY EXTRACT(WEEK FROM t.dates)::INT;"""
 
 student_cgpa = """SELECT ce.student_id, u.first_name, u.last_name,
-    (SUBSTRING(c.ltp FROM 1 FOR 1) || 
-    SUBSTRING(c.ltp FROM 5 FOR 1)::numeric / 2) AS credits,
+    c.credits AS credits,
     ce.grade, u.email
     FROM courseenrollment ce
     JOIN courseoffering co ON ce.course_offering_id = co.id
@@ -91,7 +90,7 @@ course_lectures_in_session = """SELECT count(*) as Lecture,
 credits_earned_report = """
     WITH student_credits AS (
         SELECT u.first_name, u.last_name, u.email, o.acad_session,
-            ROUND(SUM(split_part(c.ltp, '-', 2)::numeric), 2) AS total_credits,
+            ROUND(SUM(c.credits)::numeric, 2) AS total_credits,
             u.id,
             p.org_id
         FROM public.courseenrollment e
@@ -116,12 +115,8 @@ credits_earned_report = """
     ORDER BY first_name, last_name;
 """
 
-credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role, 
-    SUM(
-        (2 * SUBSTR(c.ltp, 1, 1) - SUBSTR(c.ltp, 3, 1) + 
-        SUBSTR(c.ltp, 5, 1)::NUMERIC / 2) *
-        (SUBSTR(c.ltp, 1, 1)::NUMERIC + SUBSTR(c.ltp, 5, 1)::NUMERIC / 2)
-    ) AS hours, o.acad_session, p.dept_name
+credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role,
+    SUM(c.s_hours * c.credits) AS hours, o.acad_session, p.dept_name
     FROM
     (SELECT * FROM public.courseoffering co WHERE co.acad_session = %s) o
     JOIN public.courseinstructor i ON i.offering_id = o.id
@@ -358,7 +353,7 @@ enrolled_students_for_grades = """
 filtered_categorized_credits_enrolled = """
 WITH category_credits AS (
     SELECT 
-        SUM(split_part(c.ltp, '-', 5)::numeric) AS total_credits,
+        SUM(c.credits) AS total_credits,
         COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
         u.email,
         u.id,
@@ -929,7 +924,7 @@ get_dc_students = """
 download_filtered_categorized_credits_enrolled = """
 WITH base_credits AS (
     SELECT 
-        SUM(split_part(c.ltp, '-', 3)::numeric) AS total_credits,
+        SUM(c.credits) AS total_credits,
         COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
         u.email,
         u.id,
@@ -995,7 +990,7 @@ ORDER BY
 """
 
 credits_enrolled_by_student = """
-    SELECT ROUND(sum(split_part(c.ltp, '-', -1)::numeric), 2) as total_credits
+    SELECT ROUND(sum(c.credits)::numeric, 2) as total_credits
     FROM public.courseenrollment ce
     join public.user u on u.id=ce.student_id
     join public.courseoffering co on co.id=ce.course_offering_id

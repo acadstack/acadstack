@@ -192,6 +192,10 @@ def _create_courses():
     for idx, c in enumerate(courses):
         cou = M.Course()
         cou.code, cou.title, cou.course_type, cou.ltp = c.split(",")
+        # The hand-typed S/C suffixes above are not always consistent
+        # with the L/T/P they follow; recompute server-side rather than
+        # trust them, same as every other course-creation path.
+        C.apply_computed_course_credits(cou)
         if idx % 10 == 0:
             cou.status = random.choice(["CAP", "HAP", "CAR", "HAR", "DRA"])
         else:

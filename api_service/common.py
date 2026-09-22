@@ -172,6 +172,44 @@ def parse_number(sval):
 def now_str():
     return DT.now().strftime(TS_FORMAT)
 
+
+def compute_course_ltp(ltp_str):
+    """(Re)computes a course's S (session/teaching hours) and C (credits)
+    from the L/T/P components of an 'L-T-P[-S-C]' string, using this
+    institution's credit formula: S = 2L - T + 0.5P, C = L + 0.5P.
+
+    This is the ONLY place that formula is evaluated. Every call site that
+    creates or edits a Course (the single-course save form, the CSV bulk
+    importer, demo data) must route through this so Course.s_hours/credits
+    are always server-computed from L/T/P, never trusted from the client
+    or re-derived by parsing string positions elsewhere (SQL used to do
+    both -- see docs/refactor-plan.md Phase 4).
+
+    Returns (full_ltp_str, s, c), where full_ltp_str is 'L-T-P-S-C' with
+    freshly computed S/C (replacing any S/C the input string already
+    had). Returns None if L/T/P cannot be parsed as numbers, so the
+    caller decides how to handle bad input.
+    """
+    if not ltp_str:
+        return None
+    parts = ltp_str.split("-")
+    if len(parts) < 3:
+        return None
+    l, t, p = parse_number(parts[0]), parse_number(parts[1]), parse_number(parts[2])
+    if l is None or t is None or p is None:
+        return None
+    s = round(2 * l - t + 0.5 * p, 2)
+    c = round(l + 0.5 * p, 2)
+    return f"{l}-{t}-{p}-{s}-{c}", s, c
+
+
+def apply_computed_course_credits(course):
+    """Sets course.ltp/s_hours/credits from course.ltp's current L/T/P via
+    compute_course_ltp(). A no-op if ltp isn't at least 'L-T-P'."""
+    result = compute_course_ltp(course.ltp)
+    if result:
+        course.ltp, course.s_hours, course.credits = result
+
 def get_rand_str(size=10):
     """Makes a random string from ASCII upper case letters and digits.
     Args:
