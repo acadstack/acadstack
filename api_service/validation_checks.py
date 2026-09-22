@@ -10,7 +10,7 @@ extraction yet working untouched.
 This module is scheduled to move under ``domain/`` once the extraction
 has propagated past course enrolment; it is shared by nearly every
 api_* module, so moving it early would have dragged all of them into
-this phase. See docs/service-layer.md.
+one change. See the service-layer section of docs/architecture.md.
 """
 from create_email import send_access_violation_alert
 import logging

@@ -117,8 +117,11 @@ function — not the adapter — owns the `db.atomic()` transaction.
 
 `api_course_enrolment.py` + `domain/enrolment.py` are the reference example.
 `domain/plugins.py` is the in-process seam institutions use to override specific
-domain behaviour. The reasoning behind all of this, and the order in which the
-remaining modules get extracted, is in [service-layer.md](./service-layer.md).
+domain behaviour. The detail lives with the code: `domain/__init__.py` states the
+rules the package keeps to (and `tests/test_domain_boundaries.py` enforces them),
+`domain/context.py` explains how the acting user reaches a domain function,
+`domain/policy.py` the shape policy arrives in, and `domain/plugins.py` the
+extension-point contract.
 
 ## Handling role based access control (RBAC)
 Roles are central to the entire functionality of the AcadStack application.

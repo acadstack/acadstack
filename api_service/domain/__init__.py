@@ -6,8 +6,8 @@ the ``api_*.py`` HTTP adapters call into, and the layer that background
 jobs (``bg_tasks.py``, ``api_reports.py``) can reuse without faking an
 HTTP request.
 
-Rules for everything under ``domain/`` -- see docs/service-layer.md for
-the reasoning:
+Rules for everything under ``domain/`` -- see the service-layer section
+of docs/architecture.md for the summary:
 
 1. No ``quart`` import, and in particular no ``quart.session`` read. The
    acting user arrives as an explicit :class:`domain.context.Actor`

@@ -2,7 +2,8 @@
 
 The value of the extraction is that domain code can be called without a
 request. That property is easy to lose one import at a time, so it is
-checked here rather than left to review. See docs/service-layer.md.
+checked here rather than left to review. The rules themselves, and why
+they are worth keeping, are in domain/__init__.py.
 """
 import ast
 import re
@@ -39,7 +40,7 @@ def test_domain_module_does_not_import_the_http_layer(path):
     assert not offenders, (
         f"{path.name} imports {sorted(offenders)}. Domain code must take "
         f"the acting user as an Actor argument instead of reading the "
-        f"session; see docs/service-layer.md.")
+        f"session; see domain/__init__.py.")
 
 
 #: A subscript of a bare name `session` -- not acad_session[:4] and not

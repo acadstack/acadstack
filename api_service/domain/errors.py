@@ -21,7 +21,7 @@ class PermissionDenied(DomainError):
     Raised for *resource-scoped* checks that the domain owns (e.g. "you
     are neither the course instructor nor the batch advisor for this
     enrolment"). Coarse role gating still happens at the HTTP boundary,
-    in the @rbac decorator -- see docs/service-layer.md, Q1.
+    in the @rbac decorator -- see domain/context.py.
     """
 
 

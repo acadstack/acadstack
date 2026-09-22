@@ -10,8 +10,8 @@ are callable without an HTTP request.
 
 Coarse role gating stays here, on the @rbac decorators, because it is a
 property of the endpoint. Resource-scoped checks ("is this *your*
-enrolment") live in the domain, where the data is. See
-docs/service-layer.md.
+enrolment") live in the domain, where the data is. See the service-layer
+section of docs/architecture.md, and domain/__init__.py.
 """
 from io import BytesIO
 import logging

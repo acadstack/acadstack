@@ -6,8 +6,9 @@ extra step, a different notification channel, a locally computed
 eligibility rule. Those institutions need to replace a *behaviour*, not
 just a value.
 
-The mechanism is deliberately small and in-process (no network
-indirection, per the architecture decision in docs/refactor-plan.md):
+The mechanism is deliberately small and in-process: AcadStack is a
+modular monolith by decision, and an override point is not a reason to
+introduce a network boundary.
 
 * Core declares an extension point and registers the stock
   implementation with :func:`extension_point`.

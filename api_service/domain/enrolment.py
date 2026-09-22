@@ -10,7 +10,7 @@ Two things worth knowing before editing:
 * **The transaction starts here, not in the adapter.** A use case such
   as "approve these twelve enrolments" is atomic because the domain says
   so, not because it arrived over HTTP; a job calling the same function
-  must get the same atomicity. See docs/service-layer.md, Q2.
+  must get the same atomicity. Adapters must not open one.
 * **Some failures return, others raise.** Raising out of the
   ``db.atomic()`` block rolls the whole batch back; returning from
   inside it commits the work done so far. That distinction used to be
