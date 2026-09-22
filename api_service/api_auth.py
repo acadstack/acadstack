@@ -17,6 +17,7 @@ import models as DB
 import common as C
 import api_common as apiVC
 import face_api_proxy as fapi
+import settings_store as ST
 
 from datetime import datetime as DT
 from quart import Blueprint, request, current_app as APP
@@ -85,10 +86,13 @@ async def gen_prk():
         else:
             attempts = DB.PasswordResetKey.select().where(
                 DB.PasswordResetKey.login_id == login_id).count()
-            if attempts > 4:
+            max_attempts = ST.setting("auth.password_reset_lockout_attempts")
+            if attempts > max_attempts:
                 u.is_locked = True
                 apiVC.save_entity(u)
-                return apiVC.error_json("Too many attempts! Your accounts has been locked.")
+                return apiVC.error_json(
+                    f"Too many attempts (more than {max_attempts})! "
+                    f"Your account has been locked.")
             prk_str = C.C.random_str(size=8)
             CM.send_password_reset_code(email, prk_str)
             obj = DB.PasswordResetKey(login_id=login_id, prk=prk_str)
@@ -225,15 +229,15 @@ async def user_find():
         if lname:
             query = query.where(DB.User.last_name.contains(lname))
 
-        users = query.order_by(-DB.User.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        users = query.order_by(-DB.User.id).paginate(pg_no, apiVC.page_size())
         serialized = []
         for r in users:
             uobj = apiVC.model_to_dict(r, exclude=[DB.User.password_hashed])
             uobj["photo"] = r.known_faces[0].photo if r.known_faces else ""
             serialized.append(uobj)
 
-        has_next = len(users) >= apiVC.PAGE_SIZE
-        res = {"users": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(users) >= apiVC.page_size()
+        res = {"users": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
                "has_next": has_next}
         return apiVC.ok_json(res)
 

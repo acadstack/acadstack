@@ -1,7 +1,7 @@
 import csv
 import math
 import os
-from quart import request, Blueprint, current_app as APP
+from quart import request, Blueprint
 from werkzeug.utils import secure_filename
 from create_email import send_grades_submission_email, send_offering_updated_email
 from datetime import datetime as DT
@@ -372,14 +372,14 @@ async def course_offering_find():
             query = query.where(DB.CourseOffering.acad_session == acad_session)
 
         courses = query.order_by(-DB.CourseOffering.id).distinct() \
-            .paginate(pg_no, apiVC.PAGE_SIZE)
+            .paginate(pg_no, apiVC.page_size())
         serialized = []
         for crs, co_dict in zip(courses, courses.dicts()):
             obj = __fill_co_search_result(crs, co_dict["EnrollmentsCount"])
             serialized.append(obj)
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= apiVC.page_size()
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
                "has_next": has_next}
         return apiVC.ok_json(res)
 
@@ -446,7 +446,7 @@ async def offerings_of_course(my_id):
 async def fetch_stats(my_id):
     try:
         res = {"data_att": [], "Weeks": [], "grades": [], "data": []}
-        if apiVC.logged_in_user().role in APP.config["hide_course_stats_from"]:
+        if apiVC.logged_in_user().role in ST.setting("course_offering.hide_stats_from"):
             return apiVC.error_json("DB.Course stats are not visible for you!")
 
         cursor = DB.db.execute_sql(C.sql_by_id("course_grades"), [int(my_id)])

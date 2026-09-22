@@ -66,7 +66,6 @@ def _load_config_from_env():
             "port": os.environ.get('EMAIL_PORT'),
             "dryrun": os.environ.get('EMAIL_DRYRUN')
         },
-        "hide_course_stats_from": ["STU"],
         "oauth_client_id": os.environ.get('OAUTH_CLIENT_ID'),
         "oauth_domain": os.environ.get('OAUTH_DOMAIN'),
         "upload_folder": os.environ.get('UPLOAD_FOLDER', "./acadstack_upload")

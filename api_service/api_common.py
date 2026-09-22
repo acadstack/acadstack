@@ -26,9 +26,13 @@ from playhouse.shortcuts import model_to_dict
 # logger.addHandler(logging.StreamHandler())
 # logger.setLevel(logging.DEBUG)
 
-# Query page size
-PAGE_SIZE = 25
 B64_HDR = "data:image/jpeg;base64,"
+
+
+def page_size() -> int:
+    """Default page size for paginated list endpoints. DB-backed via
+    settings_store so it can be changed without a restart."""
+    return ST.setting("app.page_size")
 
 vbp = Blueprint('bp', __name__, template_folder='templates')
 
@@ -263,11 +267,11 @@ async def home():
 async def get_active_users():
     try:
         users = []
+        active_window = ST.setting("app.active_user_window_secs")
         for k in list(APP.active_users.keys()):
             v = APP.active_users.get(k)
-            # Older than 30 minutes are inactive
             sec_since_last_access = (DT.now() - v).total_seconds()
-            if sec_since_last_access < 1800:
+            if sec_since_last_access < active_window:
                 users.append("{0}. | Last access {1:.2f} min ago".format(k, sec_since_last_access/60))
             else:
                 APP.active_users.pop(k, None)

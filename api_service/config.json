@@ -16,6 +16,5 @@
         "port": 587
     },
     "demo_data": true,
-    "hide_course_stats_from": ["STU"],
     "upload_folder": "./acadstack_uploads/"
 }
