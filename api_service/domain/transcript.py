@@ -17,6 +17,7 @@ import logging
 
 from playhouse.shortcuts import model_to_dict
 
+import acad_session as AS
 import common as C
 import models as DB
 from domain import academic_calendar as CAL
@@ -188,15 +189,12 @@ def fetch_student_enrollments_data(enrols, include_attendance):
 
         enrol_data[acad_sess_key]["courses"].append(my_course)
 
-    # We use these suffixies for academic sessions. Change them as needed.
-    # T1, T2 etc. are for trimesters, I, II and S are for regular semesters.
-    suffixes = ['T1', 'T2', 'T3', 'T4', 'I', 'II', 'S']
-
-    # Sort by academic session. Needed for cgpa calculations
-    acad_sess_list = list(enrol_data.keys())
-    acad_sess_list = sorted(
-        acad_sess_list,
-        key=lambda item: "{0}{1}".format(item[:4], suffixes.index(item[5:])))
+    # Sort by academic session. Needed for cgpa calculations, which
+    # accumulate forward in time. Session chronology is acad_session.py's
+    # job -- it is the same order effective-dated policy resolves on, and
+    # keeping one definition means a transcript cannot accumulate in one
+    # order while policy resolves in another.
+    acad_sess_list = AS.sorted_sessions(enrol_data.keys())
 
     # We return the enrolment data per academic session, sorted in reverse
     # chronological order of academic sessions (2025-II, 2025-I, 2024-II ...).

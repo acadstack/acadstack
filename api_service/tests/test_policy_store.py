@@ -144,11 +144,26 @@ def test_effective_from_is_inclusive_and_effective_to_exclusive(
     policy.supersede(simple_group, "2021-II", _payload(limit=2))
 
     # The session immediately before a boundary still gets the old rules.
-    # Note 2021-T4 precedes 2021-I: trimesters sort before the semesters
-    # within their year (see acad_session.SUFFIXES).
-    assert policy.resolve(simple_group, "2021-T4").payload["limit"] == 0
+    # 2020-S is the last session of the previous academic year.
+    assert policy.resolve(simple_group, "2020-S").payload["limit"] == 0
     assert policy.resolve(simple_group, "2021-I").payload["limit"] == 1
     assert policy.resolve(simple_group, "2021-II").payload["limit"] == 2
+    # 2021-T4 starts in April, AFTER 2021-II starts in January, so it
+    # takes 2021-II's ruleset. Under the pre-0004 rank scheme T4 sorted
+    # before 2021-I and wrongly got the oldest ruleset instead.
+    assert policy.resolve(simple_group, "2021-T4").payload["limit"] == 2
+
+
+def test_concurrent_sessions_resolve_to_the_same_version(
+        policy, simple_group):
+    """A ruleset is in force for an instant, so two sessions that begin in
+    the same month get the same one however different their calendars."""
+    policy.supersede(simple_group, "2000-T1", _payload(limit=0))
+    policy.supersede(simple_group, "2021-I", _payload(limit=1))
+
+    assert policy.resolve(simple_group, "2021-T1").payload["limit"] == 1
+    assert policy.resolve(simple_group, "2021-I").version_id == \
+        policy.resolve(simple_group, "2021-T1").version_id
 
 
 def test_effective_range_is_derived_from_the_neighbouring_versions(

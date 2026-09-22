@@ -72,8 +72,33 @@ def test_close_session_is_idempotent(policy):
 def test_closed_sessions_are_reported_chronologically(policy):
     for sess in ("2021-I", "2020-S", "2021-T1"):
         policy.close_session(sess)
-    assert policy.closed_sessions() == ["2020-S", "2021-T1", "2021-I"]
-    assert policy.last_closed_session() == "2021-I"
+    # 2021-I and 2021-T1 both begin July 2021, so they tie on ordinal and
+    # the suffix breaks the tie -- ordering by session_ord alone would be
+    # whatever the DB happened to return.
+    assert policy.closed_sessions() == ["2020-S", "2021-I", "2021-T1"]
+    assert policy.last_closed_session() == "2021-T1"
+
+
+def test_the_seal_line_names_every_session_closed_on_it(policy):
+    """The seal is a point on the timeline, not one session: closing two
+    concurrent sessions seals the same instant, and the message says so."""
+    assert policy.seal_line() is None
+    policy.close_session("2021-I")
+    assert policy.seal_line() == "2021-I"
+    policy.close_session("2021-T1")
+    assert policy.seal_line() == "2021-I / 2021-T1"
+
+
+def test_closing_a_session_does_not_close_its_concurrent_twin(policy):
+    """is_session_closed is about THIS session, not its instant. Closing
+    the semester must not report the quarter as closed -- they are
+    different programmes' sessions and are closed separately."""
+    policy.close_session("2021-I")
+    assert policy.is_session_closed("2021-I") is True
+    assert policy.is_session_closed("2021-T1") is False
+    # Policy effective from that instant IS sealed, though, for both.
+    assert policy.is_sealed("2021-I") is True
+    assert policy.is_sealed("2021-T1") is True
 
 
 def test_a_closed_session_cannot_be_reopened_through_the_orm(policy):

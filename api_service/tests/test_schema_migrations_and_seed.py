@@ -169,10 +169,167 @@ def test_the_real_migrations_replay_cleanly(db):
     assert run_pending_migrations() == expected
 
     # And the immutability machinery still works afterwards.
+    # The ordinal comes from acad_session, not a literal: migration 0004
+    # renumbered the scale, and a hardcoded value here would only be
+    # testing that someone remembered to update this line.
+    import acad_session as AS
+    DB.db.execute_sql(
+        "INSERT INTO closedacademicsession (acad_session, session_ord, "
+        "closed_ts, is_deleted, txn_no, ins_ts, upd_ts) "
+        "VALUES ('2020-II', %s, now(), false, 1, now(), now())",
+        (AS.ordinal("2020-II"),))
+    with pytest.raises(Exception, match="append-only"):
+        with DB.db.atomic():
+            DB.db.execute_sql("DELETE FROM closedacademicsession")
+
+
+# ===================== 0004: renumbering existing ordinals =====================
+
+OLD_SCHEME_ORDINAL_FN = """
+CREATE OR REPLACE FUNCTION acadstack_session_ordinal(sess text)
+RETURNS integer LANGUAGE plpgsql IMMUTABLE STRICT AS $fn$
+BEGIN
+    IF sess !~ '^[0-9]{4}-(T[1-4]|II|I|S)$' THEN
+        RAISE EXCEPTION 'Malformed academic session %', sess
+            USING ERRCODE = '22023';
+    END IF;
+    RETURN substring(sess from 1 for 4)::integer * 10
+         + CASE substring(sess from 6)
+               WHEN 'T1' THEN 0 WHEN 'T2' THEN 1 WHEN 'T3' THEN 2
+               WHEN 'T4' THEN 3 WHEN 'I' THEN 4 WHEN 'II' THEN 5
+               WHEN 'S' THEN 6 END;
+END;
+$fn$;
+"""
+
+
+def _revert_to_pre_0004_state():
+    """Puts the schema back the way migration 0003 left it: the rank-based
+    ordinal function, and no CHECK constraints tying columns to it."""
+    from schema_migrations import _execute_script
+    _execute_script("""
+        ALTER TABLE policyversion
+            DROP CONSTRAINT IF EXISTS policyversion_ord_matches_session;
+        ALTER TABLE closedacademicsession
+            DROP CONSTRAINT IF EXISTS closedacadsession_ord_matches_session;
+    """ + OLD_SCHEME_ORDINAL_FN)
+
+
+def _apply_0004():
+    from schema_migrations import MIGRATIONS_DIR, _execute_script
+    path = MIGRATIONS_DIR / "0004_session_type_month_ordinals.sql"
+    _execute_script(path.read_text())
+
+
+def test_0004_renumbers_rows_written_under_the_old_rank_scheme(db):
+    """The renumbering is the whole point of 0004, and nothing else
+    exercises it: replaying the migrations on an already-current schema
+    finds nothing to change.
+
+    Simulates a real upgrade -- policy rows and a CLOSED session stored
+    with rank-based ordinals -- and checks 0004 moves them onto the month
+    scale. The closed row matters most: 0003's triggers exist to forbid
+    exactly the UPDATE that has to happen here.
+    """
+    import acad_session as AS
+
+    _revert_to_pre_0004_state()
+
+    # Policy versions first: 0003's insert guard rightly refuses to add a
+    # version effective from a session that is already closed, so an
+    # upgrade scenario has to be built in the order it really happened.
+    for sess, old_ord in (("2000-T1", 20000), ("2021-I", 20214),
+                          ("2021-II", 20215)):
+        DB.db.execute_sql(
+            "INSERT INTO policyversion (policy_group, effective_from_session, "
+            "effective_from_ord, payload, is_deleted, txn_no, ins_ts, upd_ts) "
+            "VALUES ('grading', %s, %s, '{}', false, 1, now(), now())",
+            (sess, old_ord))
     DB.db.execute_sql(
         "INSERT INTO closedacademicsession (acad_session, session_ord, "
         "closed_ts, is_deleted, txn_no, ins_ts, upd_ts) "
         "VALUES ('2020-II', 20205, now(), false, 1, now(), now())")
+
+    # Every policy row is now sealed (2020-II closed at rank ordinal 20205
+    # is at or after all three), so the triggers are genuinely in the way
+    # of the UPDATE the migration has to perform.
+    cur = DB.db.execute_sql(
+        "SELECT effective_from_ord FROM policyversion "
+        "WHERE effective_from_session = '2000-T1'")
+    assert cur.fetchone()[0] == 20000
+    with pytest.raises(Exception, match="closed"):
+        with DB.db.atomic():
+            DB.db.execute_sql("UPDATE policyversion SET effective_from_ord = 7")
+
+    _apply_0004()
+
+    cur = DB.db.execute_sql(
+        "SELECT effective_from_session, effective_from_ord FROM policyversion "
+        "ORDER BY effective_from_ord")
+    assert cur.fetchall() == [
+        ("2000-T1", AS.ordinal("2000-T1")),
+        ("2021-I", AS.ordinal("2021-I")),
+        ("2021-II", AS.ordinal("2021-II")),
+    ]
+
+    cur = DB.db.execute_sql(
+        "SELECT acad_session, session_ord FROM closedacademicsession")
+    assert cur.fetchall() == [("2020-II", AS.ordinal("2020-II"))]
+
+
+def test_0004_leaves_the_immutability_guards_armed_afterwards(db):
+    """The triggers are suspended mid-migration; a migration that forgot to
+    re-enable them would leave sealed history writable forever."""
+    _revert_to_pre_0004_state()
+    DB.db.execute_sql(
+        "INSERT INTO closedacademicsession (acad_session, session_ord, "
+        "closed_ts, is_deleted, txn_no, ins_ts, upd_ts) "
+        "VALUES ('2020-II', 20205, now(), false, 1, now(), now())")
+
+    _apply_0004()
+
+    # The append-only trigger is armed again.
     with pytest.raises(Exception, match="append-only"):
         with DB.db.atomic():
             DB.db.execute_sql("DELETE FROM closedacademicsession")
+
+    # And both CHECK constraints exist again. Asserted against the catalog
+    # rather than by provoking a violation, because on these two tables a
+    # trigger would fire first and mask which guard actually caught it.
+    cur = DB.db.execute_sql(
+        "SELECT conname FROM pg_constraint WHERE conname IN "
+        "('policyversion_ord_matches_session', "
+        " 'closedacadsession_ord_matches_session') ORDER BY conname")
+    assert [r[0] for r in cur.fetchall()] == [
+        "closedacadsession_ord_matches_session",
+        "policyversion_ord_matches_session",
+    ]
+
+    # The constraint really does police the column: a fresh row whose
+    # ordinal disagrees with its session string is rejected. The bogus
+    # ordinal has to sit ABOVE the seal line, or the insert guard fires
+    # first and we would be asserting the wrong guard caught it.
+    with pytest.raises(Exception, match="check constraint"):
+        with DB.db.atomic():
+            DB.db.execute_sql(
+                "INSERT INTO policyversion (policy_group, "
+                "effective_from_session, effective_from_ord, payload, "
+                "is_deleted, txn_no, ins_ts, upd_ts) VALUES "
+                "('grading', '2030-I', 99999, '{}', false, 1, now(), now())")
+
+
+def test_0004_refuses_to_renumber_when_two_versions_would_collide(db):
+    """Concurrent sessions share an instant on the new scale, so two
+    versions of one group at 2021-I and 2021-T1 cannot both survive. There
+    is no defensible automatic answer, so the migration stops."""
+    _revert_to_pre_0004_state()
+    for sess, old_ord in (("2021-I", 20214), ("2021-T1", 20210)):
+        DB.db.execute_sql(
+            "INSERT INTO policyversion (policy_group, effective_from_session, "
+            "effective_from_ord, payload, is_deleted, txn_no, ins_ts, upd_ts) "
+            "VALUES ('grading', %s, %s, '{}', false, 1, now(), now())",
+            (sess, old_ord))
+
+    with pytest.raises(Exception, match="run concurrently"):
+        with DB.db.atomic():
+            _apply_0004()
