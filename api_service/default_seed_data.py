@@ -28,6 +28,8 @@ from typing import Type
 import peewee as ORM
 
 import models as M
+import permissions as PERM
+import settings_store as ST
 import vocab_defaults as VD
 
 # List of (Model, [row_dict, ...]) pairs. Populated by later phases as
@@ -36,6 +38,14 @@ SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = [
     (M.SystemSetting, [
         dict(group="vocab", name=name, is_json=True, value_json=items)
         for name, items in VD.ALL.items()
+    ] + [
+        # One row per named permission (permissions.py), each defaulted to
+        # the role list that reproduces today's pre-Phase-8 behaviour at
+        # the call site(s) it replaces. INSERT ... ON CONFLICT DO NOTHING
+        # like every other seed row, so an institution that has since
+        # edited a permission's role list through the admin GUI keeps it.
+        dict(group=PERM.GROUP, name=name, is_json=True, value_json=spec.default)
+        for name, spec in ST.declared_groups()[PERM.GROUP].specs.items()
     ]),
 ]
 

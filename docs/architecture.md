@@ -124,22 +124,36 @@ rules the package keeps to (and `tests/test_domain_boundaries.py` enforces them)
 extension-point contract.
 
 ## Handling role based access control (RBAC)
-Roles are central to the entire functionality of the AcadStack application.
-RBAC is implemented via the decorator `rbac()` defined in `common.py`.
-Example usage of the decorator is:
+Roles are central to the entire functionality of the AcadStack application, but
+authority is granted through **named permissions**, not raw role lists spelled out
+at each call site. `permissions.py` declares every permission (e.g. `course.save`,
+`grades.export`, `enrolment.override`) and its current role list; the mapping is
+DB-backed (the `"permission"` `settings_store` group, so it is admin-editable and
+cached/versioned the same way every other setting is) and seeded from
+`permissions.py`'s declared defaults by `default_seed_data.py`. Adding, renaming or
+regranting a role means editing that one mapping, not auditing every decorator and
+inline check in the codebase (Phase 8; see `docs/refactor-plan.md`).
+
+RBAC at the HTTP boundary is implemented via the decorator `rbac()` defined in
+`common.py`. Example usage of the decorator is:
 ```python
-@rbac(roles=["ACA", "FAC", "DEA", "HOD", "RES"])
+@rbac(permissions=["course.save"])
 async def course_save():
     ...
 ```
-The above usage states that the function `course_save` can be invoked
-only when the logged in user has any of the roles indicated in the
-`roles` attribute of the decorator which in the above example is
-`"ACA", "FAC", "DEA", "HOD", "RES"`.
+The above usage states that the function `course_save` can be invoked only when the
+logged in user's role holds at least one of the permissions named in the
+`permissions` attribute of the decorator -- in the above example, `"course.save"`,
+which `permissions.py` currently grants to `ACA, FAC, DEA, HOD, RES`. A bare `@rbac`
+(no `permissions=`) only requires the user to be logged in, same as before.
 
-Checking of roles can also be done deeper inside any API functions by invoking
-`is_user_in_role()` function of `api_common.py` which also provides several
-other functions for common tasks.
+Finer-grained, resource-scoped checks (deeper inside a handler, or in the domain
+layer) use `apiVC.has_permission(name)` (session-only, cheap) or
+`Actor.can(name)` (`domain/context.py`, for domain functions that receive an
+explicit `Actor`) rather than the HTTP decorator. Pure role-identity checks that are
+not authorization decisions -- e.g. "this actor happens to be a student, so scope
+the query to their own records" -- are unaffected and still use
+`is_user_in_role()`/`Actor.has_role()`.
 
 | Role Code    | Detail |
 | -------- | ------- |
@@ -150,30 +164,39 @@ other functions for common tasks.
 | STU | Role assigned to students. |
 | RES | Role assigned to research section admin staff. |
 | SUP | Superuser role |
+| GUE | Guest role |
+| PLA | Placement Cell role |
+| ADV | Advisor role |
 
-You may add, remove or edir these roles as required. When removing or editing
-an existing role please ensure that you update all the frontend and backend
-references to the role. This includes any references in SQL queries as well.
+You may add, remove or edit these roles as required (see `vocab_defaults.ROLES`).
+When removing or editing an existing role, update every permission in
+`permissions.py` that grants it. `system.manage_permissions` (seeded to `SUP`) gates
+editing the mapping itself, and `permissions.save_permission_mapping()` refuses a
+save that would remove the acting admin's own role from it, so an admin can never
+lock themselves out.
 
-### Using roles in the frontend
-The role codes are also used for controlling the visibility/state of UI
-components. For example, the `api_service/nav.json` defines the navigation
-structure for the Vue based frontend app. In the navigation structure we
-use role codes to decide whether to include a navigation item for the current
-logged in user or not. An example entry is shown below:
+### Using permissions in the frontend
+Permissions also control the visibility/state of UI components. `api_service/nav.json`
+defines the navigation structure for the Vue based frontend app; each entry names one
+permission, and `api_common.init_navbar_items()` includes the item only when the
+logged-in user's role holds it. An example entry is shown below:
 ```json
 {
     "label": "Offer a Course For Enrolment",
     "href": "#/co.detail",
-    "roles": "FAC,ACA",
+    "permission": "nav.offer_course",
     "menu": "Courses"
 }
 ```
-This entry implies that the navigation menu named "Courses" will have an item
-named "Offer a Course For Enrolment" only when the logged in user has a role
-`FAC` or `ACA`.
-Functions are provided in `webapp/src/main.js` for checking current user's
-roles from deeper inside the Vue/JavaScript code.
+This entry implies that the navigation menu named "Courses" will have an item named
+"Offer a Course For Enrolment" only when the logged in user's role holds the
+`nav.offer_course` permission (currently `FAC, ACA`).
+
+The backend sends the logged-in user's permission set (`permissions.py`'s
+`permissions_for_role()`) alongside `nav` in the login/`current_user` response, and
+`webapp/src/main.js` exposes it to components via `hasPermission(name)`. The older
+role-identity computed properties (`isStudent`, `isFaculty`, ...) are unchanged and
+remain the right tool for expressing identity rather than authorization.
 
 ## Data access layer (DAL)
 The DAL code makes use of the [PeeWee](https://docs.peewee-orm.com/en/latest/) ORM.
@@ -268,12 +291,15 @@ runtime config, which is a separate and harder problem):
 
 (`student_cgpa`'s parameterized `NOT IN (%s, %s, %s, %s, %s, %s)` was also checked — it
 has no caller anywhere in the codebase, so it carries no live duplication.) Also
-unchanged: role/status/DC-role literals inside `webapp/src/main.js` (role-check computed
-properties), `webapp/src/components/UserDetails.vue`, `GradesUpload.vue` (a duplicate
-grade list used for client-side validation) and `DcSearch.vue` — these read session
-values against hardcoded string literals rather than the `SD` vocab data, so they still
-work today but would need a matching manual edit if a code set changes. Fixing those
-belongs with the move to permission-based RBAC, not with the vocabulary work.
+unchanged: status/DC-role literals inside `webapp/src/main.js`'s role-identity computed
+properties (`isStudent`, `isFaculty`, ... -- these express who the user *is*, which
+Phase 8 deliberately left alone; see the RBAC section above for the permission-backed
+`hasPermission()` it added alongside them), `webapp/src/components/UserDetails.vue`,
+`GradesUpload.vue` (a duplicate grade list used for client-side validation) and
+`DcSearch.vue` — these read session values against hardcoded string literals rather
+than the `SD` vocab data, so they still work today but would need a matching manual
+edit if a code set changes. Migrating these three components' literals onto
+`hasPermission()` remains a follow-up, not done as part of Phase 8.
 
 
 ## Versioned academic policy (effective-dated)

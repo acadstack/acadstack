@@ -177,9 +177,15 @@ class Spec:
             raise ValueError(
                 f"Spec '{self.name}': unsupported type {self.type!r}. "
                 f"Supported: {[t.__name__ for t in SUPPORTED_TYPES]}")
-        if "." in self.name:
+        # split_key() only ever partitions on the FIRST '.' (the group is
+        # always supplied separately, never re-derived from `name`), so an
+        # interior dot in `name` is unambiguous -- only a leading/trailing/
+        # doubled dot would produce an empty segment. Permission names
+        # (the "permission" group) are hierarchical, e.g. "course.save".
+        if self.name.startswith(".") or self.name.endswith(".") or ".." in self.name:
             raise ValueError(
-                f"Spec '{self.name}': setting names may not contain '.'")
+                f"Spec '{self.name}': setting names may not start/end with "
+                f"'.' or contain '..'")
 
     @property
     def is_json(self) -> bool:

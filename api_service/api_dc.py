@@ -127,7 +127,7 @@ def _get_face_enc_and_user_info(ap):
     return face_encs,user_info
 
 
-@C.rbac(roles=["ACA", "FAC"])
+@C.rbac(permissions=["dc.mark_attendance"])
 async def mark_attendance():
     try:
         form = await request.form
@@ -167,7 +167,7 @@ async def mark_attendance():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "FAC", "HOD", "DEA"])
+@C.rbac(permissions=["dc.view_instructor_academics"])
 async def get_instructor_academics(my_id):
     try:
         VAL.is_current_user_in_role_and_id("FAC", "user_id", my_id, 
@@ -246,7 +246,7 @@ async def attendance_find():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["FAC", "ACA", "DEA", "HOD"])
+@C.rbac(permissions=["dc.view_advisor_detail"])
 async def get_advisor_detail(my_id):
     try:
         res = DB.BatchAdvisors.select().where(
@@ -304,7 +304,7 @@ async def get_student_attendance_details(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles="ACA,DEA")
+@C.rbac(permissions=["course.manage_slot_timings"])
 async def load_course_slot_timings():
     try:
         cst = DB.CourseSlotTiming.select().where(
@@ -333,7 +333,7 @@ async def get_open_events():
         return apiVC.error_json("Failed to fetch open events.")
 
 
-@C.rbac(roles=["PLA"])
+@C.rbac(permissions=["student.export_list"])
 async def download_students_list(degree, year_of_entry, dept_name,acad_session):
     try:
         if apiVC.is_user_in_role("STU"):
@@ -384,7 +384,7 @@ def schedule_event_alerts(config=None):
     finally:
         DB.db.close()
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["reports.generate"])
 async def download_dept_wise_avg(form_type, acad_session):
     try:
         if form_type == "-":
@@ -404,7 +404,7 @@ async def download_dept_wise_avg(form_type, acad_session):
         logging.exception(msg)
         return apiVC.error_json(msg)
 
-@C.rbac(roles=["ACA", "DEA", "HOD"])
+@C.rbac(permissions=["dc.download_degree_wise_students"])
 async def download_degree_wise_students(course_code, acad_session):
     try:
         if course_code == "-":
@@ -455,20 +455,24 @@ def _save_dcm(dcm, dc_id):
         
 
 
-def _raise_on_invalid_dc_change(sup_id, stu_id, old_status):
+def _raise_on_invalid_dc_change(sup_id, stu_id, old_status, actor=None):
+    actor = apiVC.actor_or_current(actor)
 
     #  Editable DC status for roles
     editable = {"HOD": "SUB,RTH", "FAC": "DRA,RTS"}
-    my_role = apiVC.logged_in_user().role
 
-    if (old_status and not apiVC.is_user_in_role("ACA,DEA")) \
-        and (old_status not in editable.get(my_role)):
+    # editable.get(actor.role, "") -- not editable.get(actor.role): any
+    # role other than HOD/FAC (e.g. RES, PLA) has no entry in the map, so
+    # this used to be `old_status not in None`, a TypeError, instead of
+    # the intended "insufficient privileges" error.
+    if (old_status and not actor.can("dc.override_status")) \
+        and (old_status not in editable.get(actor.role, "")):
         raise C.AcadStackException("Insufficient privileges to change  "
                               "Please contact academic section.")
 
     if not (sup_id and stu_id):
         raise C.AcadStackException("Please select student AND supervisor!")
-    
+
     sup = DB.User.get_by_id(sup_id)
     stu = DB.User.get_by_id(stu_id)
 
@@ -477,11 +481,11 @@ def _raise_on_invalid_dc_change(sup_id, stu_id, old_status):
     stu_per = stu.person
     if sup.person.dept_name != stu_per.dept_name:
         raise C.AcadStackException("Supervisor and student must be from same department!")
-    
-    if apiVC.is_user_in_role("FAC") and sup_id != apiVC.logged_in_user().id:
+
+    if actor.has_role("FAC") and sup_id != actor.user_id:
         raise C.AcadStackException("You must be the supervisor/HoD/Dean to make changes to ")
-    
-    if apiVC.is_user_in_role("HOD") and apiVC.logged_in_user().person.dept_name != stu_per.dept_name:
+
+    if actor.has_role("HOD") and actor.dept_name != stu_per.dept_name:
         raise C.AcadStackException("Only HOD of student's own dept. can make changes!")
     
 
@@ -499,7 +503,7 @@ def _raise_on_invalid_dc_dates(dc_id, stu_id, from_dt, to_dt):
         raise C.AcadStackException("DC dates overlap with an existing DC of the same student!")
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA", "HOD"])
+@C.rbac(permissions=["dc.save"])
 async def dc_save():
     try:
         fd = await request.get_json(force=True)
@@ -521,7 +525,8 @@ async def dc_save():
                                  "the DC chairperson is required!")
         
         sup_id = sups[0].get("user_id")
-        _raise_on_invalid_dc_change(sup_id, stu_id, old_dc_status)
+        _raise_on_invalid_dc_change(sup_id, stu_id, old_dc_status,
+                                     actor=apiVC.current_actor())
 
         from_dt = fd.get("effective_from")
         to_dt = fd.get("effective_to")
@@ -678,7 +683,7 @@ async def dc_search():
 @C.rbac
 async def get_dc_students():
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("dc.view_dc_students"):
             return apiVC.error_json("You are not allowed to access this data.")
         uid = apiVC.logged_in_user().id
         cursor = DB.db.execute_sql(C.sql_by_id("get_dc_students"),[uid])
@@ -695,7 +700,7 @@ async def get_dc_students():
 
 
 def __is_dc_member_or_admin(uid, student_id):
-    if apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+    if apiVC.has_permission("dc.manage_any"):
         return True
     q1 = DB.DcMember.select().join(DB.DcForStudent)
     q1 = q1.where(DB.DcMember.member==uid)
@@ -704,7 +709,7 @@ def __is_dc_member_or_admin(uid, student_id):
 
 
 def __raise_on_invalid_ppr_status(old_st, new_st):
-    if old_st == new_st or apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+    if old_st == new_st or apiVC.has_permission("dc.manage_any"):
         return
     tran = "{0}>{1}".format(old_st, new_st)
     allowed = ["DRA>SUB", "SUB>APP"]
@@ -724,7 +729,7 @@ def __ppr_exists(stu_id, acad_sess, dcm_id):
 @C.rbac
 async def save_progress_report():
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("dc.manage_progress_report"):
             msg = (f"Student {apiVC.current_login_id()} attempted to "
                     "submit progress report.")
             send_access_violation_alert(msg)

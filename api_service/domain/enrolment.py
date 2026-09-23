@@ -201,7 +201,7 @@ def default_next_enrol_status(actor: Actor, ownership, current_status,
     approving = action == "approve"
     is_instructor, is_advisor = ownership[0], ownership[1]
 
-    if actor.has_role(["ACA", "DEA"]):
+    if actor.can("enrolment.override"):
         return "ENRO" if approving else "ASREJ"
 
     if actor.has_role(["FAC", "HOD"]):
@@ -365,7 +365,7 @@ def drop_or_withdraw(actor: Actor, enrolment_id, status, policy=None):
     # Raises AcadStackException
     VAL.validate_enrolment_change(enrolment_id, status, actor=actor)
 
-    if actor.has_role("ACA,DEA"):
+    if actor.can("enrolment.override"):
         status = pol.academic_section_drop_status
 
     ce = DB.CourseEnrollment.get_by_id(enrolment_id)

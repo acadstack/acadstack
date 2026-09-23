@@ -62,15 +62,20 @@ def test_seed_defaults_empty_specs_is_a_noop(db):
 
 def test_seed_defaults_seeds_vocab_rows(db):
     # Phase 3 populates SEED_SPECS with one SystemSetting row per
-    # controlled vocabulary (see vocab_defaults.ALL); a fresh DB should
-    # get all of them on first run, and none again on a second run.
+    # controlled vocabulary (see vocab_defaults.ALL); Phase 8 adds one more
+    # per named permission (see permissions.py). A fresh DB should get all
+    # of them on first run, and none again on a second run.
+    import permissions as PERM
+    import settings_store as ST
     import vocab_defaults as VD
+
+    expected_rows = len(VD.ALL) + len(ST.declared_groups()[PERM.GROUP].specs)
 
     counts = run_seed_defaults()
     # Plus the one baseline grading ruleset, which makes the versioned
     # policy store the runtime source of truth instead of the in-code
     # fallback. See default_seed_data.seed_grading_policy.
-    assert counts == {"SystemSetting": len(VD.ALL), "PolicyVersion": 1}
+    assert counts == {"SystemSetting": expected_rows, "PolicyVersion": 1}
     assert run_seed_defaults() == {"SystemSetting": 0}
 
     row = DB.SystemSetting.get(DB.SystemSetting.group == "vocab",

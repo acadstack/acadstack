@@ -32,6 +32,14 @@ app.mixin({
         setCurrentUser(user) {
             this.$root.user = user;
         },
+        hasPermission(name) {
+            // The backend sends the logged-in user's permission set
+            // (permissions.py's permissions_for_role()) alongside nav in
+            // the login/current_user response -- see api_auth.login()
+            // and api_common.get_current_user_and_nav().
+            const perms = this.$root.user && this.$root.user.permissions;
+            return !!perms && perms.includes(name);
+        },
         labelFor(items, key) {
             if (!items || !key) return "--";
             let obj = items.find(elm => elm.id == key);

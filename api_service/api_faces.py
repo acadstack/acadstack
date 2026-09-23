@@ -74,7 +74,7 @@ def __encode_and_save_face(photo_buff, user_id):
         apiVC.save_entity(kf)
 
 
-@C.rbac(roles=["ACA"])
+@C.rbac(permissions=["user.bulk_upload_faces"])
 async def kface_bulk_add():
     try:
         zipf = (await request.files)['zip_file']

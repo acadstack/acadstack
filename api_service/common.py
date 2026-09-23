@@ -113,18 +113,21 @@ def add_user_to_session():
         return dict()
 
 
-def rbac(_func:Callable=None, *, roles=None):
-    """Decorator that can be applied to a function to perform the role 
-    based access checks for the current user if available in the session.
-    If no authenticated user available in the session, the decorated 
+def rbac(_func:Callable=None, *, permissions=None):
+    """Decorator that can be applied to a function to perform the
+    permission based access checks for the current user if available in
+    the session.
+    If no authenticated user available in the session, the decorated
     function wll not be called and an error JSON message will be returned.
-    If the logged in user has at least one of the roles specified in the
-    list, then the decorated function is called. If the roles list is not
-    supplied then only the presence of the authenticated user in the session
-    is checked before allowing the decorated function invocation.
+    If the logged in user's role holds at least one of the permissions
+    named in the list, then the decorated function is called. If the
+    permissions list is not supplied then only the presence of the
+    authenticated user in the session is checked before allowing the
+    decorated function invocation.
     Args:
         _func (Callable, optional): The function being decorated. Defaults to None.
-        roles (list[str], optional): Roles list allowed. Defaults to None.
+        permissions (list[str], optional): Named permissions, any one of
+            which allows the call. See permissions.py. Defaults to None.
     """
     def decor_auth(func):
         @wraps(func)
@@ -135,10 +138,13 @@ def rbac(_func:Callable=None, *, roles=None):
                 return jsonify({"status": "ERROR", "body": msg})
 
             user_role = session["user"]["role"]
-            if roles and (user_role not in roles):
-                msg = "You do not have required permissions to access."
-                logging.warning(msg)
-                return jsonify({"status": "ERROR", "body": msg})
+            if permissions:
+                import permissions as PERM
+                if not any(PERM.role_has_permission(user_role, p)
+                           for p in permissions):
+                    msg = "You do not have required permissions to access."
+                    logging.warning(msg)
+                    return jsonify({"status": "ERROR", "body": msg})
             return await func(*args, **kwargs)
 
         return wrapper_auth

@@ -17,6 +17,7 @@ import models as DB
 import common as C
 import api_common as apiVC
 import face_api_proxy as fapi
+import permissions as PERM
 import settings_store as ST
 
 from datetime import datetime as DT
@@ -193,7 +194,9 @@ async def login():
             apiVC.session['user'] = user_obj
             nav = apiVC.init_navbar_items(u.role, u.person.degree)
             APP.active_users[C.this_user_name_login_id()] = DT.now()
-            return apiVC.ok_json({"user": user_obj, "nav": nav})
+            return apiVC.ok_json({"user": {**user_obj,
+                                            "permissions": PERM.permissions_for_role(u.role)},
+                                   "nav": nav})
     except Exception as ex:
         msg = "Error when authenticating."
         logging.exception(msg)
@@ -203,7 +206,7 @@ async def login():
 @C.rbac
 async def user_find():
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("user.search"):
             return apiVC.error_json("DB.User search not allowed!")
 
         fd = await request.get_json(force=True)
@@ -251,7 +254,7 @@ async def user_find():
 async def user_view(my_id):
     try:
         cu = apiVC.logged_in_user()
-        if (apiVC.is_user_in_role(["STU"])) and my_id != cu.id:
+        if (not apiVC.has_permission("user.view_others")) and my_id != cu.id:
             return apiVC.error_json("You cannot access other users' information!")
 
         res = DB.User.select().join(DB.Person, DB.ORM.JOIN.LEFT_OUTER).where(DB.User.id == my_id)
@@ -282,7 +285,7 @@ async def user_save():
         logging.info("Saving user details: {}".format(fd))
         cid = int(fd.get("id") or 0)
         cu = apiVC.logged_in_user()
-        if (not apiVC.is_user_in_role(["ACA", "SUP"])) and cid != cu.id:
+        if (not apiVC.has_permission("user.edit_any")) and cid != cu.id:
             return apiVC.error_json("Insufficient privileges to perform the operation!")
         user_mod = DB.User()
         with DB.db.atomic() as txn:
@@ -372,10 +375,10 @@ def __format_row(row):
     return "{0}, {1}, {2}".format(row["org_id"], row["login_id"], row["email"])
 
 
-@C.rbac(roles=["ACA", "SUP"])
+@C.rbac(permissions=["user.bulk_create"])
 async def bulk_add_users():
     try:
-        if not apiVC.is_user_in_role(["ACA", "SUP"]):
+        if not apiVC.has_permission("user.bulk_create"):
             return apiVC.error_json("Operation not allowed due to insufficient privileges!")
         users_file = (await request.files)['users_file']
         if users_file.filename == '':
@@ -443,7 +446,7 @@ async def bulk_add_users():
 @C.rbac
 async def upload_student_doc():
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("user.upload_document"):
             return apiVC.error_json("Students not allowed to upload here!")
         form = await request.form
         stu_id = form['student_id']
@@ -471,7 +474,7 @@ async def upload_student_doc():
 
 
 def __is_doc_access_allowed(stu_id):
-    return apiVC.is_user_in_role(["ACA", "DEA"]) or \
+    return apiVC.has_permission("user.view_document") or \
            int(stu_id) == apiVC.logged_in_user().id
 
 
@@ -631,7 +634,7 @@ def oauth_verify(token):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["SUP"])
+@C.rbac(permissions=["user.delete"])
 async def user_delete():
     fd = await request.get_json(force=True)
     user_ids = fd.get("ids")
@@ -649,7 +652,7 @@ async def save_registration_fees_txn_info():
     try:
         form = await request.form
         stu_id = int(form['student_id'])
-        if apiVC.is_user_in_role("STU") and stu_id != apiVC.logged_in_user().id:
+        if (not apiVC.has_permission("fees.manage_others_txn")) and stu_id != apiVC.logged_in_user().id:
             logging.error(
                 "DB.User {0} attempted to submit fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
             return apiVC.error_json("You are not allowed to submit data for others! This incident has been reported.")
@@ -704,7 +707,7 @@ async def save_registration_fees_txn_info():
 @C.rbac
 async def get_student_reg_fees_data(stu_id):
     try:
-        if apiVC.is_user_in_role("STU") and stu_id != apiVC.logged_in_user().id:
+        if (not apiVC.has_permission("fees.manage_others_txn")) and stu_id != apiVC.logged_in_user().id:
             logging.error(
                 "DB.User {0} attempted to fetch fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
             return apiVC.error_json("You are not allowed to access others' data! This incident has been reported.")
@@ -730,7 +733,7 @@ async def delete_student_reg_fees_data(fee_id):
         if not ftxn:
             return apiVC.error_json("Invalid transaction details!")
 
-        if apiVC.is_user_in_role("STU") and ftxn.student.id != apiVC.logged_in_user().id:
+        if (not apiVC.has_permission("fees.manage_others_txn")) and ftxn.student.id != apiVC.logged_in_user().id:
             logging.error("DB.User {0} attempted to delete fees transaction data for user {1}."
                           .format(apiVC.current_login_id(), ftxn.student.login_id))
             return apiVC.error_json("You are not allowed to delete others' data! "+
@@ -757,7 +760,7 @@ async def delete_student_reg_fees_data(fee_id):
 @C.rbac
 async def find_students():
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("user.search"):
             return apiVC.error_json("Operation not allowed!")
 
         fd = await request.get_json(force=True)
@@ -851,7 +854,7 @@ async def find_advisor():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["user.assign_advisor"])
 async def assign_advisor():
     try:
         fd = await request.get_json(force=True)

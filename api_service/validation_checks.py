@@ -50,8 +50,9 @@ def is_hod_for_course_offering(co_id, user_id):
     return res[0][0]
 
 
-def is_course_status_valid_for_current_user(status_old):
-    if status_old in "APP,RET" and not apiVC.is_user_in_role("DEA,ACA,RES"):
+def is_course_status_valid_for_current_user(status_old, actor=None):
+    actor = apiVC.actor_or_current(actor)
+    if status_old in ("APP", "RET") and not actor.can("course.edit_locked_status"):
         return False
     else:
         return True
@@ -73,7 +74,7 @@ def validate_coff_status(co, actor=None):
         co = DB.CourseOffering.get_by_id(co)
  
     if co.status in ["F", "C"] and \
-            not apiVC.actor_or_current(actor).has_role(["ACA", "DEA"]):
+            not apiVC.actor_or_current(actor).can("course_offering.edit_after_close"):
         raise AcadStackException("Cannot change data for a course that has ended/canceled!")
 
 
@@ -137,7 +138,7 @@ def validate_enrolment_change(enrl, status, actor=None):
     
     actor = apiVC.actor_or_current(actor)
     # Academic section and dean can make a change
-    if actor.has_role(["ACA", "DEA"]):
+    if actor.can("enrolment.override"):
         return True
 
     if isinstance(enrl, int):
@@ -195,7 +196,7 @@ def is_enrollment_owner_valid(coe, actor=None):
     elif actor.has_role("FAC") and validate_course_instructor(
             coe.course_offering, actor=actor):
         valid = True
-    elif actor.has_role(["DEA", "ACA"]):
+    elif actor.can("enrolment.override"):
         valid = True
     elif actor.has_role("HOD"):
         valid = is_hod_for_course_offering(coe.course_offering, actor.user_id)

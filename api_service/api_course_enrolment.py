@@ -74,7 +74,7 @@ async def drop_withdraw_course(my_id, status):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["FAC", "ACA", "DEA"])
+@rbac(permissions=["enrolment.view_instructor_courses"])
 async def get_instructor_courses_enrol():
     try:
         actor = apiVC.current_actor()
@@ -87,7 +87,7 @@ async def get_instructor_courses_enrol():
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ADV", "ACA", "DEA", "HOD"])
+@rbac(permissions=["enrolment.view_advisor_courses"])
 async def get_advisor_courses_enrol():
     try:
         results = ENR.pending_enrolments_for_approver(apiVC.current_actor())
@@ -116,7 +116,7 @@ async def get_passed_courses(user_id):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ACA", "DEA"])
+@rbac(permissions=["enrolment.bulk_enrol"])
 async def bulk_enrol_in_course(entry_no_pattern, co_id):
     try:
         if not apiVC.roll_number_valid(entry_no_pattern):
@@ -140,7 +140,7 @@ async def download_course_enrollments(co_id):
     return await _enrolments_csv_response(co_id, is_grades=False)
 
 
-@rbac(roles=["FAC", "ACA", "DEA"])
+@rbac(permissions=["enrolment.download_for_grades"])
 async def download_enrollments_for_grades(co_id):
     return await _enrolments_csv_response(co_id, is_grades=True)
 
@@ -154,7 +154,7 @@ async def _enrolments_csv_response(co_id, is_grades):
     that both handlers await removes the trap.
     """
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("enrolment.download_csv"):
             return apiVC.error_json("Students cannot download!")
         co = DB.CourseOffering.get_by_id(co_id)
         colnames, rows = ENR.enrolment_export_rows(
@@ -173,7 +173,7 @@ async def _enrolments_csv_response(co_id, is_grades):
 @rbac
 async def download_course_enrolments(dept_name, entry_year, acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("enrolment.download_csv"):
             return apiVC.error_json("Students cannot download!")
         if dept_name == "-":
             dept_name = ""
@@ -224,7 +224,7 @@ async def get_course_enrollments(my_id):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ACA", "STU"])
+@rbac(permissions=["enrolment.request"])
 async def enroll_in_courses():
     try:
         fd = await request.get_json(force=True)
@@ -255,7 +255,7 @@ async def enroll_in_courses():
         return apiVC.error_json("{0}".format(msg))
 
 
-@rbac(roles=["ACA", "DEA", "FAC", "HOD"])
+@rbac(permissions=["enrolment.change_status"])
 async def change_enroll_status():
     try:
         fd = await request.get_json(force=True)

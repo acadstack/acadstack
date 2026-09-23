@@ -120,7 +120,7 @@ def _is_course_approved(cour_dict):
         return False
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA", "HOD"])
+@C.rbac(permissions=["course_offering.save"])
 async def course_offering_save():
     try:
         fd = await request.get_json(force=True)
@@ -192,7 +192,7 @@ async def course_offering_save():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA"])
+@C.rbac(permissions=["grades.upload"])
 async def grades_upload():
     try:
         form = await request.form

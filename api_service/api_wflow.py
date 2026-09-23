@@ -37,7 +37,7 @@ async def wfnote_save():
         JSONified data result of this operation.
     """
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("workflow_notes.manage"):
             return apiVC.error_json("Students not allowed to add workflow notes!")
         fd = await request.get_json(force=True)
         logging.debug(f"Saving workflow note details: {fd}")
@@ -77,7 +77,7 @@ async def wfnote_find(entity_name, entity_key):
 @C.rbac
 async def wfnote_delete(my_id):
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("workflow_notes.manage"):
             return apiVC.error_json("Students not allowed to delete workflow notes!")
         note = M.WorkflowNote.get_or_none(int(my_id))
         if note and note.txn_login_id != apiVC.logged_in_user().login_id:
@@ -91,7 +91,7 @@ async def wfnote_delete(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["academic_calendar.manage_dates"])
 async def dates_save():
     try:
         fd = await request.get_json(force=True)

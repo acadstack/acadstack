@@ -35,7 +35,7 @@ async def course_view(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA", "HOD", "RES"])
+@C.rbac(permissions=["course.save"])
 async def course_save():
     try:
         fd = await request.get_json(force=True)
@@ -47,7 +47,7 @@ async def course_save():
         if crs_id > 0:
             # Edit case
             if fd["author"]["id"] != apiVC.logged_in_user().id and \
-                    not apiVC.is_user_in_role(["HOD", "ACA", "DEA", "RES"]):
+                    not apiVC.has_permission("course.edit_any"):
                 return apiVC.error_json("Cannot save course authored by another faculty!")
         else:
             # Assign the currently logged in user as the author
@@ -58,7 +58,8 @@ async def course_save():
         if crs_id:
             crs = DB.Course.get_by_id(crs_id)
             old_status = crs.status
-            if not is_course_status_valid_for_current_user(old_status):
+            if not is_course_status_valid_for_current_user(
+                    old_status, actor=apiVC.current_actor()):
                 return apiVC.error_json("This course is already in "
                     f"{DB.Course.get_status_label(old_status)} state. "
                     "Please contact the academic section to edit it.")
@@ -162,7 +163,7 @@ def __do_courses_exist(file_path):
     return [x.code for x in qry]
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["course.bulk_create"])
 async def bulk_add_courses():
     try:
         courses_file = (await request.files)['courses_file']
@@ -207,7 +208,7 @@ async def bulk_add_courses():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles="ACA,DEA")
+@C.rbac(permissions=["course.manage_slot_timings"])
 async def save_course_slot_timings():
     try:
         fd = await request.get_json(force=True)

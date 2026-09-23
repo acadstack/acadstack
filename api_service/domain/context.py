@@ -16,6 +16,8 @@ passed down. Jobs build one with :meth:`Actor.system`.
 from dataclasses import dataclass
 from typing import Optional, Sequence, Union
 
+import permissions as PERM
+
 # Role code used for actors that are not a logged-in human (scheduled
 # jobs, CLI scripts). Deliberately not a real role code from the roles
 # vocabulary, so has_role() never matches a privileged branch by
@@ -52,15 +54,19 @@ class Actor:
     def has_role(self, roles: Union[str, Sequence[str]]) -> bool:
         """Whether this actor holds one of ``roles``.
 
-        Deliberately uses the same ``in`` test as the long-standing
-        ``api_common.is_user_in_role()``, including its quirk: when
-        ``roles`` is a *string* such as ``"DEA,ACA,RES"`` this is a
-        substring match, not a membership test, so a role code that is a
-        substring of another would match. Call sites pass both forms
-        today, and Phase 5 is behaviour-preserving; the permission-based
-        rewrite (Phase 8) is where that quirk goes away.
+        ``roles`` may be a single role code, a list of codes, or a
+        comma-separated string such as ``"DEA,ACA,RES"`` -- the string
+        form is split into codes before the membership test, so a role
+        code that happens to be a substring of another never matches by
+        accident (Phase 8 fixed this; it used to be a substring test).
         """
-        return self.role in roles
+        codes = roles.split(",") if isinstance(roles, str) else roles
+        return self.role in codes
+
+    def can(self, permission: str) -> bool:
+        """Whether this actor's role holds the named permission, per the
+        DB-backed permission->role mapping (see ``permissions.py``)."""
+        return PERM.role_has_permission(self.role, permission)
 
     def describe(self) -> str:
         return f"{self.login_id} ({self.role})"
