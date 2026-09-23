@@ -44,7 +44,7 @@ def init_routes(bp: Blueprint):
                        view_func=download_consolidated_grade_sheet, methods=['GET'])
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@C.rbac(permissions=["grades.export"])
 async def download_grade_status(grades_st, acad_session):
     try:
         if grades_st == "GS":
@@ -65,7 +65,7 @@ async def download_grade_status(grades_st, acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@C.rbac(permissions=["grades.export"])
 async def download_consolidated_grade_sheet(entry_no,enrol_type):
         try:
             report_data = {}
@@ -221,7 +221,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     return report_data
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@C.rbac(permissions=["grades.export"])
 async def generate_semester_grade():
     try:
         fd = await request.get_json(force=True)
@@ -240,7 +240,7 @@ async def generate_semester_grade():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@C.rbac(permissions=["grades.export"])
 async def download_sem_grade(acad_session, entry_no, enrol_type):
     try:
         data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
@@ -318,7 +318,7 @@ def _bulk_download_sem_grade(form_data, job_key):
     return zip_file
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@C.rbac(permissions=["grades.export"])
 async def bulk_download_sem_grade():
     try:
         job_key = str(uuid.uuid4())
@@ -332,7 +332,7 @@ async def bulk_download_sem_grade():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@C.rbac(permissions=["grades.export"])
 async def get_bulk_gradesheets(job_key):
     try:
         zip_file = os.path.join(apiVC.get_upload_folder(), f"BULK_GS_PDF_{job_key}.zip")
@@ -344,7 +344,7 @@ async def get_bulk_gradesheets(job_key):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["DEA", "ACA"])
+@C.rbac(permissions=["grades.view_distribution"])
 async def download_grade_distribution(acad_session, degree):
     try:
         if degree == "-":
@@ -368,7 +368,7 @@ async def download_grade_distribution(acad_session, degree):
 @C.rbac
 async def download_cgpa_sgpa(acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("grades.download_reports"):
             return apiVC.error_json("Students cannot download!")
 
         if acad_session == "-":
@@ -385,7 +385,7 @@ async def download_cgpa_sgpa(acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@C.rbac(permissions=["grades.export"])
 async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no):
         try:
             report_data = {}
@@ -451,7 +451,7 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
 async def download_catwise_earned_credits(acad_session,degree,dept_name,course_type,
     for_year,min_credits,max_credits):
     try:
-        if apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("grades.download_reports"):
             return apiVC.error_json("Students cannot download!")
 
         if dept_name == "ALL" or dept_name == "-":

@@ -30,7 +30,7 @@ def init_routes(bp: Blueprint):
                        view_func=download_quewise_facfeedbk_score, methods=['GET'])
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["feedback.manage_form"])
 async def save_feedback_form():
     try:
         fd = await request.get_json(force=True)
@@ -161,7 +161,7 @@ def student_enrolments_for_fb(form_type):
 @C.rbac
 async def save_course_instructor_feedback():
     try:
-        if not apiVC.is_user_in_role("STU"):
+        if not apiVC.has_permission("feedback.submit"):
             msg = "Non-student user ({0}) attempted to submit course feedback.".format(apiVC.current_login_id())
             logging.error(msg)
             send_access_violation_alert(msg)
@@ -256,7 +256,7 @@ def _compute_fbq_score(pct_votes, fbs):
     return round(score, 2)
 
 
-@C.rbac(roles=["FAC", "ACA", "DEA"])
+@C.rbac(permissions=["feedback.view_instructor_feedback"])
 async def get_instructor_feedback(co_id, user_id, fb_type):
     try:
         is_current_user_in_role_and_id("FAC", "user_id", user_id, "Instructor attempted to access other's feedback.")
@@ -355,7 +355,7 @@ async def get_instructor_feedback(co_id, user_id, fb_type):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["feedback.view_reports"])
 async def download_feedback_stats(form_type, acad_session):
     try:
         if form_type == "-":
@@ -376,7 +376,7 @@ async def download_feedback_stats(form_type, acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["feedback.view_reports"])
 async def download_course_wise_faculty_score(form_type, acad_session):
     try:
         if form_type == "-":
@@ -397,7 +397,7 @@ async def download_course_wise_faculty_score(form_type, acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@C.rbac(permissions=["feedback.view_reports"])
 async def download_quewise_facfeedbk_score(form_type, acad_session):
     try:
         if form_type == "-":

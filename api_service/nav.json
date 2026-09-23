@@ -2,295 +2,295 @@
     {
         "label": "Find User",
         "href": "#/user.find",
-        "roles": "SUP,DEA,ACA,RES",
-        "menu": "Manage Users"
+        "menu": "Manage Users",
+        "permission": "nav.user_search"
     },
     {
         "label": "New User",
         "href": "#/user.detail",
-        "roles": "SUP,DEA,ACA",
-        "menu": "Manage Users"
+        "menu": "Manage Users",
+        "permission": "nav.user_create"
     },
     {
         "label": "Upload User Faces",
         "href": "#/kf.zip.upload",
-        "roles": "ACA,DEA",
-        "menu": "Manage Users"
+        "menu": "Manage Users",
+        "permission": "nav.upload_user_faces"
     },
     {
         "label": "Add Users",
         "href": "#/add.users",
-        "roles": "ACA,DEA,SUP",
-        "menu": "Manage Users"
+        "menu": "Manage Users",
+        "permission": "nav.add_users"
     },
     {
         "label": "Manage Batch Advisors",
         "href": "#/mba",
-        "roles": "ACA,DEA,SUP",
-        "menu": "Manage Users"
+        "menu": "Manage Users",
+        "permission": "nav.manage_batch_advisors"
     },
     {
         "label": "View Attendance",
         "href": "#/att.find",
-        "roles": "-STU,-PLA",
-        "menu": "Attendance"
+        "menu": "Attendance",
+        "permission": "nav.view_attendance"
     },
     {
         "label": "Mark Attendance",
         "href": "#/att.mark",
-        "roles": "ACA,FAC",
-        "menu": "Attendance"
+        "menu": "Attendance",
+        "permission": "dc.mark_attendance"
     },
     {
         "label": "Courses Offered For Enrolment",
         "href": "#/co.find",
-        "roles": "-PLA,*",
-        "menu": "Courses"
+        "menu": "Courses",
+        "permission": "nav.general_access"
     },
     {
         "label": "Offer a Course For Enrolment",
         "href": "#/co.detail",
-        "roles": "FAC,ACA",
-        "menu": "Courses"
+        "menu": "Courses",
+        "permission": "nav.offer_course"
     },
     {
         "label": "Courses Available For Offering",
         "href": "#/cour.find",
-        "roles": "-PLA,*",
-        "menu": "Courses"
+        "menu": "Courses",
+        "permission": "nav.general_access"
     },
     {
         "label": "Create New Course",
         "href": "#/cour.detail",
-        "roles": "ACA,FAC",
-        "menu": "Courses"
+        "menu": "Courses",
+        "permission": "nav.create_course"
     },
     {
         "label": "Bulk Create Courses",
         "href": "#/courses.add",
-        "roles": "ACA",
-        "menu": "Courses"
+        "menu": "Courses",
+        "permission": "nav.bulk_create_courses"
     },
     {
         "label": "Bulk Enrol in Course",
         "href": "#/co.bulkenrol",
-        "roles": "ACA",
-        "menu": "Courses"
+        "menu": "Courses",
+        "permission": "nav.bulk_enrol"
     },
     {
         "label": "Upload Grades",
         "href": "#/grades.upload",
-        "roles": "FAC,ACA",
-        "menu": "Courses"
+        "menu": "Courses",
+        "permission": "nav.upload_grades"
     },
     {
         "label": "Academic Events",
         "href": "#/add.dates",
-        "roles": "*",
-        "menu": "Academic Info"
+        "menu": "Academic Info",
+        "permission": "nav.view_academic_events"
     },
     {
         "label": "Course Slot Timings",
         "href": "#/edit.slots",
-        "roles": "ACA,DEA",
-        "menu": "Academic Info"
+        "menu": "Academic Info",
+        "permission": "course.manage_slot_timings"
     },
     {
         "label": "Generate Students Credits Data",
         "href": "#/gcd",
-        "roles": "ACA,SUP",
-        "menu": "Academic Info"
+        "menu": "Academic Info",
+        "permission": "nav.generate_credits_data"
     },
     {
         "label": "Courses Offered",
         "href": "#/my.coff",
-        "roles": "FAC",
-        "menu": "My Work"
+        "menu": "My Work",
+        "permission": "nav.my_work"
     },
     {
         "label": "Courses Created",
         "href": "#/my.cour",
-        "roles": "FAC",
-        "menu": "My Work"
+        "menu": "My Work",
+        "permission": "nav.my_work"
     },
     {
         "label": "Action Pending",
         "href": "#/my.actions",
-        "roles": "FAC",
-        "menu": "My Work"
+        "menu": "My Work",
+        "permission": "nav.my_work"
     },
     {
         "label": "Create Feedback",
         "href": "#/create.form",
-        "roles": "ACA",
-        "menu": "Feedback"
+        "menu": "Feedback",
+        "permission": "nav.create_feedback"
     },
     {
         "label": "Feedback Stats",
         "href": "#/feedback.stats",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Feedback"
+        "menu": "Feedback",
+        "permission": "nav.reports_manage"
     },
     {
         "label": "Check Total Credits",
         "href": "#/credits.earned",
-        "roles": "ACA,SUP,DEA,RES,FAC",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "nav.reports_broad"
     },
     {
         "label": "Check Category-wise Credits",
         "href": "#/credits.check",
-        "roles": "ACA,SUP,DEA,RES,FAC",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "nav.reports_broad"
     },
     {
         "label": "Generate Course Enrolments",
         "href": "#/course.enrolments",
-        "roles": "ACA,SUP,DEA,RES,FAC",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "nav.reports_broad"
     },
     {
         "label": "Generate Semester Grade",
         "href": "#/semester.grade",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "grades.export"
     },
     {
         "label": "Fees Payment Report",
         "href": "#/fees.report",
-        "roles": "ACA,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "reports.generate"
     },
     {
         "label": "Slotwise Courses",
         "href": "#/swc",
-        "roles": "-PLA,*",
-        "menu": ""
+        "menu": "",
+        "permission": "nav.general_access"
     },
     {
         "label": "Find Students",
         "href": "#/std.find",
-        "roles": "-STU,*",
-        "menu": ""
+        "menu": "",
+        "permission": "user.search"
     },
     {
         "label": "Student Record",
         "href": "#/std.detail",
-        "roles": "STU",
-        "menu": ""
+        "menu": "",
+        "permission": "nav.student_self_service"
     },
     {
         "label": "Fees Payment Record",
         "href": "#/std.fees",
-        "roles": "STU",
-        "menu": "Fees"
+        "menu": "Fees",
+        "permission": "nav.student_self_service"
     },
     {
         "label": "Course Feedback",
         "href": "#/co.feedback",
-        "roles": "STU",
-        "menu": ""
+        "menu": "",
+        "permission": "nav.student_self_service"
     },
     {
         "label": "Pending Tasks",
         "href": "#/pending.tasks",
-        "roles": "HOD,DEA",
-        "menu": ""
+        "menu": "",
+        "permission": "nav.pending_tasks"
     },
     {
         "label": "Course Wise Grade Distribution",
         "href": "#/grade.dist",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "nav.reports_manage"
     },
     {
         "label": "Generation of CGPA and SGPA report",
         "href": "#/cgpa.sgpa",
-        "roles": "ACA,SUP,DEA,GUE",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "nav.cgpa_sgpa"
     },
     {
         "label": "Dept Wise Feedback Average",
         "href": "#/dept.wiseavg",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Feedback"
+        "menu": "Feedback",
+        "permission": "nav.reports_manage"
     },
     {
         "label": "Course Wise Faculty Feedback Score",
         "href": "#/coursewise.facultyscore",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Feedback"
+        "menu": "Feedback",
+        "permission": "nav.reports_manage"
     },
     {
         "label": "Question Wise Faculty Feedback Score",
         "href": "#/queswise.facscore",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Feedback"
+        "menu": "Feedback",
+        "permission": "nav.reports_manage"
     },
     {
         "label": "Student Strength Degree/Course wise",
         "href": "#/stu.strength",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "nav.reports_manage"
     },
     {
         "label": "Doctoral Committe Formulation",
         "href": "#/dc.form",
-        "roles": "FAC,ACA,HOD,DEA",
-        "menu": "PhD"
+        "menu": "PhD",
+        "permission": "dc.save"
     },
     {
         "label": "Search Doctoral Committe",
         "href": "#/dc.find",
-        "roles": "-PLA,*",
-        "menu": "PhD"
+        "menu": "PhD",
+        "permission": "nav.general_access"
     },
     {
         "label": "Submit Progress Report",
         "href": "#/ppr",
-        "roles": "FAC,ACA,HOD,DEA",
-        "menu": "PhD"
+        "menu": "PhD",
+        "permission": "nav.submit_progress_report"
     },
     {
         "label": "My Progress Reports",
         "href": "#/myppr",
-        "roles": "-PLA,*",
-        "menu": "PhD"
+        "menu": "PhD",
+        "permission": "nav.general_access"
     },
     {
         "label": "Check the Submitted Grades",
         "href": "#/grades.status",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "grades.export"
     },
     {
         "label": "Bulk Download Grade Sheet",
         "href": "#/gs.bulk",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "grades.export"
     },
     {
         "label": "Generate Degree Certifcate",
         "href": "#/degree.cert",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "grades.export"
     },
     {
         "label": "Generate Consolidated Grade Sheet",
         "href": "#/consolid.cert",
-        "roles": "ACA,SUP,DEA",
-        "menu": "Reports"
+        "menu": "Reports",
+        "permission": "grades.export"
     },
     {
         "label": "Pay Fees Online",
         "href": "#/feessub.online",
-        "roles": "STU",
-        "menu": "Fees"
+        "menu": "Fees",
+        "permission": "nav.student_self_service"
     },
     {
         "label": "Profile Photo",
         "href": "#/myphoto",
-        "roles": "STU",
-        "menu": ""
+        "menu": "",
+        "permission": "nav.student_self_service"
     }
 ]

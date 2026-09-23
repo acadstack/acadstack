@@ -11,6 +11,7 @@ import json, logging, os, re, uuid
 import numpy as np
 import common as C
 import models as M
+import permissions as PERM
 import settings_store as ST
 import vocab_defaults as VD
 from domain import academic_calendar as CAL
@@ -112,7 +113,7 @@ def is_user_in_role(role):
     or even a comma-separated list of role codes such as:
     "HOD,ACA,DEA".
     The role codes must be unique strings.
-    
+
     Args:
         role (str or list of str): Role code or a list of role codes.
 
@@ -121,7 +122,26 @@ def is_user_in_role(role):
     """
     if "user" in session:
         u = session['user']
-        return u["role"] in role
+        roles = role.split(",") if isinstance(role, str) else role
+        return u["role"] in roles
+    else:
+        return False
+
+
+def has_permission(name):
+    """Checks whether the currently logged in user's role holds the named
+    permission (see permissions.py). Session-only, like
+    is_user_in_role() -- no DB query -- for adapter-layer checks that
+    don't otherwise need an Actor.
+
+    Args:
+        name (str): Permission name, e.g. "course.save".
+
+    Returns:
+        bool: True if the current user's role holds the permission.
+    """
+    if "user" in session:
+        return PERM.role_has_permission(session['user']["role"], name)
     else:
         return False
 
@@ -170,7 +190,8 @@ def get_current_user_and_nav():
     if "user" in session:
         u = session['user']
         nav = init_navbar_items(u["role"], u["degree"])
-        return ok_json({"user": u, "nav": nav})
+        return ok_json({"user": {**u, "permissions": PERM.permissions_for_role(u["role"])},
+                         "nav": nav})
     else:
         return error_json("User not logged in.")
 
@@ -293,7 +314,7 @@ async def home():
     return ok_json("Welcome HOME!")
 
 
-@C.rbac(roles=["ACA", "SUP", "DEA"])
+@C.rbac(permissions=["system.view_active_users"])
 async def get_active_users():
     try:
         users = []
@@ -342,21 +363,20 @@ def init_navbar_items(role_code:str, degree:str)->Dict[str, Any]:
             links = []
             menus = {}
             for n in nav:
-                r = n.pop("roles")
-                if "-{}".format(role_code) in r:
+                perm = n.pop("permission")
+                if not PERM.role_has_permission(role_code, perm):
                     continue
 
-                if "*" in r or role_code in r:
-                    m = n.pop("menu")
-                    if m:
-                        if role_code == "STU" and degree != "PHD" and \
-                            m.upper() == "PHD":
-                            continue
-                        if m not in menus:
-                            menus[m] = []
-                        menus[m].append(n)
-                    else:
-                        links.append(n)
+                m = n.pop("menu")
+                if m:
+                    if role_code == "STU" and degree != "PHD" and \
+                        m.upper() == "PHD":
+                        continue
+                    if m not in menus:
+                        menus[m] = []
+                    menus[m].append(n)
+                else:
+                    links.append(n)
 
             return {"menus": menus, "links": links}
 
