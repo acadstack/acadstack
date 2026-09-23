@@ -40,6 +40,60 @@ SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = [
 ]
 
 
+def seed_grading_policy() -> int:
+    """Stores the baseline grading ruleset if the group has no version yet.
+
+    Not a SEED_SPECS row, for two reasons. The payload is derived from
+    ``domain.policy`` rather than typed out again -- a second copy of the
+    grade rules is exactly what this whole refactor removed -- and the
+    write has to respect the policy store's immutability rules, which a
+    bulk ``INSERT ... ON CONFLICT DO NOTHING`` knows nothing about.
+
+    Returns the number of versions stored (0 or 1). Safe to call on every
+    startup: it does nothing once a version exists, and it never
+    supersedes one, so an institution that has amended its rules keeps
+    them forever.
+    """
+    # Imported here, not at module scope: domain.policy imports
+    # policy_store, which imports this module's siblings, and the seeder is
+    # also called from demo_data.py before the app is assembled.
+    import acad_session as AS
+    import policy_store as PS
+    from domain import policy as POL
+
+    already = (M.PolicyVersion
+               .select()
+               .where((M.PolicyVersion.policy_group == POL.GRADING) &
+                      (M.PolicyVersion.is_deleted == False))  # noqa: E712
+               .exists())
+    if already:
+        logging.info("Grading policy already recorded; not seeding.")
+        return 0
+
+    # The baseline is effective from long before any enrolment, so on an
+    # install that has already closed a session it would land inside sealed
+    # history and the store would rightly refuse it. Warn rather than
+    # raise: a failed seed must not stop the app booting, and the in-code
+    # baseline still answers every query.
+    seal = M.max_closed_session_ord()
+    if seal is not None and AS.ordinal(POL.BASELINE_EFFECTIVE_FROM) <= seal:
+        logging.warning(
+            f"Not seeding grading policy: it would take effect from "
+            f"{POL.BASELINE_EFFECTIVE_FROM}, at or before the closed session "
+            f"{M.seal_label()}. Record a ruleset effective from an open "
+            f"session instead.")
+        return 0
+
+    PS.supersede(
+        POL.GRADING, POL.BASELINE_EFFECTIVE_FROM,
+        POL.grading_payload_from(POL.DEFAULT_GRADING_POLICY),
+        note="Baseline academic grading rules, seeded at install.",
+        login_id="SYSTEM")
+    logging.info(f"Seeded baseline grading policy effective from "
+                 f"{POL.BASELINE_EFFECTIVE_FROM}.")
+    return 1
+
+
 def run_seed_defaults(seed_specs=None) -> dict:
     """Inserts any row in seed_specs that is missing, leaving existing
     rows (including institution-customized ones) untouched. Returns a
@@ -62,6 +116,13 @@ def run_seed_defaults(seed_specs=None) -> dict:
         logging.info(f"Seed defaults for {model.__name__}: "
                      f"{inserted} of {len(rows)} candidate row(s) inserted "
                      f"(rest already present).")
+
+    if seed_specs is None:
+        # Only on the real seed run: a caller passing its own specs is
+        # testing the mechanism, not provisioning an install.
+        seeded = seed_grading_policy()
+        if seeded:
+            inserted_counts["PolicyVersion"] = seeded
 
     if not inserted_counts:
         logging.info("No default seed data to insert.")

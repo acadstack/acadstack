@@ -7,22 +7,81 @@ It is now a module of its own that both import normally.
 
 Behaviour is unchanged from the original, including the oddities
 ``tests/test_gpa_computation.py`` characterises. What did change is that
-the grade vocabulary, credit rules and the 2021 PhD amendment are read
-off a :class:`domain.policy.GradingPolicy` instead of being literals in
-the loop, so a caller can compute a transcript under any ruleset. Phase
-6/7 replaces the loaded default with an effective-dated lookup.
+every rule the computation used to carry as a literal -- the grade point
+map, the earned-credit and CGPA grade sets, the degree classification, the
+credit-bearing enrolment types, the LTP format and the rounding -- is now
+read off an effective-dated :class:`domain.policy.GradingPolicy` resolved
+for the session being computed. There is no branch on a year and no
+hardcoded degree code left in this module.
 """
 
 import logging
 
 from playhouse.shortcuts import model_to_dict
 
+import acad_session as AS
 import common as C
 import models as DB
 from domain import academic_calendar as CAL
 from domain import attendance as ATT
 from domain import policy as POL
 from domain.errors import DomainError
+
+
+def _course_credits(course, ltp):
+    """The credit value out of a course's LTP string.
+
+    The order of the two checks is deliberate and load-bearing. The
+    "missing data" check runs first and indexes ``required_indices``
+    without a bounds check, so a string with too few fields raises a raw
+    IndexError rather than a DomainError. That is the original behaviour
+    and ``tests/test_gpa_computation.py`` pins it; a caller catching
+    AcadStackException for bad data does not catch it. Guarding the index
+    here would be a behaviour change, so it is left as it is and named
+    instead.
+    """
+    parts = course["ltp"].strip().split(ltp.separator)
+    if len(parts) < 2 or not all(parts[i] for i in ltp.required_indices):
+        raise DomainError(f"LTP data missing for course {course['code']}")
+    if len(parts) != ltp.field_count:
+        raise DomainError(f"LTP data not in {ltp.format_label} format for "
+                          f"course {course['code']}")
+    return round(C.parse_number(parts[ltp.credits_index]), 2)
+
+
+def sgpa_denominator(registered_credits, satisfactory_credits,
+                     excluded_credits):
+    """Credits SGPA is averaged over.
+
+    Satisfactory grades carry no points, so they are netted out rather
+    than dragging the average to zero; excluded grades (I/W/U) come out
+    entirely, as though the course had never been registered for.
+
+    This stays in code rather than becoming a policy field, and so does
+    :func:`cgpa_denominator`. Every term is an accumulator this module
+    defines, and what each one MEANS is already configurable -- which
+    grades are satisfactory, which are excluded, which earn credit, which
+    count towards CGPA all come off the ruleset. Making the formula itself
+    configurable would take either an expression language evaluated
+    against grade data, or a row of booleans enumerating the combinations
+    someone happened to imagine. Changing this arithmetic changes what
+    SGPA means at an institution; that deserves a code review and a test,
+    not a row an admin can edit. It is a function so that the one
+    definition is shared -- the CGPA formula used to be restated in
+    courses_perf_filtered.
+    """
+    return (registered_credits - satisfactory_credits) - excluded_credits
+
+
+def cgpa_denominator(earned_credits, satisfactory_credits):
+    """Credits CGPA is averaged over. See :func:`sgpa_denominator`."""
+    return earned_credits - satisfactory_credits
+
+
+def _gpa(points, denominator, policy):
+    """A grade average, rounded as the ruleset says, or 0 when there is
+    nothing to average over."""
+    return policy.round_gpa(points / denominator) if denominator > 0 else 0
 
 
 def compute_cgpa_sgpa_ec(courses, degree, policy=None):
@@ -32,54 +91,42 @@ def compute_cgpa_sgpa_ec(courses, degree, policy=None):
         courses: list of course dicts as built by
             :func:`fetch_student_enrollments_data` (keys: acad_session,
             ltp, enrol_type, enrol_status, grade, code).
-        degree: the student's degree code, selecting the credit rules.
-        policy (GradingPolicy): grade points and credit rules. Defaults
-            to the configured policy.
+        degree: the student's degree code. The ruleset maps it to a
+            programme class, which selects the grade rules.
+        policy (GradingPolicy): the ruleset to compute under. When None,
+            the ruleset in force for each course's own academic session is
+            resolved -- which is what makes a historical transcript compute
+            under the rules of its time.
 
     Returns:
         dict with sgpa, ec, s_ec, creg, cgpa, pts_cgpa.
     """
-    pol = policy or POL.load_grading_policy()
-    gpm = pol.grade_points
-    pass_grades = pol.pass_grades
-
     # Temp variables used for calculations
     ec, s_ec, pts_sgpa, pts_cgpa, u_ec = 0, 0, 0, 0, 0
-    creg, creg_wo_audit, sgpa, cgpa = 0, 0, 0, 0
+    creg, creg_wo_audit = 0, 0
+    # Carries the last ruleset resolved, which is what the final rounding
+    # uses. Courses reaching here belong to one session, so this is that
+    # session's ruleset; the initial value only matters for an empty list.
+    pol = policy or POL.load_grading_policy()
     try:
         for c in courses:
+            # The ruleset in force for THIS course's session. An explicit
+            # policy always wins, so an injected ruleset is never
+            # second-guessed by a store lookup.
+            pol = policy or POL.load_grading_policy(c["acad_session"])
 
             # Take only confirmed enrolments in finished courses
             if c["enrol_status"] != pol.counted_enrol_status:
                 continue
 
-            # The PhD grade sets in force for this course's session. Note
-            # this is evaluated for every degree, not just PHD, exactly
-            # as the original did -- so a malformed acad_session or an
-            # unknown semester suffix still raises/warns for UG and PG.
-            phd_ec_grades, phd_ec_pass_grades = POL.apply_phd_amendment(
-                pol, c['acad_session'])
+            rules = pol.rules_for(degree)
+            cc = _course_credits(c, pol.ltp)
+            is_credit_course = pol.is_credit_enrol_type(c["enrol_type"])
 
-            # L-T-P-S-C
-            ltp = c["ltp"].strip().split("-")
-            if len(ltp) < 2 or not (ltp[0] and ltp[2]):
-                raise DomainError(f"LTP data missing for course {c['code']}")
-            if len(ltp) == 5:
-                cc = round(C.parse_number(ltp[-1]), 2)
-            else:
-                raise DomainError(
-                    f"LTP data not in L-T-P-S-C format for course {c['code']}")
-
-            is_credit_course = c["enrol_type"] in pol.credit_enrol_types
             # Total registered credits
             creg += cc
             if is_credit_course:
                 creg_wo_audit += cc
-
-            # Grades that are counted towards earned credits
-            ec_grades = pol.ec_grades_for(degree, phd_ec_grades)
-            if degree == pol.phd_degree_code:
-                pass_grades = phd_ec_pass_grades
 
             # Grade secured in this course
             grade = c["grade"]
@@ -88,20 +135,19 @@ def compute_cgpa_sgpa_ec(courses, degree, policy=None):
                 s_ec += cc
             if grade in pol.excluded_grades:
                 u_ec += cc
-            if grade in ec_grades and is_credit_course:
+            if grade in rules.earned_credit_grades and is_credit_course:
                 ec += cc
 
-            if grade in gpm and is_credit_course:
-                pts_sgpa += gpm[grade] * cc
-                if grade in pass_grades and is_credit_course:
-                    pts_cgpa += gpm[grade] * cc
+            if grade in rules.grade_points and is_credit_course:
+                pts_sgpa += rules.grade_points[grade] * cc
+                if grade in rules.cgpa_grades:
+                    pts_cgpa += rules.grade_points[grade] * cc
             else:
                 logging.debug(f"Points not mapped for grade {grade}!")
 
-        creg_sgpa = (creg_wo_audit - s_ec) - u_ec
-        ec_cgpa = (ec - s_ec)
-        sgpa = round(pts_sgpa / creg_sgpa, 2) if creg_sgpa > 0 else 0
-        cgpa = round(pts_cgpa / ec_cgpa, 2) if ec_cgpa > 0 else 0
+        sgpa = _gpa(pts_sgpa,
+                    sgpa_denominator(creg_wo_audit, s_ec, u_ec), pol)
+        cgpa = _gpa(pts_cgpa, cgpa_denominator(ec, s_ec), pol)
 
     except Exception as ex:
         logging.error(ex)
@@ -188,15 +234,12 @@ def fetch_student_enrollments_data(enrols, include_attendance):
 
         enrol_data[acad_sess_key]["courses"].append(my_course)
 
-    # We use these suffixies for academic sessions. Change them as needed.
-    # T1, T2 etc. are for trimesters, I, II and S are for regular semesters.
-    suffixes = ['T1', 'T2', 'T3', 'T4', 'I', 'II', 'S']
-
-    # Sort by academic session. Needed for cgpa calculations
-    acad_sess_list = list(enrol_data.keys())
-    acad_sess_list = sorted(
-        acad_sess_list,
-        key=lambda item: "{0}{1}".format(item[:4], suffixes.index(item[5:])))
+    # Sort by academic session. Needed for cgpa calculations, which
+    # accumulate forward in time. Session chronology is acad_session.py's
+    # job -- it is the same order effective-dated policy resolves on, and
+    # keeping one definition means a transcript cannot accumulate in one
+    # order while policy resolves in another.
+    acad_sess_list = AS.sorted_sessions(enrol_data.keys())
 
     # We return the enrolment data per academic session, sorted in reverse
     # chronological order of academic sessions (2025-II, 2025-I, 2024-II ...).
@@ -242,8 +285,10 @@ def courses_perf_filtered(stu, include_attendance,
         ec += cg_data["ec"]
 
         enrol_data[ad]["cec"] = ec
-        enrol_data[ad]["cgpa"] = round(pts_cgpa / (ec - s_ec), 2) \
-            if (ec - s_ec) > 0 else 0
+        # Cumulative CGPA over every session up to this one, by the same
+        # formula and the same rounding as the per-session figure.
+        enrol_data[ad]["cgpa"] = _gpa(pts_cgpa,
+                                      cgpa_denominator(ec, s_ec), pol)
 
     return {"enrollments": enrol_data, "acad_sessions": acad_sessions}
 

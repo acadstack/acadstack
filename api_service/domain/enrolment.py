@@ -495,13 +495,26 @@ def pending_enrolments_for_approver(actor: Actor) -> list:
 
 def passed_course_codes(student_id, policy=None) -> list:
     """Course codes the student has a passing grade in, or None when
-    there is no such student."""
-    pol = policy or POL.load_grading_policy()
+    there is no such student.
+
+    Which grades count as a pass comes off the same versioned grading
+    ruleset the transcript is computed from -- it used to be a second copy
+    of the list, typed into the HTTP handler for this endpoint. The two
+    sets are close but deliberately NOT identical: this one includes the
+    satisfactory grade, which cannot count towards CGPA (it carries no
+    points and is netted out of the denominator) yet plainly is a pass for
+    prerequisite purposes. See GradingPolicy.passed_course_grades.
+
+    Resolved per enrolment, so a course passed under an earlier ruleset
+    stays passed under the rules of its own session.
+    """
     stu = DB.User.get_or_none(student_id)
     if not stu:
         return None
-    return [se.course_offering.course.code for se in stu.enrollments
-            if se.grade in pol.passed_course_grades]
+    return [
+        se.course_offering.course.code for se in stu.enrollments
+        if se.grade in (policy or POL.load_grading_policy(
+            se.course_offering.acad_session)).passed_course_grades]
 
 
 def enrolment_export_rows(co_id, is_grades=False, actor: Actor = None) -> tuple:

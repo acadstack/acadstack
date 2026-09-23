@@ -617,6 +617,26 @@ def max_closed_session_ord():
             .scalar())
 
 
+def seal_label():
+    """The closed session(s) sitting exactly on the seal line, for error
+    messages, or None when nothing is closed.
+
+    Reads the stored session strings rather than inverting the ordinal,
+    because an ordinal no longer names one session: concurrent sessions in
+    different academic calendars share one (see acad_session.py). The seal
+    is a point in time, so naming every session closed at that point is
+    the honest answer.
+    """
+    seal = max_closed_session_ord()
+    if seal is None:
+        return None
+    names = [r.acad_session for r in
+             ClosedAcademicSession
+             .select(ClosedAcademicSession.acad_session)
+             .where(ClosedAcademicSession.session_ord == seal)]
+    return " / ".join(AS.sorted_sessions(names)) if names else None
+
+
 class PolicyVersion(BaseModel):
     """One immutable version of one policy group's ruleset.
 
@@ -684,7 +704,7 @@ class PolicyVersion(BaseModel):
             raise ImmutablePolicyError(
                 f"Cannot {verb} policy version for group "
                 f"{self.policy_group!r} effective {self.effective_from_session}"
-                f": academic session {AS.from_ordinal(seal)} is closed, so "
+                f": academic session {seal_label()} is closed, so "
                 f"policy from that session or earlier is final. Supersede it "
                 f"with a version effective from a later session instead.")
 

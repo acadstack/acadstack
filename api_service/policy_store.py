@@ -16,7 +16,15 @@ The model
 A **policy group** (e.g. ``"grading"``) has an ordered series of
 **versions**. Each version states the session it takes effect from and
 carries the whole ruleset as one JSON document. A version is in force
-until the next version of the same group begins:
+until the next version of the same group begins.
+
+A version is in force for an **instant** on the shared monthly timeline
+``acad_session.py`` defines, not for a named session, and a session takes
+the ruleset in force at the month it begins. That is what lets one version
+govern concurrent sessions in different academic calendars (``2021-I`` and
+``2021-T1`` begin together), and what makes a change landing mid-session
+well defined: the running session keeps its rules, the next one picks the
+new ones up.
 
     grading @ 2000-T1  ---------------------------> [ in force ]
     grading @ 2021-I   ------------> [ in force from 2021-I ]
@@ -250,7 +258,7 @@ class _Snapshot:
     rate an institution amends its regulations."""
 
     __slots__ = ("version", "by_group", "ords_by_group", "closed",
-                 "closed_ords", "seal_ord", "_built", "_build_lock")
+                 "closed_set", "seal_ord", "_built", "_build_lock")
 
     def __init__(self, version):
         self.version = version
@@ -259,7 +267,10 @@ class _Snapshot:
         # group -> list[int], the same rows' ordinals (for bisect)
         self.ords_by_group: dict = {}
         self.closed: list = []
-        self.closed_ords: set = set()
+        # Session STRINGS, not ordinals: concurrent sessions in different
+        # academic calendars share an ordinal, so an ordinal set would
+        # report 2021-T1 as closed because 2021-I was.
+        self.closed_set: set = set()
         self.seal_ord = None
         # version_id -> built typed object. Built on demand so that an
         # unused group's builder never runs, and a broken builder cannot
@@ -277,13 +288,14 @@ _cache: Optional[_Snapshot] = None
 def _load_snapshot(version: int) -> _Snapshot:
     snap = _Snapshot(version)
 
-    closed_rows = (M.ClosedAcademicSession
-                   .select()
-                   .order_by(M.ClosedAcademicSession.session_ord))
+    closed_rows = M.ClosedAcademicSession.select()
     for row in closed_rows:
-        snap.closed.append(row.acad_session)
-        snap.closed_ords.add(row.session_ord)
-        snap.seal_ord = row.session_ord  # ordered, so the last wins
+        snap.closed_set.add(row.acad_session)
+        if snap.seal_ord is None or row.session_ord > snap.seal_ord:
+            snap.seal_ord = row.session_ord
+    # Sorted in Python: ordering by session_ord alone is not deterministic
+    # now that concurrent sessions tie on it.
+    snap.closed = AS.sorted_sessions(snap.closed_set)
 
     rows = (M.PolicyVersion
             .select()
@@ -464,14 +476,40 @@ def closed_sessions() -> list:
 
 
 def is_session_closed(acad_session: str) -> bool:
+    """Whether THIS session has been closed.
+
+    Matched on the session itself, not its ordinal: a concurrent session
+    in another calendar shares the ordinal but is closed separately. For
+    "is policy from here already final", which IS an ordinal question, use
+    :func:`is_sealed`.
+    """
     AS.parse(acad_session)  # reject malformed input rather than say "no"
-    return AS.ordinal(acad_session) in _current_snapshot().closed_ords
+    return acad_session in _current_snapshot().closed_set
 
 
 def last_closed_session() -> Optional[str]:
-    """The latest closed session -- the seal line -- or None."""
-    seal = _current_snapshot().seal_ord
-    return AS.from_ordinal(seal) if seal is not None else None
+    """The latest closed session -- the seal line -- or None.
+
+    When concurrent sessions from different academic calendars are both
+    closed they sit on the same instant; this returns the last of them in
+    chronological-then-suffix order. Use :func:`seal_line` when you want
+    all of them named.
+    """
+    closed = _current_snapshot().closed
+    return closed[-1] if closed else None
+
+
+def seal_line() -> Optional[str]:
+    """Every closed session sitting on the seal line, named, or None.
+
+    The seal is a point on the timeline rather than one session, so more
+    than one session can be on it (see acad_session.py).
+    """
+    snap = _current_snapshot()
+    if snap.seal_ord is None:
+        return None
+    at_seal = [s for s in snap.closed if AS.ordinal(s) == snap.seal_ord]
+    return " / ".join(at_seal) if at_seal else None
 
 
 def is_sealed(acad_session: str) -> bool:
@@ -618,7 +656,7 @@ def supersede(group: str, effective_from_session: str, payload: dict,
         raise PolicyImmutableError(
             f"Cannot make policy for group {group!r} effective from "
             f"{effective_from_session}: academic sessions up to "
-            f"{AS.from_ordinal(seal)} are closed and their results were "
+            f"{M.seal_label()} are closed and their results were "
             f"computed under the policy then in force. New policy must take "
             f"effect from a session that is still open.")
 
