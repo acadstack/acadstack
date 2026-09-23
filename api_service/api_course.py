@@ -4,12 +4,11 @@ import os
 from quart import Blueprint, request
 from werkzeug.utils import secure_filename
 from peewee import IntegrityError
-from create_email import send_course_updated_email
-from validation_checks import is_course_status_valid_for_current_user
 import api_common as apiVC
 import models as DB
 import common as C
 from common import AcadStackException
+from domain import course as CRS
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/cour/<int:my_id>', view_func=course_view, methods=['GET'])
@@ -39,50 +38,13 @@ async def course_view(my_id):
 async def course_save():
     try:
         fd = await request.get_json(force=True)
-
         logging.debug("Saving course details: {}".format(fd))
-        crs_id = int(fd.get("id") or 0)
-        crs = DB.Course()
-
-        if crs_id > 0:
-            # Edit case
-            if fd["author"]["id"] != apiVC.logged_in_user().id and \
-                    not apiVC.has_permission("course.edit_any"):
-                return apiVC.error_json("Cannot save course authored by another faculty!")
-        else:
-            # Assign the currently logged in user as the author
-            if "author" not in fd:
-                fd["author"] = {}
-            fd["author"]["id"] = apiVC.logged_in_user().id
-
-        if crs_id:
-            crs = DB.Course.get_by_id(crs_id)
-            old_status = crs.status
-            if not is_course_status_valid_for_current_user(
-                    old_status, actor=apiVC.current_actor()):
-                return apiVC.error_json("This course is already in "
-                    f"{DB.Course.get_status_label(old_status)} state. "
-                    "Please contact the academic section to edit it.")
-
-            # Research section user can edit only PG/PhD courses
-            if apiVC.is_user_in_role("RES") and not apiVC.course_code_for_pg(crs.code):
-                return apiVC.error_json("You can edit only PG/PhD courses!")
-
-            C.update_model_skip_unknown(crs, fd)
-            C.apply_computed_course_credits(crs)
-
-            if apiVC.update_entity(DB.Course, crs) != 1:  # if rc != 1:
-                return apiVC.error_json("Could not update. Please try again.")
-            logging.debug("Updated course details: {}".format(crs))
-            send_course_updated_email(crs_id, old_status)
-        else:
-            C.update_model_skip_unknown(crs, fd)
-            C.apply_computed_course_credits(crs)
-            apiVC.save_entity(crs)
-            logging.debug("Inserted course details: {}".format(crs))
-
+        crs = CRS.save_course(apiVC.current_actor(), fd,
+                              C.update_model_skip_unknown)
         return apiVC.ok_json(apiVC.model_to_dict(crs, exclude=[DB.Course.author.password_hashed]))
 
+    except AcadStackException as ae:
+        return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when saving course details."
         logging.exception(msg)

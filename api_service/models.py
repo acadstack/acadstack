@@ -52,7 +52,8 @@ def create_schema():
                           DcMember, PhDProgressReport, AcademicMilestone,
                           AttendancePhoto, SystemSetting,
                           PolicyVersion, ClosedAcademicSession,
-                          SchemaMigration])
+                          MilestoneDefinition, WorkflowDefinition,
+                          WorkflowTransition, SchemaMigration])
         logging.info("DB tables created.")
 
 
@@ -546,9 +547,8 @@ class AcademicMilestone(BaseModel):
     dc = ORM.ForeignKeyField(DcForStudent,
                                  backref='acad_milestones',
                                  on_delete='CASCADE')
-    # Joining -> DC formation -> Compre -> TP ->
-    # Open Seminar 1 -> Open Seminar 2 -> Synop -> 
-    # Thesis submit -> Defence -> Awarded
+    # A MilestoneDefinition.code. The sequence of milestones is data --
+    # see MilestoneDefinition and domain/milestones.py -- not a comment.
     milestone = ORM.CharField(max_length=40)
     status_dt = ORM.DateField(default=DT.now)
     remarks = ORM.TextField(null=True)
@@ -558,6 +558,65 @@ class AcademicMilestone(BaseModel):
             # Unique index
             (('dc', 'student', 'milestone'), True),
         )
+
+class MilestoneDefinition(BaseModel):
+    """One step of a programme's academic milestone sequence (Joining ->
+    DC formation -> Compre -> ... -> Awarded). AcademicMilestone rows
+    record a student reaching one of these, by code."""
+    code = ORM.CharField(max_length=40, unique=True)
+    label = ORM.CharField(max_length=100)
+    sequence = ORM.IntegerField()
+    # Degree type the milestone belongs to (e.g. "PHD").
+    applies_to = ORM.CharField(max_length=20)
+    is_active = ORM.BooleanField(default=True)
+
+
+# ====== Declarative approval workflows =========
+# See domain/workflow.py for the engine and docs/workflows.md for the
+# design. A workflow's transitions are rows, so an institution adds or
+# removes an approval step by editing data, not code.
+
+
+class WorkflowDefinition(BaseModel):
+    """Per-workflow settings: which vocabulary its statuses come from,
+    how a request picks a transition, the checks that apply to every
+    transition, and the messages for "no transition matched"."""
+    name = ORM.CharField(max_length=40, unique=True)
+    status_vocab = ORM.CharField(max_length=40)
+    # "action" (the caller names an action, e.g. approve/reject) or
+    # "to_status" (the caller names the status it wants).
+    match_on = ORM.CharField(max_length=10)
+    pre_checks = JSONField(default=[])
+    checks = JSONField(default=[])
+    locked_message = ORM.TextField()
+    denied_message = ORM.TextField()
+
+
+class WorkflowTransition(BaseModel):
+    """One permitted move of a record from ``from_status`` to
+    ``to_status``. Rows are tried in ``priority`` order and the first one
+    whose permission, guards and match all hold is taken."""
+    workflow = ORM.CharField(max_length=40, index=True)
+    priority = ORM.IntegerField()
+    # A status code, "*" for any status, or "_new" for a record being
+    # created.
+    from_status = ORM.CharField(max_length=10)
+    # A status code, or "=" for "unchanged" (an edit that keeps the
+    # record where it is).
+    to_status = ORM.CharField(max_length=10)
+    action = ORM.CharField(max_length=20, null=True)
+    label = ORM.CharField(max_length=80)
+    permission = ORM.CharField(max_length=80)
+    guards = JSONField(default=[])
+    checks = JSONField(default=[])
+    effects = JSONField(default=[])
+    is_active = ORM.BooleanField(default=True)
+
+    class Meta:
+        indexes = (
+            (('workflow', 'priority'), True),
+        )
+
 
 class AttendancePhoto(BaseModel):
     offering = ORM.ForeignKeyField(CourseOffering,

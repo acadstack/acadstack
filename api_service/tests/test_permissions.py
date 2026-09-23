@@ -15,7 +15,9 @@ import permissions as PERM  # noqa: E402
 import settings_store as ST  # noqa: E402
 from common import AcadStackException  # noqa: E402
 from domain.context import Actor  # noqa: E402
-from validation_checks import is_course_status_valid_for_current_user  # noqa: E402
+import models as DB  # noqa: E402
+from domain import course as CRS  # noqa: E402
+from domain import workflow as WF  # noqa: E402
 
 
 def run_in_request(app, fn, path="/acadstack/"):
@@ -110,13 +112,25 @@ def test_actor_has_role_string_form_is_not_substring_matching():
     assert actor.has_role("DEA,ACA") is False
 
 
-def test_is_course_status_valid_for_current_user_uses_real_membership():
+def test_locked_course_statuses_use_real_membership():
     # Regression for `status_old in "APP,RET"`, under which "A", "P" and
-    # "RE" would each match as substrings.
+    # "RE" would each match as substrings. The lock is now the course
+    # workflow's "=" rows: APP/RET need course.edit_locked_status.
     granted = Actor(login_id="a", role="ACA", user_id=1)
     denied = Actor(login_id="f", role="FAC", user_id=2)
-    assert is_course_status_valid_for_current_user("APP", actor=granted) is True
-    assert is_course_status_valid_for_current_user("APP", actor=denied) is False
+
+    def can_edit(actor, status):
+        course = DB.Course(status=status, author=actor.user_id, code="CS101")
+        ctx = WF.Context(actor=actor, from_status=status, record=course,
+                         to_status=status)
+        try:
+            WF.select(CRS.BASELINE, ctx)
+            return True
+        except WF.PermissionDenied:
+            return False
+
+    assert can_edit(granted, "APP") is True
+    assert can_edit(denied, "APP") is False
     # A status that merely looks like a substring of "APP,RET" must not
     # be treated as locked.
-    assert is_course_status_valid_for_current_user("DRA", actor=denied) is True
+    assert can_edit(denied, "DRA") is True

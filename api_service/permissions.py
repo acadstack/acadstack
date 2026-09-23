@@ -117,6 +117,9 @@ ST.declare_group(
         _spec("system.manage_permissions", ["SUP"],
               "Edit the permission->role mapping itself. An admin can "
               "never remove their own role from this permission."),
+        _spec("system.manage_workflows", ["SUP"],
+              "Edit the approval workflow transition tables "
+              "(domain/workflow.py)."),
         _spec("system.view_active_users", ["ACA", "SUP", "DEA"],
               "View the list of currently active users."),
         _spec("user.search", ALL_BUT_STU,
@@ -149,9 +152,12 @@ ST.declare_group(
         # --- courses ---
         _spec("course.save", ["ACA", "FAC", "DEA", "HOD", "RES"],
               "Create/edit a course."),
-        _spec("course.edit_any", ["HOD", "ACA", "DEA", "RES"],
-              "Edit a course authored by someone else (the author may "
-              "always edit their own)."),
+        _spec("course.edit_any", ["ACA", "DEA", "RES"],
+              "Edit a course authored by someone else, in any department "
+              "(the author may always edit their own)."),
+        _spec("course.edit_in_dept", ["HOD"],
+              "Edit a course authored by someone else in the actor's own "
+              "department (the course's department is its author's)."),
         _spec("course.edit_locked_status", ["DEA", "ACA", "RES"],
               "Edit a course that is already Approved or Retired."),
         _spec("course.bulk_create", ["ACA", "DEA"],
@@ -159,6 +165,14 @@ ST.declare_group(
         _spec("course.manage_slot_timings", ["ACA", "DEA"],
               "View/edit course slot timings. Replaces api_course.py's "
               "and api_dc.py's identical 'ACA,DEA' string-form checks."),
+        _spec("course.submit", ["FAC"],
+              "Course approval workflow: submit a course to the HoD."),
+        _spec("course.hod_review", ["HOD"],
+              "Course approval workflow: forward a course to the council "
+              "or return it to the faculty."),
+        _spec("course.final_approve", ["DEA", "ACA"],
+              "Course approval workflow: approve a course or return it "
+              "to the department."),
         _spec("course_offering.save", ["ACA", "FAC", "DEA", "HOD"],
               "Create/edit a course offering."),
         _spec("course_offering.edit_after_close", ["ACA", "DEA"],
@@ -199,6 +213,15 @@ ST.declare_group(
               "an enrolment's status directly. Collapses four sites in "
               "domain/enrolment.py and validation_checks.py, including "
               "one that used the buggy comma-string substring form."),
+        _spec("enrolment.decide_as_owner", ["FAC", "HOD"],
+              "Enrolment approval workflow: approve/reject as the "
+              "offering's coordinating instructor and/or the student's "
+              "batch advisor. Replaces the has_role(['FAC', 'HOD']) "
+              "branch of the old approval chain."),
+        _spec("enrolment.decide_advisor_pending", ["HOD"],
+              "Enrolment approval workflow: approve/reject any enrolment "
+              "pending advisor approval, with no ownership check. "
+              "Replaces the has_role('HOD') branch of the old chain."),
 
         # --- feedback ---
         _spec("feedback.manage_form", ["ACA", "DEA"],
@@ -236,9 +259,17 @@ ST.declare_group(
         _spec("dc.save", ["ACA", "FAC", "DEA", "HOD"],
               "Create/edit a doctoral committee."),
         _spec("dc.override_status", ["ACA", "DEA"],
-              "Change a DC's status regardless of the HOD/FAC "
-              "editable-status-per-role map (fixes the TypeError any "
-              "non-HOD/FAC role used to hit here)."),
+              "DC workflow: the academic section's rows -- move a DC "
+              "between any non-draft statuses."),
+        _spec("dc.edit_as_supervisor", ["FAC"],
+              "DC workflow: edit/submit a DC in Draft or Returned to "
+              "Supervisor, as its supervisor."),
+        _spec("dc.edit_as_hod", ["HOD"],
+              "DC workflow: forward/return a DC Submitted to or "
+              "Returned to the HoD of the student's department."),
+        _spec("dc.dean_approval", ["DEA"],
+              "DC workflow: approve a DC forwarded to the Dean, or "
+              "return it to the HoD."),
         _spec("dc.view_dc_students", ALL_BUT_STU,
               "View the list of students under DC formation."),
         _spec("dc.manage_any", ["ACA", "DEA", "SUP"],

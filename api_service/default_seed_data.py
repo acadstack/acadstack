@@ -31,6 +31,7 @@ import models as M
 import permissions as PERM
 import settings_store as ST
 import vocab_defaults as VD
+from domain import milestones as MS
 
 # List of (Model, [row_dict, ...]) pairs. Populated by later phases as
 # they introduce DB-backed defaults that must reach existing installs.
@@ -47,6 +48,9 @@ SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = [
         dict(group=PERM.GROUP, name=name, is_json=True, value_json=spec.default)
         for name, spec in ST.declared_groups()[PERM.GROUP].specs.items()
     ]),
+    # The academic milestone sequence (domain/milestones.py). Keyed on
+    # code, so an institution's edited sequence is left alone.
+    (M.MilestoneDefinition, MS.seed_rows()),
 ]
 
 
@@ -104,6 +108,29 @@ def seed_grading_policy() -> int:
     return 1
 
 
+def seed_workflows() -> int:
+    """Stores each approval workflow's baseline transition table if that
+    workflow has no stored definition yet.
+
+    Not SEED_SPECS rows: a workflow is a definition row plus its
+    transitions, written together, and "seed missing rows" would merge
+    the baseline into an institution's edited table -- quietly putting
+    back an approval step they had removed. So it is all or nothing per
+    workflow. Returns the number of workflows stored.
+    """
+    from domain import workflow as WF
+
+    stored = 0
+    for name in WF.names():
+        if M.WorkflowDefinition.select().where(
+                M.WorkflowDefinition.name == name).exists():
+            continue
+        WF.store(WF.baseline(name))
+        logging.info(f"Seeded the baseline '{name}' workflow.")
+        stored += 1
+    return stored
+
+
 def run_seed_defaults(seed_specs=None) -> dict:
     """Inserts any row in seed_specs that is missing, leaving existing
     rows (including institution-customized ones) untouched. Returns a
@@ -133,6 +160,9 @@ def run_seed_defaults(seed_specs=None) -> dict:
         seeded = seed_grading_policy()
         if seeded:
             inserted_counts["PolicyVersion"] = seeded
+        seeded = seed_workflows()
+        if seeded:
+            inserted_counts["WorkflowDefinition"] = seeded
 
     if not inserted_counts:
         logging.info("No default seed data to insert.")

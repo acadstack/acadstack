@@ -164,32 +164,10 @@ export default {
       loaded: false,
       doc_comm: this.initDc(),
       /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label and the status of
-       * course that will be set when action is performed.
+       * Status-changing moves the user may make on this DC, from the
+       * server's "dc" workflow table (see api_service/domain/dc.py).
        */
-      actionsMap: {
-        HOD: [
-          { label: "Forward to Dean", status: "FTD" },
-          { label: "Return to Supervisor", status: "RTS" },
-        ],
-        DEA: [
-          { label: "Approve", status: "APP" },
-          { label: "Return to HoD", status: "RTH" },
-        ],
-        FAC: [
-          { label: "Save as Draft", status: "DRA" },
-          { label: "Submit to HoD", status: "SUB" },
-          { label: "Delete", status: "DEL" },
-        ],
-        ACA: [
-          { label: "Approve", status: "APP" },
-          { label: "Return to HoD", status: "RTH" },
-          { label: "Return to Supervisor", status: "RTS" },
-          { label: "Save as Draft", status: "DRA" },
-          { label: "Delete", status: "DEL" },
-        ],
-      },
+      actions: [],
     };
   },
   computed: {
@@ -197,9 +175,6 @@ export default {
       console.log("isEdit() called: stu_id=" + this.$route.params.stu_id);
       return this.$route.params.stu_id > 0;
     },
-    actions() {
-      return this.actionsMap[this.userRole];
-    }
   },
   async created() {
     console.log("Creating DcFormulation");
@@ -208,6 +183,7 @@ export default {
       await vm.load();
     } else {
       vm.reset();
+      await vm.markViewOnly();
     }
   },
   methods: {
@@ -236,19 +212,16 @@ export default {
         }
       }
     },
-    markViewOnly() {
+    async markViewOnly() {
+      // The DC is editable when the workflow offers this user any move
+      // from its current status, including saving it where it is.
       let vm = this;
-      vm.viewOnly = vm.isEdit;
-      /* Editable DC status for roles */
-      const am = {"HOD": "SUB,RTH", "FAC": "DRA,RTS"}
-      const alowSt = am[vm.userRole]
-      const cs = vm.doc_comm.status
-      if ((vm.isAcad || vm.isDean) &&  cs != "DRA") {
-        vm.viewOnly = false;
-      } else if (alowSt != undefined){
-        vm.viewOnly = !alowSt.includes(cs)
-      }
-      console.log("ViewOnly=" + vm.viewOnly);
+      await vm.doHttp(true, `workflow_actions/dc/${vm.doc_comm.id || 0}`, null,
+        (b)=>{
+          vm.actions = b.filter((a) => a.changes_status);
+          vm.viewOnly = vm.isEdit && b.length == 0;
+          console.log("ViewOnly=" + vm.viewOnly);
+        }, vm.setStatusMessage);
     },
     onMemberSelect(c, id) {
       console.log("Added DC member: " + JSON.stringify(c));
@@ -305,8 +278,8 @@ export default {
     },
     onAction(act) {
       let vm = this;
-      console.log("Changing DC status to: " + act.status);
-      vm.doc_comm.status = act.status;
+      console.log("Changing DC status to: " + act.to_status);
+      vm.doc_comm.status = act.to_status;
       vm.save();
     },
     addMember(isExternal) {
