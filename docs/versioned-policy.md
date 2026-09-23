@@ -144,21 +144,57 @@ rejected at write time, not discovered mid-transcript.
 
 ---
 
-## 4. Ordering: sessions, not dates
+## 4. Ordering: sessions on a shared monthly timeline
 
-Effective-dating is keyed on academic session (`YYYY-S`, `S` in
-`T1..T4, I, II, S`), following `AcademicCalendar`'s precedent, not on
-wall-clock dates. `acad_session.py` turns a session into an integer
-ordinal — `year * 10 + rank`, so `2021-I -> 20214` — giving a total order
-that resolution can binary-search.
+Effective-dating is keyed on academic session (`YYYY-S`), following
+`AcademicCalendar`'s precedent, not on wall-clock dates. `acad_session.py`
+turns a session into an integer ordinal that resolution can binary-search.
 
-The suffix order is `T1 < T2 < T3 < T4 < I < II < S`. That is not invented
-here: it is the order `domain/transcript.py` already sorts a student's
-sessions by before accumulating CGPA. `tests/test_acad_session.py` reads
-that list out of the source and asserts it matches, because if the two
-ever disagreed a transcript would accumulate in one order while policy
-resolved in another — and a session could be graded under the rules
-belonging to the session after it.
+**Session types run in parallel, not in sequence.** An institution may run
+more than one academic calendar at once — a semester-based B.Tech
+alongside a quarter-based programme. `acad_session.SESSION_TYPES` declares
+each calendar and the month its sessions begin, counted from the start of
+the academic year:
+
+| type | suffixes and month offsets |
+| --- | --- |
+| `semester` | `I`=0 (Jul), `II`=6 (Jan), `S`=10 (May) |
+| `quarter` | `T1`=0 (Jul), `T2`=3 (Oct), `T3`=6 (Jan), `T4`=9 (Apr) |
+
+The ordinal is `year * 12 + offset`. Two sessions that begin in the same
+month therefore get **equal ordinals** — `2021-I` and `2021-T1` are
+concurrent, not four ranks apart — which is the correct answer to "which
+ruleset was in force": policy in force that month governs both.
+
+The table is **append-only**. Adding a calendar or a suffix is safe;
+repointing a suffix already in use would silently move every policy
+boundary around it and reinterpret stored rows.
+
+**This replaced an earlier scheme** that ranked every suffix on one
+arbitrary within-year order (`T1 < T2 < T3 < T4 < I < II < S`,
+`ordinal = year * 10 + rank`). That order was a fiction as soon as two
+calendars were in play, and it is what made the 2021 PhD rule look as
+though it oscillated between tracks (see §7). Migration
+`0004_session_type_month_ordinals.sql` renumbers the stored ordinals.
+
+**A session is governed by the policy in force at its start.** Because
+sessions span several months while the timeline is monthly, a policy change
+can take effect *during* a session — and with parallel calendars it
+routinely does, since a boundary in one calendar falls inside a session of
+the other. A change effective from `2021-T2` (October, a clean quarter
+boundary) lands in the middle of semester I; semester I keeps the rules it
+began under and semester II picks the new ones up. That is also the right
+academic answer: you do not restate the rules a student is already being
+graded under.
+
+Chronology has exactly one definition. `domain/transcript.py` used to keep
+its own `suffixes` list and sort a student's sessions by its index; it now
+calls `acad_session.sorted_sessions()`, and
+`tests/test_acad_session.py::test_transcript_code_keeps_no_private_session_chronology`
+fails if a second copy reappears — because if the two ever disagreed a
+transcript would accumulate in one order while policy resolved in another,
+and a session could be graded under the rules belonging to the session
+after it.
 
 **Why the ordinal is derived from the session code, not from
 `AcademicCalendar`.** Ordering by each session's configured start date
@@ -175,6 +211,12 @@ string via a SQL reimplementation of the same function — so a row cannot
 claim to be effective from `2021-I` while sorting as `2019-T1`.
 `tests/test_acad_session.py` asserts the SQL and Python implementations
 agree.
+
+Because an ordinal no longer names a single session, `from_ordinal()`
+requires a session type whenever the instant is shared, and
+`sessions_at_ordinal()` / `label_for_ordinal()` report all of them. The
+seal line follows the same rule: `is_session_closed()` asks about one
+session (matched by name), while `is_sealed()` asks about an instant.
 
 ---
 
@@ -254,31 +296,59 @@ however many courses a transcript touches.
 
 Three things surfaced that are worth acting on separately.
 
-**1. The 2021 amendment is not chronologically monotonic — it is probably
-a bug.** Expressing it as versions forced every session in the window to
-be given an explicit answer, and the answers zig-zag. Under this
-codebase's own session chronology (`T1..T4` precede `I`, `II`, `S` within
-a year), the code's semester list `["II", "S", "T1", "T2"]` mixes the two
-halves of the year, so the earned-credit set widens at `2021-T1`, reverts
-at `2021-T3`, and widens again at `2021-I`; and the CGPA set takes a value
-at `2021-I` that it holds for that one session only. `2021-T3` and
-`2021-T4` fall into an `else` branch that logs "Unknown academic
-semester".
+**1. The 2021 PhD rule cannot be stored as one effective-dated series.**
+Not "is awkward to store" — cannot. A policy version is in force for an
+*instant*, so every session beginning in that month resolves to it. The
+2021 rule branches on the session *suffix*, and two suffixes from
+different calendars can name the same instant, at which point the rule
+demands two different answers for one point in time:
 
-The storage design handles it — `test_2021_phd_amendment_is_reproduced_exactly_by_versions`
-reproduces all 35 sessions in the window exactly — but a rule that
-zig-zags is far more likely to be a mistake than an institution's intent.
-**This needs resolving with the registrar before the live rules are
-moved**, because each of those turns into a stored row someone has to
-defend. Pinned as `test_the_2021_amendment_is_not_chronologically_monotonic`.
+| instant | sessions | earned-credit set | CGPA set |
+| --- | --- | --- | --- |
+| Jul 2021 | `2021-I` | widened | **widened** |
+| Jul 2021 | `2021-T1` | widened | **default** |
+| Jan 2022 | `2021-II` | **widened** | default |
+| Jan 2022 | `2021-T3` | **default** | default |
 
-**2. Grade sets are matched by substring today.** The current rules hold
-grade sets as comma-separated strings and test membership with `in`, which
-is substring matching, not set membership — a one-character `enrol_type`
-matches `"C,CM,CC"`. Stored payloads use JSON arrays and the validator
-rejects the string shape outright, so whoever moves the live rules across
-must also change those membership tests to real containment and re-verify
-the affected grades. The two changes cannot be made independently.
+Read per calendar the rule makes much more sense, and matches its origin:
+the pandemic years, when semester- and quarter-based programmes ran side
+by side. The quarter track widens the earned-credit set for `T1`/`T2` and
+then reverts for `T3`/`T4` — but only because `T3`/`T4` fall through to the
+`else` branch that logs "Unknown academic semester", i.e. they were never
+handled at all. The semester track is monotonic in the earned-credit set,
+but its CGPA set takes the widened value at `2021-I` and at no other
+session in either calendar, ever.
+
+So this is not an amendment that took effect on a date; it is per-calendar
+improvisation. **It must be resolved with the registrar before the live
+rules are seeded**, because each answer becomes a stored row someone has
+to defend, and no arrangement of rows can reproduce the current code.
+Pinned as `test_the_2021_rule_assigns_different_rulesets_to_concurrent_sessions`
+and `test_the_store_cannot_hold_two_rulesets_for_one_instant`; what a
+well-formed amendment looks like instead is
+`test_a_single_instant_amendment_resolves_across_both_calendars`.
+
+**2. Grade sets used to be matched by substring — now resolved, except in
+one place.** The old rules held grade sets as comma-separated strings and
+tested membership with `in`, which is substring matching, not set
+membership. Every one of those sets was checked against the full 16-grade
+vocabulary in `vocab_defaults.py` before the change, and for every
+recognised grade substring and membership agree — including `"C-"` against
+`"A,A-,B,B-,C"`, where `C` is last and nothing follows it. So the
+conversion to `frozenset` is behaviour-preserving, and the grade sets are
+real collections now.
+
+The one exception is **enrolment types**. `enrol_type in "C,CM,CC"` treats
+a stray one-character code like `"M"` as a credit enrolment, because `"M"`
+appears inside `"CM"`. None of the four real enrolment types (A, C, CM,
+CC) is affected, so the quirk is only reachable with invalid data — but
+`tests/test_gpa_computation.py` characterises it, so it is preserved
+deliberately, as a named and *versioned* field:
+`credit_enrol_type_match`, either `"substring"` (the default, today's
+behaviour) or `"exact"` (correct). Because it is versioned, an institution
+can adopt `"exact"` effective from an open session without altering a
+single historical transcript — which is a better outcome than either
+silently "fixing" it or leaving it undocumented.
 
 **3. The migration runner did not support SQL containing a literal `%`.**
 `schema_migrations.py` ran each script through peewee's `execute_sql()`,
@@ -295,36 +365,59 @@ interpolation entirely. Regression test:
 
 ## 8. What this phase deliberately did not do
 
-No business logic moved. `compute_cgpa_sgpa_ec` is untouched and no
-ruleset is seeded into the database, so every transcript computes exactly
-as it did before.
+`domain/policy.py` declares the `grading` group and builds a stored
+payload into the `GradingPolicy` the computation takes.
+`load_grading_policy(acad_session)` resolves the ruleset in force for a
+session, preferring a stored version and falling back to the in-code
+baseline; `resolve_grading_policy(acad_session)` is the stored-only
+counterpart, for when you need to know what is actually recorded.
 
-What *is* wired up is the shape. `domain/policy.py` declares the `grading`
-group and builds a stored payload into the same `GradingPolicy` the
-computation already takes, and `resolve_grading_policy(acad_session)` is
-the effective-dated counterpart to `load_grading_policy()` — present,
-tested, and not yet called by anything. The tests exercise it against the
-live `DEFAULT_GRADING_POLICY` and the live `apply_phd_amendment` rather
-than against copied literals, which is how we know the schema fits.
+`compute_cgpa_sgpa_ec` now carries no policy of its own, and
+`tests/test_gpa_computation.py` — which characterises its behaviour to the
+digit — passes unchanged, byte for byte. What changed:
 
-Two details make the eventual switch small:
+- **`apply_phd_amendment` and the `phd_amendment_*` fields are gone**, along
+  with every `if degree == "BTE"` / `elif degree == "PHD"`. A ruleset maps
+  degree code -> programme class (`degree_classes`, with
+  `default_degree_class` for anything unlisted) and holds one
+  `programme_rules` block per class. Class names are arbitrary, and a block
+  may carry its own `grade_points` — which is what "the grade definitions
+  changed for the PhD programme" is, as one complete version.
+- **Grade sets are `frozenset`s** end to end; see §7.2 for why that is
+  behaviour-preserving, and for the one field that keeps an explicit match
+  mode.
+- **The LTP format is policy** (`separator`, `field_count`,
+  `credits_index`, `required_indices`, `format_label`) rather than a
+  hardcoded five-part `L-T-P-S-C` assumption.
+- **The SGPA/CGPA denominators stay in code**, as `sgpa_denominator()` and
+  `cgpa_denominator()`. They are structural: every term is an accumulator
+  the computation defines, and what each one *means* is already
+  configurable. Making the formula itself configurable would take an
+  expression language evaluated against grade data, or a row of booleans
+  enumerating the combinations someone happened to imagine; changing this
+  arithmetic changes what SGPA *means*, which deserves a review and a test
+  rather than an admin screen. They are functions so the one definition is
+  shared — the CGPA formula used to be restated in `courses_perf_filtered`.
+  Only the rounding is configurable (`gpa_decimal_places`).
+- **`passed_course_grades` has one home.** The list of grades that count as
+  a pass was typed into the `get_passed_courses` HTTP handler as well as
+  the computation, with the two differing by `"S"`. They are both off the
+  ruleset now, and still two fields, deliberately: `"S"` is a pass but
+  cannot be a CGPA grade, and `cgpa_grades` is per programme class while
+  the passed-courses listing is not — deriving one from the other would
+  silently stop a PhD student's `"D"` counting as a pass.
 
-- **A stored ruleset neutralises the amendment.** `build_grading_policy`
-  sets `phd_ec_grades_amended` equal to `phd_ec_grades` (and likewise for
-  the pass set), so every branch of `apply_phd_amendment` returns the
-  version's own sets for any session. The computation can keep calling it
-  per course, unchanged, while the store is what actually decides.
-- **Arrays are joined back to strings** at the builder boundary, so the
-  substring-matching quirk downstream sees no change of shape.
+**What is deliberately NOT done: the live rules are not seeded.**
+`load_grading_policy()` prefers a stored ruleset and falls back to the
+in-code baseline, which is where the shipped rules still live —
+`BASELINE_GRADING_VERSIONS`, keyed per academic calendar for the reason in
+§7.1. So nothing about live transcripts changes until a ruleset is stored,
+and the computation stays testable with no database at all. Seeding needs:
 
-Moving the rules across is then its own change, and needs:
-
-- the finding in §7.1 resolved with the registrar;
-- the substring-matching fix in §7.2, which touches `build_grading_policy`
-  and the membership tests together;
-- a baseline ruleset seeded effective from a session earlier than any
-  enrolment in the database;
-- `load_grading_policy()` delegating to `resolve_grading_policy()`;
+- the finding in §7.1 resolved with the registrar, since no single
+  institution-wide series can reproduce the 2021 rule;
+- a baseline ruleset effective from a session earlier than any enrolment in
+  the database;
 - before/after verification against real grade data for every affected
   session — not just the ones near a boundary.
 
