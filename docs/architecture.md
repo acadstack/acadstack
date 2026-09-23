@@ -123,6 +123,16 @@ rules the package keeps to (and `tests/test_domain_boundaries.py` enforces them)
 `domain/policy.py` the shape policy arrives in, and `domain/plugins.py` the
 extension-point contract.
 
+### Approval workflows
+
+The enrolment, doctoral committee and course approval chains are
+database-backed transition tables (`WorkflowDefinition` / `WorkflowTransition`),
+resolved by `domain/workflow.py`. An institution adds or removes an approval step
+by editing rows (`POST /workflow_save`, permission `system.manage_workflows`), not
+code. The frontend's action buttons come from `GET /workflow_actions/<name>/<id>`.
+The PhD milestone sequence is data as well (`MilestoneDefinition`). See
+[workflows.md](workflows.md).
+
 ## Handling role based access control (RBAC)
 Roles are central to the entire functionality of the AcadStack application, but
 authority is granted through **named permissions**, not raw role lists spelled out

@@ -110,29 +110,16 @@ export default {
               learning:{}, evaluation: {}, teaching: []
               },
       /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label and the status of
-       * course that will be set when action is performed.
+       * Status-changing moves the user may make on this course, from the
+       * server's "course" workflow table (see api_service/domain/course.py).
        */
-      actionsMap: {
-        "HOD": [{label: "Forward", status: "CAP"}, 
-                {label: "Return to Faculty", status: "HAR"}],
-        "DEA": [{label: "Approve", status: "APP"}, 
-                {label: "Return to Dept.", status: "CAR"}],
-        "FAC": [{label: "Submit", status: "HAP"}, 
-                {label: "Delete", status: "DEL"}],
-        "ACA": [{label: "Approve", status: "APP"}, 
-                {label: "Return to Dept.", status: "CAR"}],
-      }
+      actions: []
     };
   },
   computed: {
     isEdit() {
       console.log("isEdit() called: id="+this.$route.params.id)
       return this.$route.params.id > 0;
-    },
-    actions() {
-      return this.actionsMap[this.userRole];
     }
   },
   async beforeRouteUpdate(to, from, next) {
@@ -153,6 +140,7 @@ export default {
       await vm.load();
     } else {
       vm.reset();
+      await vm.loadActions();
     }
   },
   methods: {
@@ -168,6 +156,7 @@ export default {
           vm.ltpsc.ltp = ltp[0]+'-'+ltp[1]+'-'+ltp[2];
           vm.ltpsc.sc = ltp[3]+'-'+ltp[4];
           vm.oldStatus = vm.course.status;
+          await vm.loadActions();
         } else {
           vm.notFound = true;
         }
@@ -184,10 +173,6 @@ export default {
         return;
       }
       else {
-        if (vm.oldStatus == "APP" && !(vm.isDean || vm.isAcad)) {
-          vm.setStatusMessage("Change not allowed! Please request the dean's office.");
-          return;
-        }
         if (!confirm("Confirm save?")) {
           vm.setStatusMessage("User canceled save!");
           return;
@@ -197,6 +182,8 @@ export default {
           let res = await vm.$http.post('cour_save', vm.course);
           if (res.data.status == "OK") {
             vm.course = res.data.body;
+            vm.oldStatus = vm.course.status;
+            await vm.loadActions();
             if (!vm.isEdit) {
               let v = `${vm.$route.path}/${vm.course.id}`;
               console.log("Loading view: "+v);
@@ -220,20 +207,18 @@ export default {
         };
       console.log("Clearing course details.");
     },
-    async onAction(act) {
+    async loadActions() {
       let vm = this;
-      if (vm.oldStatus == "APP" && !(vm.isDean || vm.isAcad)) {
-        vm.setStatusMessage("Change not allowed! Please request the dean's office.");
-        return;
-      }
-      if (act.status == "DEL") {
-        if (confirm("Sure you want to delete?")) {
-          //TODO: Delete
-        }
-      } else {
-        vm.course.status = act.status;
-        await vm.save();
-      }
+      await vm.doHttp(true, `workflow_actions/course/${vm.course.id || 0}`, null,
+        (b)=>{ vm.actions = b.filter((a) => a.changes_status); },
+        vm.setStatusMessage);
+    },
+    async onAction(act) {
+      // Whether this user may make the move is the server's call (the
+      // "course" workflow table); it only offers moves it will accept.
+      let vm = this;
+      vm.course.status = act.to_status;
+      await vm.save();
     }
   },
   validations() {

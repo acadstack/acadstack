@@ -50,14 +50,6 @@ def is_hod_for_course_offering(co_id, user_id):
     return res[0][0]
 
 
-def is_course_status_valid_for_current_user(status_old, actor=None):
-    actor = apiVC.actor_or_current(actor)
-    if status_old in ("APP", "RET") and not actor.can("course.edit_locked_status"):
-        return False
-    else:
-        return True
-
-
 def validate_coff_status(co, actor=None):
     """Checks the status of supplied course offering by considering the role
     of current user and the status of the supplied offering.

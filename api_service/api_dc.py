@@ -21,6 +21,7 @@ import api_common as apiVC
 import models as DB
 import common as C
 import face_api_proxy as fapi
+from domain import dc as DCD
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/download_degree_wise_students/<string:course_code>/<string:acad_session>',
@@ -425,146 +426,13 @@ async def download_degree_wise_students(course_code, acad_session):
         return apiVC.error_json(msg)
 
 
-def _save_dcm(dcm, dc_id):
-    for mem in dcm:
-        is_del = mem.get("is_deleted") or False
-        m_id = mem.get("id") or 0
-        if is_del and m_id < 1:
-            continue
-        mod = DB.DcMember()
-        mod.is_deleted = is_del
-        mod.role = mem["role"]
-        mod.is_external = mem.get("is_external") or False
-        if mod.is_external:
-            mod.ext_name = mem["ext_name"]
-            mod.ext_contact = mem["ext_contact"]
-        else:
-            mod.member = int(mem["user_id"])
-        mod.dc = dc_id
-        mem_id_name = mem.get("org_id") or mem.get("ext_name")
-        if m_id > 0:
-            mod.id = int(m_id)
-            mod.txn_no = int(mem["txn_no"])
-            rc = apiVC.update_entity(DB.DcMember, mod)
-            if rc != 1:
-                raise C.AcadStackException(f"Could not update the DC member {mem_id_name}")
-        else:
-            apiVC.save_entity(mod)
-            if mod.id < 1:
-                raise C.AcadStackException(f"Could not add the DC member {mem_id_name}")
-        
-
-
-def _raise_on_invalid_dc_change(sup_id, stu_id, old_status, actor=None):
-    actor = apiVC.actor_or_current(actor)
-
-    #  Editable DC status for roles
-    editable = {"HOD": "SUB,RTH", "FAC": "DRA,RTS"}
-
-    # editable.get(actor.role, "") -- not editable.get(actor.role): any
-    # role other than HOD/FAC (e.g. RES, PLA) has no entry in the map, so
-    # this used to be `old_status not in None`, a TypeError, instead of
-    # the intended "insufficient privileges" error.
-    if (old_status and not actor.can("dc.override_status")) \
-        and (old_status not in editable.get(actor.role, "")):
-        raise C.AcadStackException("Insufficient privileges to change  "
-                              "Please contact academic section.")
-
-    if not (sup_id and stu_id):
-        raise C.AcadStackException("Please select student AND supervisor!")
-
-    sup = DB.User.get_by_id(sup_id)
-    stu = DB.User.get_by_id(stu_id)
-
-    if sup.role != "FAC":
-        raise C.AcadStackException("Only a faculty can be the supervisor!")
-    stu_per = stu.person
-    if sup.person.dept_name != stu_per.dept_name:
-        raise C.AcadStackException("Supervisor and student must be from same department!")
-
-    if actor.has_role("FAC") and sup_id != actor.user_id:
-        raise C.AcadStackException("You must be the supervisor/HoD/Dean to make changes to ")
-
-    if actor.has_role("HOD") and actor.dept_name != stu_per.dept_name:
-        raise C.AcadStackException("Only HOD of student's own dept. can make changes!")
-    
-
-def _raise_on_invalid_dc_dates(dc_id, stu_id, from_dt, to_dt):
-    qry = DB.DcForStudent.select().where((DB.DcForStudent.id != dc_id) & \
-        (DB.DcForStudent.student == stu_id))
-    if to_dt and to_dt != '0000-00-00':
-        qry = qry.where(
-            ((DB.DcForStudent.effective_from.between(from_dt, to_dt)) | \
-            (DB.DcForStudent.effective_to.between(from_dt, to_dt))))
-    else:
-        qry = qry.where((DB.DcForStudent.effective_to >= from_dt))
-    
-    if qry.exists():
-        raise C.AcadStackException("DC dates overlap with an existing DC of the same student!")
-
-
 @C.rbac(permissions=["dc.save"])
 async def dc_save():
     try:
         fd = await request.get_json(force=True)
-        stu = fd.get("student") or {}
-        dcm = fd.get("members") or []
-        stu_id = stu.get("user_id")
-        dcid = int(fd.get("id") or 0)
-        dc = DB.DcForStudent.get_by_id(dcid) if dcid > 0 else DB.DcForStudent()
-        old_dc_status = dc.status
-        sups = [m for m in dcm if m.get("role") == "SU" and \
-                    not m.get("is_deleted")]
-        has_sup = len(sups) == 1
-        has_cp = len([m for m in dcm if m.get("role") == "CP" and \
-                        not m.get("is_deleted")]) == 1
-        has_mem = len([m for m in dcm if m.get("role") == "ME" and \
-                        not m.get("is_deleted")]) > 0
-        if not(has_mem and has_cp and has_sup):
-            return apiVC.error_json("At least one DC member, supervisor and "
-                                 "the DC chairperson is required!")
-        
-        sup_id = sups[0].get("user_id")
-        _raise_on_invalid_dc_change(sup_id, stu_id, old_dc_status,
-                                     actor=apiVC.current_actor())
-
-        from_dt = fd.get("effective_from")
-        to_dt = fd.get("effective_to")
-        _raise_on_invalid_dc_dates(dcid, stu_id, from_dt, to_dt)
-        
-        logging.info("Saving DC details: {}".format(fd))
-        C.update_model_skip_unknown(dc, fd)
-        dcid = int(fd.get("id") or 0)
-        dc.student = int(stu_id)
-
-        with DB.db.atomic() as txn:
-            rc = 0
-            expected_rc = 0
-            if dcid:
-                rc += apiVC.update_entity(DB.DcForStudent, dc)
-                expected_rc += 1
-                if dc.status == "APP" and old_dc_status != "APP":
-                    amo = DB.AcademicMilestone(dc=dc.id, student=stu_id,
-                                            milestone="DC Approved")
-                    rc += apiVC.save_entity(amo)
-                    expected_rc += 1
-            else:
-                rc += apiVC.save_entity(dc)
-                expected_rc += 1
-                amo = DB.AcademicMilestone(dc=dc.id, student=stu_id,
-                                            milestone="DC Proposed")
-                rc += apiVC.save_entity(amo)
-                expected_rc += 1
-            
-            if rc == expected_rc:
-                _save_dcm(dcm, dc.id)
-                txn.commit()
-            else:
-                txn.rollback()
-                return apiVC.error_json("Failed to save details. "
-                                     "Please refresh and try again.")
-
-        return dc_details(dc.id)
+        dc_id = DCD.save_dc(apiVC.current_actor(), fd,
+                            C.update_model_skip_unknown)
+        return await dc_details(dc_id)
 
     except C.AcadStackException as ae:
         logging.exception(ae)

@@ -26,6 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import peewee as ORM
 from playhouse.shortcuts import model_to_dict
 
 import common as C
@@ -37,6 +38,7 @@ from domain import attendance as ATT
 from domain import persistence
 from domain import plugins
 from domain import policy as POL
+from domain import workflow as WF
 from domain.context import Actor
 from domain.errors import PermissionDenied, PolicyViolation, DomainError
 
@@ -168,18 +170,130 @@ def existing_enrolment(co_id, student_id):
 
 
 # ========================== the state machine ==========================
+#
+# The approval chain is the "enrolment" transition table below (stored
+# and editable as data; see domain/workflow.py). What stays in code is
+# what the rows refer to by name: the ownership guards, which need the
+# batched SQL in ownership_flags(), the calendar/offering check, and the
+# notification.
+
+ENROLMENT = "enrolment"
+
+
+@WF.guard("enrolment.is_instructor")
+def _is_instructor(ctx):
+    return ctx.facts["is_instructor"]
+
+
+@WF.guard("enrolment.is_advisor")
+def _is_advisor(ctx):
+    return ctx.facts["is_advisor"]
+
+
+@WF.check("enrolment.change_allowed")
+def _change_allowed(ctx):
+    # Offering running/enrolling, add/drop (or withdraw) window open.
+    VAL.validate_enrolment_change(ctx.record, ctx.to_status, actor=ctx.actor)
+
+
+@WF.effect("notify.enrolment")
+def _notify(ctx):
+    plugins.call(plugins.ENROLMENT_NOTIFY, ctx.record.id)
+
+
+def _decision(pri, frm, action, to, permission, guards=(), label=None,
+              checks=(), effects=("notify.enrolment",)):
+    return WF.Transition(
+        priority=pri, from_status=frm, action=action, to_status=to,
+        label=label or action.capitalize(), permission=permission,
+        guards=tuple(guards), checks=tuple(WF.Step.of(c) for c in checks),
+        effects=tuple(WF.Step.of(e) for e in effects))
+
+
+_OWNER = "enrolment.decide_as_owner"
+_WINDOW = ("enrolment.change_allowed",)
+
+#: The approval chain as it has always behaved, as a table. The two
+#: oddities tests/test_enrolment_state_machine.py pins are rows here, not
+#: accidents of branch order: an advisor acting alone takes any status
+#: (including a fresh IPEN) straight to ENRO (rows 30/31, from "*"), and
+#: an HOD may decide any APEN enrolment with no ownership at all (60/61).
+BASELINE = WF.Workflow(
+    name=ENROLMENT,
+    status_vocab="enrolment_statuses",
+    match_on=WF.MATCH_ON_ACTION,
+    locked_message="Unexpected user role: {role}",
+    denied_message=("You do not have privileges to change one or more "
+                    "enrollments!"),
+    transitions=(
+        # Academic section: decides outright, no ownership, no calendar.
+        _decision(10, "*", "approve", "ENRO", "enrolment.override"),
+        _decision(11, "*", "reject", "ASREJ", "enrolment.override"),
+        # Coordinating instructor only.
+        _decision(20, "*", "approve", "APEN", _OWNER,
+                  ["enrolment.is_instructor", "!enrolment.is_advisor"],
+                  checks=_WINDOW),
+        _decision(21, "*", "reject", "IREJ", _OWNER,
+                  ["enrolment.is_instructor", "!enrolment.is_advisor"],
+                  checks=_WINDOW),
+        # Batch advisor only.
+        _decision(30, "*", "approve", "ENRO", _OWNER,
+                  ["enrolment.is_advisor", "!enrolment.is_instructor"],
+                  checks=_WINDOW),
+        _decision(31, "*", "reject", "AREJ", _OWNER,
+                  ["enrolment.is_advisor", "!enrolment.is_instructor"],
+                  checks=_WINDOW),
+        # Instructor AND advisor: the two steps collapse onto one user,
+        # who still walks them one at a time.
+        _decision(40, "IPEN", "approve", "APEN", _OWNER,
+                  ["enrolment.is_instructor", "enrolment.is_advisor"],
+                  checks=_WINDOW),
+        _decision(41, "IPEN", "reject", "AREJ", _OWNER,
+                  ["enrolment.is_instructor", "enrolment.is_advisor"],
+                  checks=_WINDOW),
+        _decision(50, "APEN", "approve", "ENRO", _OWNER,
+                  ["enrolment.is_instructor", "enrolment.is_advisor"],
+                  checks=_WINDOW),
+        _decision(51, "APEN", "reject", "AREJ", _OWNER,
+                  ["enrolment.is_instructor", "enrolment.is_advisor"],
+                  checks=_WINDOW),
+        # HOD standing in for the advisor.
+        _decision(60, "APEN", "approve", "ENRO",
+                  "enrolment.decide_advisor_pending", checks=_WINDOW),
+        _decision(61, "APEN", "reject", "AREJ",
+                  "enrolment.decide_advisor_pending", checks=_WINDOW),
+    ),
+)
+
+
+def _status_counts() -> dict:
+    qry = (DB.CourseEnrollment
+           .select(DB.CourseEnrollment.enrol_status,
+                   ORM.fn.COUNT(DB.CourseEnrollment.id).alias("n"))
+           .group_by(DB.CourseEnrollment.enrol_status))
+    return {r.enrol_status: r.n for r in qry}
+
+
+WF.register_workflow(BASELINE, _status_counts)
+
+
+def _context(actor, ownership, current_status, action, record=None):
+    return WF.Context(
+        actor=actor, from_status=current_status, record=record,
+        # Anything other than "approve" has always meant reject.
+        action="approve" if action == "approve" else "reject",
+        facts={"is_instructor": bool(ownership[0]),
+               "is_advisor": bool(ownership[1])})
+
 
 @plugins.extension_point(plugins.ENROLMENT_NEXT_STATUS)
 def default_next_enrol_status(actor: Actor, ownership, current_status,
-                              action) -> str:
+                              action, workflow=None) -> str:
     """The status an approve/reject moves an enrolment to.
 
-    This is the enrolment approval state machine, and it is a pure
-    function: role, the actor's relationship to the enrolment, the
-    current status and the action in; the new status out. No database,
-    no request, no I/O -- which is what makes it directly testable and
-    what makes it a sensible thing for an institution to override (see
-    :mod:`domain.plugins`).
+    Resolves the request against the "enrolment" transition table
+    (``workflow``, or the one in force) -- guards only, no checks and no
+    effects, so it needs no database when a workflow is passed in.
 
     Args:
         actor: who is approving.
@@ -187,42 +301,16 @@ def default_next_enrol_status(actor: Actor, ownership, current_status,
             enrolment, from :func:`ownership_flags`.
         current_status: the enrolment's status right now.
         action: "approve" or anything else, which means reject.
+        workflow: the transition table to use; defaults to
+            ``workflow.load("enrolment")``.
 
     Raises:
-        PermissionDenied: when no branch grants this actor authority
+        PermissionDenied: when no transition grants this actor authority
             over an enrolment in this state.
-
-    The branches below are the long-standing behaviour, including two
-    oddities that ``tests/test_enrolment_state_machine.py`` pins: an
-    advisor acting alone can take a fresh IPEN straight to ENRO,
-    skipping instructor approval; and any HOD can act on any APEN
-    enrolment, with no department or offering check.
     """
-    approving = action == "approve"
-    is_instructor, is_advisor = ownership[0], ownership[1]
-
-    if actor.can("enrolment.override"):
-        return "ENRO" if approving else "ASREJ"
-
-    if actor.has_role(["FAC", "HOD"]):
-        # User is course instructor
-        if is_instructor and not is_advisor:
-            return "APEN" if approving else "IREJ"
-        # User is batch advisor
-        elif is_advisor and not is_instructor:
-            return "ENRO" if approving else "AREJ"
-        # User is both instrcutor and batch advisor
-        elif is_instructor and is_advisor and current_status == "IPEN":
-            return "APEN" if approving else "AREJ"
-        elif is_instructor and is_advisor and current_status == "APEN":
-            return "ENRO" if approving else "AREJ"
-        elif actor.has_role("HOD") and current_status == "APEN":
-            return "ENRO" if approving else "AREJ"
-        else:
-            raise PermissionDenied(
-                "You do not have privileges to change one or more enrollments!")
-
-    raise PermissionDenied("Unexpected user role: " + str(actor.role))
+    wf = workflow or WF.load(ENROLMENT)
+    ctx = _context(actor, ownership, current_status, action)
+    return WF.select(wf, ctx).target(current_status)
 
 
 @plugins.extension_point(plugins.ENROLMENT_NOTIFY)
@@ -231,28 +319,56 @@ def default_notify_status_change(enrolment_id, old_record=None):
     send_enrolment_email(enrolment_id, old_rec=old_record)
 
 
+def enrolment_actions(actor: Actor, enrolment_id) -> list:
+    """The approve/reject actions the actor may take on one enrolment."""
+    ce = DB.CourseEnrollment.get_by_id(enrolment_id)
+    ownership = ownership_flags(actor, [enrolment_id]).get(
+        ce.id, [False, False])
+    ctx = _context(actor, ownership, ce.enrol_status, None, record=ce)
+    return WF.available(WF.load(ENROLMENT), ctx)
+
+
 # ============================== use cases ==============================
 
 def change_status(actor: Actor, enrolment_ids, action) -> list:
     """Approves or rejects a batch of enrolments, atomically.
 
-    Returns the ids whose status actually changed. An enrolment the
-    actor may not act on, or a transition the academic calendar
-    forbids, raises and rolls the whole batch back.
+    Each enrolment is moved by the "enrolment" transition table: the row
+    chosen decides the new status, its checks run before the save and
+    its effects (the notification email) after. Returns the ids whose
+    status actually changed. An enrolment the actor may not act on, or a
+    transition the academic calendar forbids, raises and rolls the whole
+    batch back.
+
+    An institution that overrides ``ENROLMENT_NEXT_STATUS`` with a plugin
+    gets the pre-table contract: its function picks the status, the
+    calendar check runs, and ``ENROLMENT_NOTIFY`` is called.
     """
     ownership = ownership_flags(actor, enrolment_ids)
+    custom = plugins.is_overridden(plugins.ENROLMENT_NEXT_STATUS)
+    wf = None if custom else WF.load(ENROLMENT)
     changed = []
     with DB.db.atomic() as txn:
         for eid in enrolment_ids:
             ce = DB.CourseEnrollment.get_by_id(eid)
-            new_status = plugins.call(plugins.ENROLMENT_NEXT_STATUS, actor,
-                                      ownership[eid], ce.enrol_status, action)
-
-            VAL.validate_enrolment_change(ce, new_status, actor=actor)
+            ctx = None
+            if custom:
+                new_status = plugins.call(plugins.ENROLMENT_NEXT_STATUS, actor,
+                                          ownership[eid], ce.enrol_status,
+                                          action)
+                VAL.validate_enrolment_change(ce, new_status, actor=actor)
+            else:
+                ctx = _context(actor, ownership[eid], ce.enrol_status, action,
+                               record=ce)
+                WF.decide(wf, ctx)
+                new_status = ctx.to_status
 
             ce.enrol_status = new_status
             if persistence.update(DB.CourseEnrollment, ce, actor) == 1:
-                plugins.call(plugins.ENROLMENT_NOTIFY, eid)
+                if custom:
+                    plugins.call(plugins.ENROLMENT_NOTIFY, eid)
+                else:
+                    WF.run_effects(ctx)
                 changed.append(eid)
         txn.commit()
     return changed

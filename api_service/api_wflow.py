@@ -16,6 +16,19 @@ import playhouse.shortcuts as PS
 import models as M
 import api_common as apiVC
 import common as C
+from domain import course as CRS
+from domain import dc as DCD
+from domain import enrolment as ENR
+from domain import milestones as MS
+from domain import workflow as WF
+
+# Per workflow: the domain function listing the moves the acting user may
+# make on one record (id 0 = a record not yet created).
+_ACTIONS = {
+    ENR.ENROLMENT: ENR.enrolment_actions,
+    DCD.DC: DCD.dc_actions,
+    CRS.COURSE: CRS.course_actions,
+}
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/wfnote_find/<string:entity_name>/<int:entity_key>', 
@@ -25,6 +38,14 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/wfnote_save', view_func=wfnote_save, methods=['POST'])
     bp.add_url_rule('/dates_save', view_func=dates_save, methods=['POST'])
     bp.add_url_rule('/dates_search', view_func=dates_search, methods=['POST'])
+    bp.add_url_rule('/workflow_actions/<string:name>/<int:record_id>',
+                        view_func=workflow_actions, methods=['GET'])
+    bp.add_url_rule('/workflow/<string:name>', view_func=workflow_view,
+                        methods=['GET'])
+    bp.add_url_rule('/workflow_save', view_func=workflow_save, methods=['POST'])
+    bp.add_url_rule('/milestones', view_func=milestones_view, methods=['GET'])
+    bp.add_url_rule('/milestones_save', view_func=milestones_save,
+                        methods=['POST'])
 
 
 @C.rbac
@@ -134,3 +155,75 @@ async def dates_search():
         msg = "Error when saving academic dates."
         logging.exception(msg)
         return apiVC.error_json(f"{msg}: {ex}")
+
+
+@C.rbac
+async def workflow_actions(name, record_id):
+    """The approval actions the current user may take on a record, which
+    the frontend renders as its action buttons."""
+    try:
+        if name not in _ACTIONS:
+            return apiVC.error_json(f"Unknown workflow: {name}")
+        return apiVC.ok_json(_ACTIONS[name](apiVC.current_actor(), record_id))
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception as ex:
+        msg = "Error when loading workflow actions."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@C.rbac(permissions=["system.manage_workflows"])
+async def workflow_view(name):
+    """A workflow's transition table, plus the guard/check/effect names a
+    row may refer to."""
+    try:
+        return apiVC.ok_json({"workflow": WF.load(name).to_json(),
+                              "registered": WF.registered_steps()})
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception as ex:
+        msg = "Error when loading the workflow."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@C.rbac(permissions=["system.manage_workflows"])
+async def workflow_save():
+    """Replaces a workflow's transition table (the whole definition, as
+    returned by workflow_view's "workflow")."""
+    try:
+        fd = await request.get_json(force=True)
+        wf = WF.save_workflow(apiVC.current_actor(), fd)
+        return apiVC.ok_json(wf.to_json())
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception as ex:
+        msg = "Error when saving the workflow."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@C.rbac
+async def milestones_view():
+    try:
+        return apiVC.ok_json(MS.definitions())
+    except Exception as ex:
+        msg = "Error when loading academic milestones."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@C.rbac(permissions=["system.manage_workflows"])
+async def milestones_save():
+    """Replaces the academic milestone sequence."""
+    try:
+        fd = await request.get_json(force=True)
+        return apiVC.ok_json(
+            MS.save_definitions(apiVC.current_actor(), fd.get("milestones") or []))
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception as ex:
+        msg = "Error when saving academic milestones."
+        logging.exception(msg)
+        return apiVC.error_json(msg)

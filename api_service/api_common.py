@@ -73,19 +73,8 @@ def entry_years_valid(years:str)->bool:
     return re.match(r"^(20\d{2}[,]?)+$", years, re.IGNORECASE)
 
 
-def course_code_for_pg(code:str)->bool:
-    """Checks if the supplied course code represents a PG course. Any code
-    number starting with a digit greater than 5 will be considered a
-    PG course. E.g., CS504, EE677, etc. are PG courses.
-
-    Args:
-        code (str): Course code in the format CCddd.
-
-    Returns:
-        bool: True if yes.
-    """
-    code = "" if not code else code
-    return re.match(r"^[A-Za-z]{2,3}[5,6,7,8,9]\d{2}$", code, re.IGNORECASE)
+# Moved to common so the domain layer can use it.
+course_code_for_pg = C.course_code_for_pg
 
 
 def current_login_id():
