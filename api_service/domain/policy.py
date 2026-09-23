@@ -41,7 +41,6 @@ __license__ = "MIT"
 __status__ = "Development"
 """
 
-import bisect
 import logging
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence
@@ -202,92 +201,47 @@ _UG_EC = frozenset(("A", "A-", "B", "B-", "C", "C-", "D", "S", "NP"))
 _PG_EC = frozenset(("A", "A-", "B", "B-", "C", "C-", "D", "S"))
 _UG_PG_CGPA = frozenset(("A", "A-", "B", "B-", "C", "C-", "D"))
 
-# The two PhD grade sets the 2021 revision moves between. "Narrow" excludes
-# C-; "wide" includes it.
-_PHD_NARROW = frozenset(("A", "A-", "B", "B-", "C"))
-_PHD_WIDE = frozenset(("A", "A-", "B", "B-", "C", "C-"))
+# PhD grade sets. Narrower than UG/PG: "D" earns neither credit nor CGPA
+# points for a research student.
+_PHD_EC = frozenset(("A", "A-", "B", "B-", "C", "C-"))
+_PHD_CGPA = frozenset(("A", "A-", "B", "B-", "C", "C-"))
 
 
-def _baseline(phd_ec: frozenset, phd_cgpa: frozenset) -> GradingPolicy:
-    """A baseline ruleset differing only in the PhD grade sets, which is
-    all the 2021 revision varies."""
-    return GradingPolicy(
-        grade_points=_GRADE_POINTS,
-        degree_classes=_DEGREE_CLASSES,
-        default_degree_class="PG",
-        programme_rules={
-            "UG": ProgrammeRules(_GRADE_POINTS, _UG_EC, _UG_PG_CGPA),
-            "PG": ProgrammeRules(_GRADE_POINTS, _PG_EC, _UG_PG_CGPA),
-            "PHD": ProgrammeRules(_GRADE_POINTS, phd_ec, phd_cgpa),
-        },
-    )
+#: The session the seeded baseline takes effect from. Early enough to
+#: precede any enrolment, so every transcript resolves to it.
+BASELINE_EFFECTIVE_FROM = "2000-T1"
 
-
-#: The PhD grade-set revision, per academic calendar, as ordinary
-#: effective-dated versions.
+#: The ruleset the product ships with, and the one
+#: :func:`default_seed_data.seed_grading_policy` stores at install.
 #:
-#: This replaces a hardcoded branch on the academic year. It is keyed by
-#: session type because that is what the original rule actually varied on:
-#: it switched on the session SUFFIX, and the suffixes belong to two
-#: different calendars that ran side by side during the pandemic years.
-#: Read as one institution-wide series the rule is self-contradictory --
-#: it demands different rulesets for sessions that begin in the same month
-#: (2021-I vs 2021-T1, and 2021-II vs 2021-T3). Read per calendar it is
-#: coherent, and reproduces the original for every session.
-#:
-#: The quarter series still widens at T1, reverts at T3 and widens again
-#: the following year. That is faithful, not a transcription error: T3 and
-#: T4 fell into the branch that logged "Unknown academic semester", i.e.
-#: they were never handled. It is the row that most needs the registrar's
-#: confirmation -- see docs/versioned-policy.md section 7.
-BASELINE_GRADING_VERSIONS = {
-    "semester": (
-        ("2000-I", _PHD_NARROW, _PHD_NARROW),
-        ("2021-I", _PHD_WIDE, _PHD_NARROW),
-        ("2021-II", _PHD_WIDE, _PHD_WIDE),
-    ),
-    "quarter": (
-        ("2000-T1", _PHD_NARROW, _PHD_NARROW),
-        ("2021-T1", _PHD_WIDE, _PHD_WIDE),
-        ("2021-T3", _PHD_NARROW, _PHD_WIDE),
-        ("2022-T1", _PHD_WIDE, _PHD_WIDE),
-    ),
-}
-
-#: Ordinals and built policies per calendar, for a bisect at resolution.
-_BASELINE_INDEX = {
-    session_type: ([AS.ordinal(s) for s, _, _ in rows],
-                   [_baseline(ec, cgpa) for _, ec, cgpa in rows])
-    for session_type, rows in BASELINE_GRADING_VERSIONS.items()
-}
-
-#: The ruleset used when the session cannot be identified at all. These
-#: are the values the original computation initialised each iteration
-#: with, so a malformed or unknown session still computes the way it did
-#: -- with a warning, exactly as before.
-DEFAULT_GRADING_POLICY = _baseline(_PHD_NARROW, _PHD_WIDE)
+#: There is exactly one, and it is not session-dependent. An earlier
+#: revision of this module carried the PhD grade sets as a table keyed per
+#: academic calendar, to reproduce a rule that switched on the session
+#: suffix ("PhD passing grades introduced in 2021"). That rule was
+#: incoherent -- read as one institution-wide series it demanded different
+#: rulesets for sessions beginning in the same month -- and it described a
+#: transition in a deployment that no longer needs preserving. So the
+#: shipped rules are simply the rules, and any future amendment is a new
+#: stored version rather than a branch or a table.
+DEFAULT_GRADING_POLICY = GradingPolicy(
+    grade_points=_GRADE_POINTS,
+    degree_classes=_DEGREE_CLASSES,
+    default_degree_class="PG",
+    programme_rules={
+        "UG": ProgrammeRules(_GRADE_POINTS, _UG_EC, _UG_PG_CGPA),
+        "PG": ProgrammeRules(_GRADE_POINTS, _PG_EC, _UG_PG_CGPA),
+        "PHD": ProgrammeRules(_GRADE_POINTS, _PHD_EC, _PHD_CGPA),
+    },
+)
 
 
-def baseline_grading_policy(acad_session: Optional[str] = None
-                            ) -> GradingPolicy:
-    """The shipped in-code ruleset for a session.
+def baseline_grading_policy() -> GradingPolicy:
+    """The shipped in-code ruleset.
 
-    Resolved from :data:`BASELINE_GRADING_VERSIONS` by the same rule the
-    policy store uses: the latest version of that session's calendar
-    taking effect at or before the session's start.
+    Used when nothing is stored, which keeps the computation testable with
+    no database. Takes no session: the shipped rules do not vary by one.
     """
-    if acad_session is None:
-        return DEFAULT_GRADING_POLICY
-    try:
-        ords, policies = _BASELINE_INDEX[AS.session_type(acad_session)]
-        ordinal = AS.ordinal(acad_session)
-    except (AS.InvalidAcadSession, KeyError):
-        logging.warning(
-            f"Unknown academic session: {acad_session!r}. Computing under the "
-            f"base grading ruleset.")
-        return DEFAULT_GRADING_POLICY
-    idx = bisect.bisect_right(ords, ordinal) - 1
-    return policies[idx] if idx >= 0 else DEFAULT_GRADING_POLICY
+    return DEFAULT_GRADING_POLICY
 
 
 def load_grading_policy(acad_session: Optional[str] = None) -> GradingPolicy:
@@ -310,8 +264,10 @@ def load_grading_policy(acad_session: Optional[str] = None) -> GradingPolicy:
         except PS.PolicyNotFoundError:
             pass
         except AS.InvalidAcadSession:
-            pass
-    return baseline_grading_policy(acad_session)
+            logging.warning(
+                f"Unknown academic session: {acad_session!r}. Computing under "
+                f"the ruleset the code ships with.")
+    return baseline_grading_policy()
 
 
 # ------------------------------------------- storage for the grading group

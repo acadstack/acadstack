@@ -120,43 +120,20 @@ def test_pg_uses_pg_earned_credit_list_and_default_pass_grades():
     assert result_d["cgpa"] == 4.0    # D counts toward CGPA for PG (pass_grades has D)
 
 
-# ===================== PHD year/semester grade-policy matrix =====================
-# __compute_cgpa_sgpa_ec has a hand-rolled rule (introduced "in 2021") that
-# changes which grades earn credit (phd_ec_grades) and which grades count
-# toward CGPA (phd_ec_pass_grades) for PhD students, keyed off of the
-# academic session's year and semester suffix. The two lists disagree with
-# each other in some branches (a course can earn credit but not count
-# toward CGPA, or vice versa) -- this looks unintentional, but is
-# characterized exactly here rather than fixed.
+# ===================== PHD behavior =====================
+# __compute_cgpa_sgpa_ec used to carry a hand-rolled rule (introduced "in
+# 2021") that changed which grades earn credit and which count toward CGPA
+# for PhD students, keyed off the academic session's year and semester
+# suffix. The two lists disagreed with each other in some branches, and the
+# rule assigned different results to sessions that begin in the same month
+# (2021-I vs 2021-T1) -- so it could not be expressed as effective-dated
+# policy at all.
 #
-# For grade "C-" specifically, the branches produce four different
-# (earns_ec, counts_for_cgpa) combinations:
-
-@pytest.mark.parametrize("acad_session,expected_ec,expected_cgpa_counts", [
-    ("2020-I", False, False),   # year < 2021: both lists narrowed (no C-)
-    ("2021-I", True, False),    # transition semester I: ec widened, pass NOT
-    ("2021-II", True, True),    # transition semester II: both widened
-    ("2021-S", True, True),     # summer session, same branch as II/T1/T2
-    ("2021-T1", True, True),
-    ("2021-T2", True, True),
-    ("2021-XYZ", False, True),  # unrecognized suffix: falls through to the
-                                 # per-iteration defaults, which are the
-                                 # OPPOSITE combination of the <2021 case
-    ("2022-I", True, True),     # year > 2021: both widened
-])
-def test_phd_grade_c_minus_policy_matrix(acad_session, expected_ec,
-                                          expected_cgpa_counts):
-    result = compute([course(acad_session=acad_session, grade="C-")], "PHD")
-    assert (result["ec"] == 3) is expected_ec, (
-        f"{acad_session}: expected earned-credit={expected_ec}, "
-        f"got ec={result['ec']}")
-    assert (result["pts_cgpa"] > 0) is expected_cgpa_counts, (
-        f"{acad_session}: expected cgpa-counts={expected_cgpa_counts}, "
-        f"got pts_cgpa={result['pts_cgpa']}")
-    # SGPA points always count C- (it's in the grade-points map
-    # regardless of degree/year), independent of the ec/cgpa policy above.
-    assert result["sgpa"] == 5.0  # gpm["C-"] = 5, 5*3/3 = 5.0
-
+# test_phd_grade_c_minus_policy_matrix characterized all eight branches. It
+# was retired deliberately, not accidentally: the product has never been
+# deployed, so there are no transcripts computed under those branches to
+# preserve, and the rule is now one ordinary ruleset with no year in it.
+# See docs/versioned-policy.md section 7.1 for the full argument.
 
 def test_phd_grade_d_never_counts_for_cgpa_in_any_branch():
     # Unlike UG/PG (whose pass_grades includes "D"), none of the PHD

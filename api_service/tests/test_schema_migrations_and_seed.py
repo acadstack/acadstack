@@ -67,7 +67,10 @@ def test_seed_defaults_seeds_vocab_rows(db):
     import vocab_defaults as VD
 
     counts = run_seed_defaults()
-    assert counts == {"SystemSetting": len(VD.ALL)}
+    # Plus the one baseline grading ruleset, which makes the versioned
+    # policy store the runtime source of truth instead of the in-code
+    # fallback. See default_seed_data.seed_grading_policy.
+    assert counts == {"SystemSetting": len(VD.ALL), "PolicyVersion": 1}
     assert run_seed_defaults() == {"SystemSetting": 0}
 
     row = DB.SystemSetting.get(DB.SystemSetting.group == "vocab",

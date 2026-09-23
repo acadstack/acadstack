@@ -159,25 +159,31 @@ def test_a_degree_can_be_reclassified_without_touching_the_computation():
     assert TR.compute_cgpa_sgpa_ec(courses, "BMD", policy=moved)["ec"] == 3
 
 
-def test_the_phd_revision_is_policy_not_a_literal():
-    """This used to be `if academic_session_year > 2021` inside the
-    computation loop, and then a `phd_amendment_year` field. It is now an
-    ordinary effective-dated table, so a caller can compute a 2022 session
-    under the pre-revision rules by supplying that ruleset -- no year
-    arithmetic anywhere.
+def test_the_phd_grade_rules_are_policy_not_a_literal():
+    """These used to be `if academic_session_year > 2021` inside the
+    computation loop, then a `phd_amendment_year` field, then a table keyed
+    per academic calendar. They are now just one programme's rules, so an
+    institution states different ones by supplying a ruleset -- with no
+    year arithmetic anywhere.
     """
     courses = [{"acad_session": "2022-I", "ltp": "3-1-0-5-3",
                 "enrol_type": "C", "enrol_status": "ENRO", "grade": "C-",
                 "code": "CS101"}]
 
-    # Under the shipped baseline, 2022-I is after the revision: C- earns
-    # credit for a PhD student.
-    assert TR.compute_cgpa_sgpa_ec(courses, "PHD")["ec"] == 3
+    # Under the shipped rules a PhD "C-" earns credit and counts for CGPA.
+    shipped = TR.compute_cgpa_sgpa_ec(courses, "PHD")
+    assert shipped["ec"] == 3 and shipped["pts_cgpa"] > 0
 
-    # The pre-revision ruleset is the one the baseline itself holds for an
-    # earlier session -- taken from the table, not retyped.
-    before = POL.baseline_grading_policy("2019-I")
-    assert TR.compute_cgpa_sgpa_ec(courses, "PHD", policy=before)["ec"] == 0
+    # An institution that does not recognise C- for a research degree says
+    # so in its ruleset. Same session, same course, same code path.
+    default = POL.DEFAULT_GRADING_POLICY
+    stricter = dataclasses.replace(default, programme_rules={
+        **default.programme_rules,
+        "PHD": _rules(default.grade_points,
+                      ["A", "A-", "B", "B-", "C"],
+                      ["A", "A-", "B", "B-", "C"])})
+    strict = TR.compute_cgpa_sgpa_ec(courses, "PHD", policy=stricter)
+    assert strict["ec"] == 0 and strict["pts_cgpa"] == 0
 
 
 def _code_constants(module):
@@ -208,10 +214,10 @@ def _code_names(module):
          if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
-def test_the_phd_revision_is_a_table_with_no_branch_on_a_year():
-    """A structural guard: the revision is data, so neither module does
+def test_no_module_branches_on_an_academic_year():
+    """A structural guard: the grade rules are data, so neither module does
     arithmetic on an academic year or names the old amendment helper."""
-    assert "BASELINE_GRADING_VERSIONS" in _code_names(POL)
+    assert "DEFAULT_GRADING_POLICY" in _code_names(POL)
     assert 2021 not in _code_constants(POL), (
         "domain/policy.py has a literal 2021 in its code; the PhD revision "
         "is supposed to be effective-dated data, not a branch on a year.")

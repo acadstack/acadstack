@@ -11,11 +11,12 @@ against copied literals -- so it fails if either side moves:
    both academic calendars, including the mid-session case; and
 4. sealed history survives later changes.
 
-It also records a finding rather than a property: the actual 2021 PhD rule
-cannot be stored as ONE institution-wide series, because it assigns
-different rulesets to sessions that begin at the same time. That is why
-``domain.policy.BASELINE_GRADING_VERSIONS`` is keyed per calendar. See
-test_the_2021_rule_assigns_different_rulesets_to_concurrent_sessions.
+The 2021 PhD rule that motivated much of this design is gone: it assigned
+different rulesets to sessions beginning at the same instant, so it could
+not be stored as one series, and with no deployment to preserve it was
+retired rather than reproduced. What remains of it here is the property it
+taught us -- one instant, one ruleset -- in
+test_the_store_cannot_hold_two_rulesets_for_one_instant.
 """
 import sys
 from pathlib import Path
@@ -50,10 +51,10 @@ def policy(db):
 
 DEFAULT = POL.DEFAULT_GRADING_POLICY
 
-#: The two PhD grade sets the 2021 revision moves between, from the live
-#: module rather than retyped.
-NARROW = POL._PHD_NARROW
-WIDE = POL._PHD_WIDE
+#: The shipped PhD grade sets, and a narrower variant to amend towards, so
+#: the amendment tests observe a real change without retyping a ruleset.
+SHIPPED = POL._PHD_EC
+NARROWER = frozenset(("A", "A-", "B"))
 
 ALL_SESSIONS_IN_WINDOW = [f"{y}-{s}"
                           for y in range(2019, 2024)
@@ -151,7 +152,7 @@ def test_a_version_is_complete_not_a_patch(policy):
     transcript never has to replay the versions before it."""
     policy.supersede(POL.GRADING, "2000-T1",
                      POL.grading_payload_from(DEFAULT))
-    policy.supersede(POL.GRADING, "2021-I", _phd_payload(WIDE, NARROW))
+    policy.supersede(POL.GRADING, "2021-I", _phd_payload(NARROWER, NARROWER))
 
     old = policy.policy_for(POL.GRADING, "2019-I")
     new = policy.policy_for(POL.GRADING, "2021-I")
@@ -177,80 +178,54 @@ def test_a_programme_can_carry_its_own_grade_point_scale(policy):
 
 # ===================== The 2021 PhD revision =====================
 
-def test_the_2021_rule_assigns_different_rulesets_to_concurrent_sessions(
-        policy):
-    """The finding that decides how this revision can be stored at all.
-
-    A policy version is in force for an *instant*: every session beginning
-    in that month resolves to it. The original rule branched on the session
-    SUFFIX, and two suffixes from different academic calendars can name the
-    same instant -- at which point the rule demands two different answers
-    for one point in time.
-
-    So it was never an amendment that took effect on a date; it was
-    per-calendar improvisation during the pandemic years, when semester-
-    and quarter-based programmes ran side by side. That is why the shipped
-    baseline is keyed by session type, and why the live rules must not be
-    seeded until the registrar has ruled on them.
-    """
-    by_instant = {}
-    for session_type in POL.BASELINE_GRADING_VERSIONS:
-        for suffix in AS.suffixes_for(session_type):
-            session = f"2021-{suffix}"
-            rules = POL.baseline_grading_policy(session).rules_for("PHD")
-            # Compared on the grade sets: ProgrammeRules carries a mapping
-            # of grade points and so is not hashable.
-            by_instant.setdefault(AS.ordinal(session), {})[session] = (
-                rules.earned_credit_grades, rules.cgpa_grades)
-
-    disagreeing = {instant: group for instant, group in by_instant.items()
-                   if len(set(group.values())) > 1}
-
-    assert sorted(sorted(group) for group in disagreeing.values()) == [
-        ["2021-I", "2021-T1"],
-        ["2021-II", "2021-T3"],
-    ], ("The 2021 rule no longer disagrees across concurrent sessions. If "
-        "that is deliberate, the finding is resolved and the rule can be "
-        "stored as one series.")
-
-
 def test_the_store_cannot_hold_two_rulesets_for_one_instant(policy):
     """The mechanical consequence: refused, not silently resolved, because
     the unique index is on the instant."""
-    policy.supersede(POL.GRADING, "2021-I", _phd_payload(WIDE, NARROW))
+    policy.supersede(POL.GRADING, "2021-I", _phd_payload(NARROWER, NARROWER))
     with pytest.raises(PS.PolicyImmutableError, match="already exists"):
-        policy.supersede(POL.GRADING, "2021-T1", _phd_payload(WIDE, WIDE))
+        policy.supersede(POL.GRADING, "2021-T1", _phd_payload(NARROWER, NARROWER))
 
 
-def test_the_baseline_reproduces_the_original_rule_per_calendar(policy):
-    """Read per calendar the rule IS coherent, and the shipped baseline
-    reproduces it. Pinned here as the table someone has to defend.
-
-    The quarter series widens at T1, reverts at T3 and widens again the
-    next year -- faithful, not a transcription slip: T3 and T4 fell into
-    the branch that logged "Unknown academic semester", i.e. they were
-    never handled.
-    """
-    def ec(session):
-        return POL.baseline_grading_policy(session) \
-            .rules_for("PHD").earned_credit_grades
-
-    assert [ec(f"2021-{s}") for s in AS.suffixes_for("semester")] == \
-        [WIDE, WIDE, WIDE]
-    assert [ec(f"2021-{s}") for s in AS.suffixes_for("quarter")] == \
-        [WIDE, WIDE, NARROW, NARROW]
-    assert ec("2020-I") == NARROW and ec("2020-T1") == NARROW
-    assert ec("2022-T1") == WIDE
+def test_an_unknown_session_still_computes_under_the_shipped_rules(policy):
+    """The original logged 'Unknown academic semester' and carried on. A
+    session that cannot be placed on the timeline still resolves, to the
+    ruleset the code ships with, with a warning."""
+    assert POL.load_grading_policy("2021-XYZ") is POL.DEFAULT_GRADING_POLICY
+    assert POL.load_grading_policy(None) is POL.DEFAULT_GRADING_POLICY
 
 
-def test_an_unknown_session_falls_back_to_the_base_ruleset(policy):
-    """The original logged 'Unknown academic semester' and carried on with
-    its per-iteration defaults. A session that cannot be placed on the
-    timeline still computes, under the base ruleset, with a warning."""
-    fallback = POL.baseline_grading_policy("2021-XYZ").rules_for("PHD")
-    assert fallback == DEFAULT.rules_for("PHD")
-    assert fallback.earned_credit_grades == NARROW
-    assert fallback.cgpa_grades == WIDE
+def test_a_seeded_ruleset_is_what_the_computation_resolves(policy):
+    """The seeder is what makes the store the runtime source of truth --
+    without it load_grading_policy() only ever returns the in-code
+    baseline, and the whole versioned store is inert."""
+    import default_seed_data as SEED
+
+    assert SEED.seed_grading_policy() == 1
+    resolved = POL.load_grading_policy("2024-I")
+    assert resolved == DEFAULT           # same rules...
+    assert resolved is not DEFAULT       # ...but come off the store
+
+    # Idempotent, and it never supersedes an institution's own amendment.
+    assert SEED.seed_grading_policy() == 0
+    policy.supersede(POL.GRADING, "2025-I",
+                     _phd_payload(NARROWER, NARROWER),
+                     note="Local amendment")
+    assert SEED.seed_grading_policy() == 0
+    assert POL.load_grading_policy("2025-I").rules_for("PHD") \
+        .earned_credit_grades == NARROWER
+
+
+def test_seeding_is_skipped_rather_than_failing_inside_sealed_history(
+        policy):
+    """The baseline is effective from 2000, so on an install that has
+    closed a session it would land in sealed history. A refused seed must
+    not stop the app booting."""
+    import default_seed_data as SEED
+
+    policy.close_session("2020-I")
+    assert SEED.seed_grading_policy() == 0
+    # ...and the in-code baseline still answers.
+    assert POL.load_grading_policy("2021-I") is POL.DEFAULT_GRADING_POLICY
 
 
 # ===================== A well-formed amendment =====================
@@ -266,7 +241,7 @@ def test_a_single_instant_amendment_resolves_across_both_calendars(policy):
     """
     policy.supersede(POL.GRADING, "2000-T1",
                      POL.grading_payload_from(DEFAULT))
-    policy.supersede(POL.GRADING, "2021-II", _phd_payload(WIDE, WIDE),
+    policy.supersede(POL.GRADING, "2021-II", _phd_payload(NARROWER, NARROWER),
                      note="PhD grade definitions revised")
 
     def ec(session):
@@ -274,10 +249,10 @@ def test_a_single_instant_amendment_resolves_across_both_calendars(policy):
             .rules_for("PHD").earned_credit_grades
 
     for session in ("2021-I", "2021-T1", "2021-T2"):
-        assert ec(session) == NARROW, \
+        assert ec(session) == SHIPPED, \
             f"{session} began before the change and must keep its rules"
     for session in ("2021-II", "2021-T3", "2021-T4", "2021-S"):
-        assert ec(session) == WIDE, \
+        assert ec(session) == NARROWER, \
             f"{session} begins at or after the change"
 
 
@@ -285,7 +260,7 @@ def test_resolution_takes_the_session_and_nothing_else(policy):
     """No year, no semester list, no 'if year > 2021' at the call site."""
     policy.supersede(POL.GRADING, "2000-T1",
                      POL.grading_payload_from(DEFAULT))
-    policy.supersede(POL.GRADING, "2021-II", _phd_payload(WIDE, WIDE))
+    policy.supersede(POL.GRADING, "2021-II", _phd_payload(NARROWER, NARROWER))
 
     resolved = policy.resolve(POL.GRADING, "2021-II")
     assert (resolved.effective_from, resolved.effective_to) == \
@@ -301,7 +276,7 @@ def test_sealed_rules_still_resolve_after_later_changes(policy):
     the transcript case the whole design exists for."""
     policy.supersede(POL.GRADING, "2000-T1",
                      POL.grading_payload_from(DEFAULT))
-    policy.supersede(POL.GRADING, "2021-II", _phd_payload(WIDE, WIDE))
+    policy.supersede(POL.GRADING, "2021-II", _phd_payload(NARROWER, NARROWER))
     before = {s: policy.policy_for(POL.GRADING, s)
               for s in ALL_SESSIONS_IN_WINDOW if s.startswith("2021")}
 

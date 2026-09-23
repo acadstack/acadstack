@@ -319,14 +319,25 @@ handled at all. The semester track is monotonic in the earned-credit set,
 but its CGPA set takes the widened value at `2021-I` and at no other
 session in either calendar, ever.
 
-So this is not an amendment that took effect on a date; it is per-calendar
-improvisation. **It must be resolved with the registrar before the live
-rules are seeded**, because each answer becomes a stored row someone has
-to defend, and no arrangement of rows can reproduce the current code.
-Pinned as `test_the_2021_rule_assigns_different_rulesets_to_concurrent_sessions`
-and `test_the_store_cannot_hold_two_rulesets_for_one_instant`; what a
-well-formed amendment looks like instead is
-`test_a_single_instant_amendment_resolves_across_both_calendars`.
+So this was not an amendment that took effect on a date; it was
+per-calendar improvisation, and no arrangement of rows could reproduce it.
+
+**Resolved by retiring it.** The product has never been deployed, so there
+are no transcripts computed under those branches to preserve. Rather than
+carry the contradiction forward — either as a per-calendar in-code table or
+as rows someone would have to defend — the PhD rules are now simply the
+PhD rules, seeded as one baseline version, and any future change is an
+ordinary new version. The characterization test that pinned all eight
+branches (`test_phd_grade_c_minus_policy_matrix`) was deleted deliberately;
+the note where it stood in `tests/test_gpa_computation.py` records why.
+
+What survives is the property the episode taught us — **one instant, one
+ruleset** — pinned as `test_the_store_cannot_hold_two_rulesets_for_one_instant`,
+with `test_a_single_instant_amendment_resolves_across_both_calendars`
+showing what a well-formed amendment looks like instead. Had this product
+been live, the outcome would have been the opposite: the rule would have
+had to be recorded faithfully, which is precisely the situation Phase C's
+cohort-scoped policy is designed for.
 
 **2. Grade sets used to be matched by substring — now resolved, except in
 one place.** The old rules held grade sets as comma-separated strings and
@@ -407,19 +418,19 @@ digit — passes unchanged, byte for byte. What changed:
   the passed-courses listing is not — deriving one from the other would
   silently stop a PhD student's `"D"` counting as a pass.
 
-**What is deliberately NOT done: the live rules are not seeded.**
-`load_grading_policy()` prefers a stored ruleset and falls back to the
-in-code baseline, which is where the shipped rules still live —
-`BASELINE_GRADING_VERSIONS`, keyed per academic calendar for the reason in
-§7.1. So nothing about live transcripts changes until a ruleset is stored,
-and the computation stays testable with no database at all. Seeding needs:
+**The baseline is seeded, so the store is the runtime source of truth.**
+`default_seed_data.seed_grading_policy()` stores `DEFAULT_GRADING_POLICY`
+effective from `2000-T1` on first boot, deriving the payload from
+`domain.policy` rather than restating it. It is idempotent, it never
+supersedes a version that already exists — so an institution's own
+amendment is permanent — and if the baseline would land inside sealed
+history it logs and skips rather than failing the boot.
 
-- the finding in §7.1 resolved with the registrar, since no single
-  institution-wide series can reproduce the 2021 rule;
-- a baseline ruleset effective from a session earlier than any enrolment in
-  the database;
-- before/after verification against real grade data for every affected
-  session — not just the ones near a boundary.
+`load_grading_policy()` still falls back to the in-code ruleset when
+nothing is stored, which is what keeps `compute_cgpa_sgpa_ec` testable with
+no database at all. That fallback is a convenience, not a second source of
+truth: there is exactly one shipped ruleset and the seeder stores that same
+object.
 
 Two known gaps, both intentional:
 
@@ -521,10 +532,15 @@ still hardcoded):
 ### Sequencing
 
 ```
-this phase   →  policy storage + resolution                    [done]
-next         →  resolve the 2021 finding with the registrar
-then         →  move grading rules onto the store (+ §7.2 fix)
-then         →  freeze results with provenance + reconciliation
+policy storage + resolution                                    [done]
+session timeline: per-calendar month ordinals                  [done]
+grading rules onto the store, seeded, 2021 rule retired        [done]
+cohort-scoped session modes (Phase C)                          [next]
+freeze results with provenance + reconciliation                [after]
 ```
 
-Step 4 is not worth starting before step 3 lands.
+Phase C is what lets a single batch move between session modes for a
+bounded period, which is the situation the 2021 rule was a botched attempt
+at handling. Freezing results is not worth starting before it lands: what a
+result must record as its provenance includes which calendar the cohort was
+on.
