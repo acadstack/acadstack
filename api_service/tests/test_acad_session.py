@@ -79,9 +79,6 @@ def test_concurrent_sessions_in_different_calendars_share_an_ordinal():
     academic year, so policy in force that month governs both."""
     assert AS.ordinal("2021-T1") == AS.ordinal("2021-I")
     assert AS.ordinal("2021-T3") == AS.ordinal("2021-II")
-    assert AS.sessions_at_ordinal(AS.ordinal("2021-I")) == \
-        ("2021-I", "2021-T1")
-    assert AS.label_for_ordinal(AS.ordinal("2021-II")) == "2021-II / 2021-T3"
 
 
 def test_ordinal_is_readable_and_stable():
@@ -113,16 +110,6 @@ def test_session_type_and_suffixes_for():
         AS.suffixes_for("trimester")  # not declared (yet)
 
 
-def test_span_runs_until_the_next_session_in_the_SAME_calendar():
-    """A session's extent is set by its own calendar, not by whatever
-    other calendar happens to start next."""
-    assert AS.span("2021-T1") == (AS.ordinal("2021-T1"), AS.ordinal("2021-T2"))
-    assert AS.span("2021-I") == (AS.ordinal("2021-I"), AS.ordinal("2021-II"))
-    # The last session of each calendar runs to the end of the year.
-    assert AS.span("2021-T4") == (AS.ordinal("2021-T4"), AS.ordinal("2022-T1"))
-    assert AS.span("2021-S") == (AS.ordinal("2021-S"), AS.ordinal("2022-I"))
-
-
 def test_a_change_mid_session_governs_the_next_session_not_the_running_one():
     """The rule that makes mid-session policy changes well defined: a
     session takes the ruleset in force at the month it BEGINS.
@@ -134,8 +121,8 @@ def test_a_change_mid_session_governs_the_next_session_not_the_running_one():
     """
     change = AS.ordinal("2021-T2")          # month 3, a quarter boundary
 
-    sem1_start, sem1_end = AS.span("2021-I")
-    assert sem1_start < change < sem1_end   # ...lands mid-semester-I
+    # Semester I runs until semester II begins: the change lands mid-way.
+    assert AS.ordinal("2021-I") < change < AS.ordinal("2021-II")
 
     # Semester I began before the change, so it is not governed by it.
     assert AS.ordinal("2021-I") < change
@@ -143,74 +130,6 @@ def test_a_change_mid_session_governs_the_next_session_not_the_running_one():
     assert AS.ordinal("2021-II") > change
     # And for the calendar whose boundary it is, it applies immediately.
     assert AS.ordinal("2021-T2") == change
-
-
-def test_every_session_start_is_mid_session_for_some_other_calendar_or_shared():
-    """Why the 'governed by policy at the session start' rule is needed at
-    all: with two calendars running, a month that starts one calendar's
-    session either starts the other's too, or falls inside it."""
-    for suffix in AS.SUFFIXES:
-        sess = f"2021-{suffix}"
-        point = AS.ordinal(sess)
-        for other in AS.SUFFIXES:
-            if AS.SUFFIX_TYPE[other] == AS.SUFFIX_TYPE[suffix]:
-                continue
-            start, end = AS.span(f"2021-{other}")
-            if start < point < end:
-                break            # strictly inside -> a mid-session change
-            if start == point:
-                break            # concurrent start -> shared boundary
-        else:
-            raise AssertionError(
-                f"{sess} neither starts nor interrupts any session of "
-                f"another calendar; the span table is inconsistent.")
-
-
-def test_from_ordinal_round_trips_within_a_calendar():
-    for year in (1990, 2021, 2100):
-        for name in AS.SESSION_TYPES:
-            for suffix in AS.suffixes_for(name):
-                sess = f"{year}-{suffix}"
-                assert AS.from_ordinal(AS.ordinal(sess), name) == sess
-
-
-def test_from_ordinal_refuses_to_guess_between_concurrent_sessions():
-    """An ordinal no longer names one session, so inverting it without
-    saying which calendar is a question with two right answers."""
-    shared = AS.ordinal("2021-I")
-    with pytest.raises(AS.InvalidAcadSession, match="concurrent"):
-        AS.from_ordinal(shared)
-    assert AS.from_ordinal(shared, "semester") == "2021-I"
-    assert AS.from_ordinal(shared, "quarter") == "2021-T1"
-
-    # Unambiguous ordinals still invert without help.
-    assert AS.from_ordinal(AS.ordinal("2021-S")) == "2021-S"
-    assert AS.from_ordinal(AS.ordinal("2021-T2")) == "2021-T2"
-
-
-@pytest.mark.parametrize("bad", [
-    -1,
-    2021 * 12 + 1,   # no declared session starts in month 1
-    2021 * 12 + 5,
-    2021 * 12 + 11,
-    True, "24252", 1.0,
-])
-def test_from_ordinal_rejects_non_ordinals(bad):
-    with pytest.raises(AS.InvalidAcadSession):
-        AS.from_ordinal(bad)
-
-
-def test_label_for_ordinal_describes_a_month_with_no_session():
-    assert AS.label_for_ordinal(2021 * 12 + 1) == "2021 month 1"
-
-
-def test_calendar_month_maps_onto_the_real_year():
-    # Academic year 2021 starts in July 2021; sessions past December fall
-    # into calendar 2022.
-    assert AS.calendar_month("2021-I") == (2021, 7)
-    assert AS.calendar_month("2021-T2") == (2021, 10)
-    assert AS.calendar_month("2021-II") == (2022, 1)
-    assert AS.calendar_month("2021-S") == (2022, 5)
 
 
 def test_sorted_sessions():

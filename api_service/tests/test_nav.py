@@ -2,7 +2,8 @@
 visibility off permissions (permissions.py) rather than raw role-list
 strings.
 
-Each nav.json entry names one "permission" key, seeded to reproduce the
+Each nav.json entry names a "permission" key (or a list, any one of
+which grants visibility), seeded to reproduce the
 visibility of the old role-list strings ("ACA,DEA,SUP", "-STU,-PLA"
 negation, "-PLA,*" wildcard + negation) exactly -- these tests pin that
 per-role equivalence for a representative slice of entries, including the
@@ -79,3 +80,11 @@ def test_view_attendance_preserved_pre_existing_bug(hrefs_for):
     # ALL_BUT_STU_PLA set; see permissions.py's "nav.view_attendance" doc.
     for role in ["STU", "ACA", "FAC", "HOD", "DEA", "SUP", "GUE", "PLA", "ADV", "RES"]:
         assert "#/att.find" not in hrefs_for(role)
+
+
+def test_entry_with_a_permission_list_is_visible_to_holders_of_any(hrefs_for):
+    # "Academic Policy Versions" lists system.manage_academic_policy (SUP)
+    # and system.close_academic_session (SUP, DEA).
+    assert "#/admin.policy" in hrefs_for("SUP")
+    assert "#/admin.policy" in hrefs_for("DEA")
+    assert "#/admin.policy" not in hrefs_for("ACA")

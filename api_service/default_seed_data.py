@@ -71,7 +71,6 @@ def seed_grading_policy() -> int:
     # Imported here, not at module scope: domain.policy imports
     # policy_store, which imports this module's siblings, and the seeder is
     # also called from demo_data.py before the app is assembled.
-    import acad_session as AS
     import policy_store as PS
     from domain import policy as POL
 
@@ -89,12 +88,11 @@ def seed_grading_policy() -> int:
     # history and the store would rightly refuse it. Warn rather than
     # raise: a failed seed must not stop the app booting, and the in-code
     # baseline still answers every query.
-    seal = M.max_closed_session_ord()
-    if seal is not None and AS.ordinal(POL.BASELINE_EFFECTIVE_FROM) <= seal:
+    if PS.is_sealed(POL.BASELINE_EFFECTIVE_FROM):
         logging.warning(
             f"Not seeding grading policy: it would take effect from "
             f"{POL.BASELINE_EFFECTIVE_FROM}, at or before the closed session "
-            f"{M.seal_label()}. Record a ruleset effective from an open "
+            f"{PS.seal_line()}. Record a ruleset effective from an open "
             f"session instead.")
         return 0
 

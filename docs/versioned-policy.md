@@ -217,11 +217,10 @@ claim to be effective from `2021-I` while sorting as `2019-T1`.
 `tests/test_acad_session.py` asserts the SQL and Python implementations
 agree.
 
-Because an ordinal no longer names a single session, `from_ordinal()`
-requires a session type whenever the instant is shared, and
-`sessions_at_ordinal()` / `label_for_ordinal()` report all of them. The
-seal line follows the same rule: `is_session_closed()` asks about one
-session (matched by name), while `is_sealed()` asks about an instant.
+Because an ordinal no longer names a single session, the seal line is an
+instant rather than a session: `is_session_closed()` asks about one
+session (matched by name), `is_sealed()` asks about an instant, and
+`seal_line()` names every closed session sitting on it.
 
 ---
 
@@ -229,8 +228,12 @@ session (matched by name), while `is_sealed()` asks about an instant.
 
 ### The seal line
 
-Closing an academic session (`policy_store.close_session`) records a row
-and draws a line at that session's ordinal. From then on:
+Closing an academic session (`policy_store.close_session`, reached through
+`POST /policy_close_session` and the "Close session" action on the Academic
+Policy screen, permission `system.close_academic_session`) records a row
+and draws a line at that session's ordinal. Closing cannot be undone, so
+the screen makes the user type the session code to confirm, and the route
+refuses a request whose `confirm` field does not repeat it. From then on:
 
 - policy effective from **at or before** the line cannot be updated or
   deleted; and
@@ -247,20 +250,27 @@ Closure records are themselves append-only. If a closure could be deleted,
 every guard below would be unlockable by first "reopening" the session, so
 the anchor has to be the thing that cannot move.
 
-### Enforced three times
+### Enforced twice
 
 | Layer | Catches | Where |
 |---|---|---|
-| `policy_store.supersede()` | the curated path; best error message | `policy_store.py` |
-| `PolicyVersion.save()` / `delete_instance()` | any ORM caller, including code that never heard of `policy_store` | `models.py` |
-| Postgres triggers | raw `db.execute_sql`, peewee bulk `.update()`/`.delete()`, psql, a future admin GUI | migration `0003` |
+| `policy_store.supersede()` | the curated path; refuses before writing, best error message | `policy_store.py` |
+| Postgres triggers | everything else: ORM `save()`/`delete_instance()`, peewee bulk `.update()`/`.delete()`, raw `db.execute_sql`, psql | `migrations/0001_baseline.sql` |
 
-The third layer is not belt-and-braces. This codebase runs hand-written
-SQL from `sql_statements.toml` through `db.execute_sql`, and peewee's bulk
-`Model.update()` builds an `UPDATE` without ever calling `Model.save()` —
-so a Python-only guard would be bypassed by ordinary, idiomatic code in
-this repo. `tests/test_policy_immutability.py` tests each layer through
-the path only that layer can catch.
+The database layer is the one that cannot be bypassed. This codebase runs
+hand-written SQL from `sql_statements.toml` through `db.execute_sql`, and
+peewee's bulk `Model.update()` builds an `UPDATE` without ever calling
+`Model.save()`, so a guard in Python model code would be bypassed by
+ordinary, idiomatic code in this repo. It is therefore not duplicated in
+`models.py`.
+
+The triggers raise with plpgsql's default SQLSTATE (`P0001`,
+`raise_exception`), which nothing else in the schema uses.
+`policy_store._trigger_refusals_as_policy_errors()` is the one place that
+recognises it and re-raises the trigger's message as
+`PolicyImmutableError`, so a refusal from either layer reaches the client
+the same way. `tests/test_policy_immutability.py` tests each layer through
+the paths it covers.
 
 ### What an admin can and cannot do
 

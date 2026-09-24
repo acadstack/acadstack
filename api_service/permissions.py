@@ -131,6 +131,14 @@ ST.declare_group(
               "dangerous than an operational knob like a semester date, "
               "so an institution can delegate settings without also "
               "delegating this."),
+        _spec("system.close_academic_session", ["SUP", "DEA"],
+              "Close an academic session (policy_store.close_session), "
+              "sealing the academic policy in force up to it. Cannot be "
+              "undone. Separate from system.manage_academic_policy "
+              "because closing follows results being declared -- an "
+              "academic-office act -- rather than writing policy, and "
+              "holders of it can view (not change) the policy screen "
+              "they close sessions from."),
         _spec("system.export_config", ["SUP"],
               "Export the full configuration document (config_transfer.py) "
               "-- every settings/vocab group INCLUDING the permission->role "

@@ -47,19 +47,23 @@ at that session's ordinal. From then on:
 * no new policy may be introduced effective from at or before it.
 
 Everything after the line stays editable, so next year's not-yet-
-effective ruleset can still be corrected. The rule is enforced three
-times over, on purpose:
+effective ruleset can still be corrected. Closure records are append-only
+too, so the line only ever advances. The rule is enforced twice:
 
-1. here, in :func:`supersede`, with the best error message;
-2. in ``models.py`` (``PolicyVersion.save``/``delete_instance``), so any
-   ORM caller is covered, not just this module;
-3. in Postgres triggers (``migrations/0001_baseline.sql``), so
-   hand-written SQL -- which this codebase does execute -- bulk
-   ``.update()``/``.delete()`` queries, and psql cannot go around it.
+1. here, in :func:`supersede`, before anything is written, with the
+   message an admin should see;
+2. in Postgres triggers (``migrations/0001_baseline.sql``), which nothing
+   can go around: hand-written SQL (which this codebase does execute),
+   ORM ``save()``/``delete_instance()`` on any model instance, bulk
+   ``.update()``/``.delete()`` queries, and psql.
 
-An admin editing the grade point map through a future GUI therefore
-cannot silently recompute historical transcripts. The worst they can do
-is introduce a version effective from an open session.
+A trigger refusal is reported as :class:`PolicyImmutableError` by
+:func:`_trigger_refusals_as_policy_errors`, the one place that
+translation happens.
+
+An admin editing the grade point map through the GUI therefore cannot
+silently recompute historical transcripts. The worst they can do is
+introduce a version effective from an open session.
 
 Resolution cost
 ---------------
@@ -90,12 +94,15 @@ __status__ = "Development"
 """
 
 import bisect
+import contextlib
 import copy
 import logging
 import threading
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Optional
+
+import peewee
 
 import acad_session as AS
 import models as M
@@ -110,13 +117,9 @@ class PolicyError(AcadStackException):
     existing route handlers already surface the message to the client."""
 
 
-class PolicyImmutableError(PolicyError, M.ImmutablePolicyError):
-    """A write was refused because it would alter sealed history.
-
-    Subclasses both hierarchies deliberately: callers that catch the
-    storage-layer ``models.ImmutablePolicyError`` and callers that catch
-    the app-wide ``AcadStackException`` both see it.
-    """
+class PolicyImmutableError(PolicyError):
+    """A write was refused because it would alter sealed history, whether
+    :func:`supersede` refused it or a database trigger did."""
 
 
 class PolicyNotFoundError(PolicyError):
@@ -410,15 +413,6 @@ def resolve(group: str, acad_session: str) -> ResolvedPolicy:
     return snap.by_group[group][idx]
 
 
-def try_resolve(group: str, acad_session: str) -> Optional[ResolvedPolicy]:
-    """:func:`resolve`, returning None instead of raising when nothing is
-    in force. A malformed session string still raises."""
-    try:
-        return resolve(group, acad_session)
-    except PolicyNotFoundError:
-        return None
-
-
 def policy_for(group: str, acad_session: str) -> Any:
     """The group's ruleset for a session, as the typed object the group's
     builder produces (or the read-only payload if it declared none).
@@ -464,10 +458,6 @@ def versions(group: str) -> list:
     return list(_current_snapshot().by_group.get(group, []))
 
 
-def groups_with_versions() -> list:
-    return sorted(_current_snapshot().by_group)
-
-
 # ===================== Session closure =====================
 
 def closed_sessions() -> list:
@@ -485,18 +475,6 @@ def is_session_closed(acad_session: str) -> bool:
     """
     AS.parse(acad_session)  # reject malformed input rather than say "no"
     return acad_session in _current_snapshot().closed_set
-
-
-def last_closed_session() -> Optional[str]:
-    """The latest closed session -- the seal line -- or None.
-
-    When concurrent sessions from different academic calendars are both
-    closed they sit on the same instant; this returns the last of them in
-    chronological-then-suffix order. Use :func:`seal_line` when you want
-    all of them named.
-    """
-    closed = _current_snapshot().closed
-    return closed[-1] if closed else None
 
 
 def seal_line() -> Optional[str]:
@@ -552,6 +530,33 @@ def close_session(acad_session: str, note: Optional[str] = None,
 
 
 # ===================== Write =====================
+
+#: SQLSTATE of plpgsql's bare ``RAISE EXCEPTION`` ("raise_exception").
+#: The sealing triggers in migrations/0001_baseline.sql are the only code
+#: in the schema that raises it; everything else there names a specific
+#: SQLSTATE (check_violation, invalid_parameter_value, ...).
+_TRIGGER_REFUSAL_SQLSTATE = "P0001"
+
+
+@contextlib.contextmanager
+def _trigger_refusals_as_policy_errors():
+    """Reports a sealing trigger's refusal as :class:`PolicyImmutableError`,
+    carrying the trigger's own message, so it reaches the client like any
+    other rejected admin input instead of as an unexpected server error.
+
+    Enter it OUTSIDE the ``atomic()`` block, so the failed transaction has
+    been rolled back before the error propagates.
+    """
+    try:
+        yield
+    except peewee.DatabaseError as ex:
+        # peewee re-raises the psycopg2 error as its own type while
+        # handling it, so the original is the implicit context.
+        orig = ex.__context__
+        if getattr(orig, "pgcode", None) != _TRIGGER_REFUSAL_SQLSTATE:
+            raise
+        raise PolicyImmutableError(orig.diag.message_primary) from ex
+
 
 def _invalidate_all() -> None:
     """Both stores share the version counter, so both caches drop."""
@@ -651,12 +656,11 @@ def supersede(group: str, effective_from_session: str, payload: dict,
     ord_value = _session_ordinal_or_error(effective_from_session)
     validate_payload(group, payload)
 
-    seal = M.max_closed_session_ord()
-    if seal is not None and ord_value <= seal:
+    if is_sealed(effective_from_session):
         raise PolicyImmutableError(
             f"Cannot make policy for group {group!r} effective from "
             f"{effective_from_session}: academic sessions up to "
-            f"{M.seal_label()} are closed and their results were "
+            f"{seal_line()} are closed and their results were "
             f"computed under the policy then in force. New policy must take "
             f"effect from a session that is still open.")
 
@@ -670,7 +674,10 @@ def supersede(group: str, effective_from_session: str, payload: dict,
             f"Supersede it from a later session rather than replacing it.")
 
     login_id = login_id or SS.current_login_id()
-    with M.db.atomic():
+    # The check above reads this worker's cached snapshot, so a session
+    # closed by another worker a moment ago can slip past it; the insert
+    # trigger still refuses the row, and this reports it the same way.
+    with _trigger_refusals_as_policy_errors(), M.db.atomic():
         row = M.PolicyVersion.create(
             policy_group=group,
             effective_from_session=effective_from_session,
