@@ -1,11 +1,10 @@
 """Minimal versioned schema-migration runner.
 
 Why hand-rolled instead of peewee-migrate: this repo has no migration
-history to bootstrap from (the schema is currently produced either by
-models.py create_schema() or by scripts/initdb/schema_only.sql), and
-peewee-migrate's value is mostly its auto-diff/CLI machinery, which we
-don't need for what will mostly be a steady trickle of ALTER TABLE +
-seed-data changes. A plain "run any *.sql file we haven't recorded yet,
+history to bootstrap from (the schema is produced by models.py
+create_schema()), and peewee-migrate's value is mostly its auto-diff/CLI
+machinery, which we don't need for what will mostly be a steady trickle
+of ALTER TABLE + seed-data changes. A plain "run any *.sql file we haven't recorded yet,
 in filename order, inside a transaction" runner is a fraction of the
 code and has no new dependency to track.
 
