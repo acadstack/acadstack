@@ -2,7 +2,9 @@
 
 There is deliberately no update/delete route here: policy_store.supersede()
 is the only write operation on stored policy (see policy_store.py's module
-docstring), so this module only ever adds a new version.
+docstring), so this module only ever adds a new version. The one other
+write is closing an academic session, which seals the policy in force up
+to it and cannot be undone.
 
 __author__ = "Balwinder Sodhi"
 __copyright__ = "Copyright 2025"
@@ -18,6 +20,10 @@ import policy_store as PS
 from common import rbac
 
 _PERM = "system.manage_academic_policy"
+_CLOSE_PERM = "system.close_academic_session"
+# Closing a session is done from the same screen, so either permission
+# can read it; each write still requires its own.
+_VIEW_PERMS = [_PERM, _CLOSE_PERM]
 
 
 def init_routes(bp: Blueprint):
@@ -27,6 +33,10 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/policy_validate', view_func=policy_validate,
                      methods=['POST'])
     bp.add_url_rule('/policy_supersede', view_func=policy_supersede,
+                     methods=['POST'])
+    bp.add_url_rule('/policy_closed_sessions',
+                     view_func=policy_closed_sessions, methods=['GET'])
+    bp.add_url_rule('/policy_close_session', view_func=policy_close_session,
                      methods=['POST'])
 
 
@@ -49,14 +59,19 @@ def _version_json(v: PS.ResolvedPolicy) -> dict:
     }
 
 
-@rbac(permissions=[_PERM])
+def _closure_json() -> dict:
+    return {"closed_sessions": PS.closed_sessions(),
+            "seal_line": PS.seal_line()}
+
+
+@rbac(permissions=_VIEW_PERMS)
 async def policy_groups():
     groups = PS.declared_groups()
     return apiVC.ok_json([{"name": name, "doc": spec.doc}
                           for name, spec in sorted(groups.items())])
 
 
-@rbac(permissions=[_PERM])
+@rbac(permissions=_VIEW_PERMS)
 async def policy_versions(group):
     spec = PS.spec_for(group)
     if spec is None:
@@ -97,3 +112,32 @@ async def policy_supersede():
         "seal_line": PS.seal_line(),
         "versions": [_version_json(v) for v in PS.versions(group)],
     })
+
+
+@rbac(permissions=_VIEW_PERMS)
+async def policy_closed_sessions():
+    return apiVC.ok_json(_closure_json())
+
+
+@rbac(permissions=[_CLOSE_PERM])
+async def policy_close_session():
+    """Closes an academic session, sealing the policy in force up to it.
+
+    Irreversible, so the client must send the session code a second time,
+    as typed by the user, in ``confirm``: a request that merely names a
+    session is not enough. Closing an already-closed session is a no-op.
+    """
+    fd = await request.get_json(force=True)
+    acad_session = (fd.get("acad_session") or "").strip()
+    if not acad_session:
+        return apiVC.error_json("Please supply the academic session to close.")
+    if (fd.get("confirm") or "").strip() != acad_session:
+        return apiVC.error_json(
+            f"Closing a session cannot be undone. To confirm, type the "
+            f"session code {acad_session} exactly.")
+    already_closed = acad_session in PS.closed_sessions()
+    PS.close_session(acad_session, note=fd.get("note"),
+                     login_id=apiVC.current_login_id())
+    return apiVC.ok_json({"acad_session": acad_session,
+                          "already_closed": already_closed,
+                          **_closure_json()})

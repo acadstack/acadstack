@@ -343,10 +343,10 @@ PS.close_session("2023-II")                    # seals policy up to that session
 
 Closing an academic session (`ClosedAcademicSession`) seals every version effective
 from at or before it: no update, no delete, and no new version backdated into it.
-That is enforced in `policy_store`, again in `models.py`, and again by Postgres
-triggers from `migrations/0001_baseline.sql` — the last because this
-codebase runs hand-written SQL and peewee bulk updates that never reach
-`Model.save()`.
+That is enforced in `policy_store` and again by Postgres triggers from
+`migrations/0001_baseline.sql`. The triggers are what cannot be bypassed, because this
+codebase runs hand-written SQL and peewee bulk updates that never reach `Model.save()`.
+A trigger refusal is reported as `PolicyImmutableError` like any other.
 
 Effective-dating is keyed on academic session (`YYYY-S`), following
 `AcademicCalendar`'s precedent, not on wall-clock dates. Sessions are **not** ranked on
@@ -382,7 +382,12 @@ be delegated without the other — see `permissions.py`'s
   `api_policy.py` + `AcademicPolicyAdmin.vue`) — read-only version history plus an
   append-only "record a new version" form (`policy_validate` dry-runs a payload,
   `policy_supersede` records it). No edit/delete route exists, matching
-  `policy_store.supersede()` being the only write.
+  `policy_store.supersede()` being the only write. The same screen lists closed
+  sessions and, for holders of `system.close_academic_session` (SUP and DEA by
+  default), offers "Close session" (`policy_close_session`). Closing cannot be undone,
+  so it asks the user to type the session code first. A user with only that permission
+  sees the rest of the screen read-only. The screen's nav entry lists both permissions,
+  because a `nav.json` `"permission"` may be a list, any one of which grants visibility.
 
 The `"permission"` settings group (the permission→role mapping) is not reachable from
 the generic Settings screen: `api_settings.py`'s `_EXCLUDED_GROUPS` blocks it, because

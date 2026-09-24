@@ -109,6 +109,11 @@ $$;
 -- cannot be dragged back into sealed history. Rows governing only open
 -- sessions remain fully writable -- correcting next year's not-yet-
 -- effective ruleset is meant to work.
+--
+-- The guards in sections 3 and 4 RAISE with plpgsql's default SQLSTATE
+-- (P0001, raise_exception), which nothing else in this schema uses:
+-- policy_store.py recognises a refusal by it and reports the message as
+-- PolicyImmutableError. Give any other RAISE here an explicit ERRCODE.
 CREATE OR REPLACE FUNCTION acadstack_policyversion_guard()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -134,8 +139,7 @@ BEGIN
             OLD.id, OLD.policy_group, OLD.effective_from_session,
             (SELECT acad_session FROM closedacademicsession
              WHERE session_ord = seal_ord LIMIT 1),
-            lower(TG_OP)
-            USING ERRCODE = '23514';  -- check_violation
+            lower(TG_OP);
     END IF;
 
     IF TG_OP = 'DELETE' THEN
@@ -171,8 +175,7 @@ BEGIN
             'effect from a session that is still open.',
             NEW.policy_group, NEW.effective_from_session,
             (SELECT acad_session FROM closedacademicsession
-             WHERE session_ord = seal_ord LIMIT 1)
-            USING ERRCODE = '23514';  -- check_violation
+             WHERE session_ord = seal_ord LIMIT 1);
     END IF;
 
     RETURN NEW;
@@ -198,8 +201,7 @@ BEGIN
         'Academic session % cannot be % : session closure records are '
         'append-only, because policy immutability is anchored to them.',
         OLD.acad_session,
-        CASE TG_OP WHEN 'DELETE' THEN 'reopened' ELSE 'modified' END
-        USING ERRCODE = '23514';  -- check_violation
+        CASE TG_OP WHEN 'DELETE' THEN 'reopened' ELSE 'modified' END;
 END;
 $fn$;
 

@@ -353,8 +353,12 @@ def init_navbar_items(role_code:str, degree:str)->Dict[str, Any]:
             links = []
             menus = {}
             for n in nav:
+                # One permission name, or a list of which any one will do
+                # (the same rule as @rbac(permissions=[...])).
                 perm = n.pop("permission")
-                if not PERM.role_has_permission(role_code, perm):
+                perms = perm if isinstance(perm, list) else [perm]
+                if not any(PERM.role_has_permission(role_code, p)
+                           for p in perms):
                     continue
 
                 restrict_degree = n.pop("restrictToDegree", None)

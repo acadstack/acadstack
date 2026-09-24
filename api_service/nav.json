@@ -307,7 +307,8 @@
         "label": "Academic Policy Versions",
         "href": "#/admin.policy",
         "menu": "Administration",
-        "permission": "system.manage_academic_policy"
+        "permission": ["system.manage_academic_policy",
+                       "system.close_academic_session"]
     },
     {
         "label": "Configuration Export / Import",

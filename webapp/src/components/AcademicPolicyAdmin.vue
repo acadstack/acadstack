@@ -2,14 +2,19 @@
 Admin screen for versioned, effective-dated academic policy (policy_store.py),
 e.g. the grade point map. This is deliberately NOT an editor: a version
 already referenced by a closed academic session is immutable, so every
-recorded version below is read-only. The only write is "store a new
-version" -- superseding, effective from a session that is still open.
+recorded version below is read-only. The only policy write is "store a
+new version" -- superseding, effective from a session that is still open.
 There is no edit/delete action anywhere on this screen, by design.
+
+The other write is "close a session" (system.close_academic_session),
+which draws the seal line. It cannot be undone, so it asks the user to
+type the session code before it is sent. A user holding only that
+permission sees the screen read-only apart from the close action.
 
 @author Balwinder Sodhi
 -->
 <template>
-    <div class="container-fluid" v-if="hasPermission('system.manage_academic_policy')">
+    <div class="container-fluid" v-if="canManage || canClose">
         <div class="row mb-2">
             <div class="col">
                 <h4>Academic Policy Versions</h4>
@@ -19,6 +24,70 @@ There is no edit/delete action anywhere on this screen, by design.
                     cannot be changed &mdash; the only action is recording a new
                     version, effective from a session that is still open.
                 </small>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Closed academic sessions</div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <span v-if="closedSessions.length == 0" class="text-muted">
+                        No academic session has been closed yet.
+                    </span>
+                    <template v-else>
+                        <span class="badge bg-secondary me-1" v-for="s in closedSessions" :key="s">{{ s }}</span>
+                        <div class="small text-muted mt-1">
+                            Policy is sealed up to and including <b>{{ sealLine }}</b>.
+                        </div>
+                    </template>
+                </div>
+                <template v-if="canClose">
+                    <div class="row mb-2 align-items-end">
+                        <div class="col-md-4">
+                            <acad-session label="Session to close" :key="closeFormKey"
+                                v-bind:acad_session="closeForm.acad_session"
+                                v-on:update:acad_session="onCloseSessionChange" />
+                        </div>
+                        <div class="col-md-6">
+                            <label>Note (e.g. results declaration reference)</label>
+                            <input type="text" class="form-control" v-model.trim="closeForm.note"
+                                :disabled="closeConfirming">
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-outline-danger w-100" type="button"
+                                :disabled="!closeSessionValid || closeConfirming" @click="startClose">
+                                Close session&hellip;
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="closeForm.acad_session && !closeSessionValid" class="text-danger small">
+                        Session is invalid
+                    </div>
+                    <div v-if="closeConfirming" class="alert alert-danger mt-2 mb-0">
+                        <p class="mb-2">
+                            Closing <b>{{ closeSession }}</b> <b>cannot be undone</b>. Every policy
+                            version in force up to it becomes permanently sealed, and no new
+                            version may take effect from {{ closeSession }} or any earlier session.
+                            Close a session only once its results are final.
+                        </p>
+                        <label>Type <b>{{ closeSession }}</b> to confirm</label>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control" v-model.trim="closeForm.confirm"
+                                    autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="col-md-8">
+                                <button class="btn btn-danger me-2" type="button"
+                                    :disabled="closeForm.confirm !== closeSession" @click="closeSessionNow">
+                                    Close {{ closeSession }} permanently
+                                </button>
+                                <button class="btn btn-outline-secondary" type="button" @click="cancelClose">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 
@@ -38,8 +107,8 @@ There is no edit/delete action anywhere on this screen, by design.
                 <div class="mt-1">
                     <span v-if="sealLine">
                         Policy is <b>sealed</b> up to and including
-                        <b>{{ sealLine }}</b> &mdash; a new version must take effect from a later
-                        session.
+                        <b>{{ sealLine }}</b><span v-if="canManage"> &mdash; a new version must take
+                        effect from a later session</span>.
                     </span>
                     <span v-else>No academic session has been closed yet; every version is still open.</span>
                 </div>
@@ -85,7 +154,7 @@ There is no edit/delete action anywhere on this screen, by design.
                                     @click="toggleView(v)">
                                     {{ expanded === v.version_id ? "Hide" : "View" }} payload
                                 </button>
-                                <button class="btn btn-sm btn-outline-primary" type="button"
+                                <button v-if="canManage" class="btn btn-sm btn-outline-primary" type="button"
                                     :disabled="v.version_id !== latestVersionId"
                                     :title="v.version_id !== latestVersionId ?
                                         'Only the latest version can be used as a starting point.' : ''"
@@ -103,7 +172,7 @@ There is no edit/delete action anywhere on this screen, by design.
                 </div>
             </div>
 
-            <div class="card mb-3">
+            <div class="card mb-3" v-if="canManage">
                 <div class="card-header">
                     Store a new version
                     <span class="text-muted">&mdash; supersedes the ruleset above from a chosen session onward; it does not change any existing version</span>
@@ -174,6 +243,10 @@ export default {
             selectedGroup: "",
             groupDoc: "",
             sealLine: null,
+            closedSessions: [],
+            closeForm: { acad_session: "", note: "", confirm: "" },
+            closeConfirming: false,
+            closeFormKey: 0,
             versions: [],
             expanded: null,
             validationMsg: "",
@@ -186,18 +259,73 @@ export default {
         };
     },
     computed: {
+        canManage() {
+            return this.hasPermission('system.manage_academic_policy');
+        },
+        canClose() {
+            return this.hasPermission('system.close_academic_session');
+        },
+        // Session codes are upper case; the shared regexp is not.
+        closeSession() {
+            return (this.closeForm.acad_session || "").toUpperCase();
+        },
+        closeSessionValid() {
+            return !!this.closeSession && this.acadSessionRegExp.test(this.closeSession);
+        },
         latestVersionId() {
             return this.versions.length ? this.versions[this.versions.length - 1].version_id : null;
         }
     },
     mounted() {
         this.loadGroups();
+        this.loadClosedSessions();
     },
     methods: {
         loadGroups() {
             let vm = this;
             vm.doHttp(true, "policy_groups", null,
                 (body) => { vm.groups = body; },
+                (err) => vm.setStatusMessage(err));
+        },
+        loadClosedSessions() {
+            let vm = this;
+            vm.doHttp(true, "policy_closed_sessions", null,
+                (body) => {
+                    vm.closedSessions = body.closed_sessions;
+                    vm.sealLine = body.seal_line;
+                },
+                (err) => vm.setStatusMessage(err));
+        },
+        onCloseSessionChange(s) {
+            this.closeForm.acad_session = s;
+            this.closeConfirming = false;
+            this.closeForm.confirm = "";
+        },
+        startClose() {
+            this.closeForm.confirm = "";
+            this.closeConfirming = true;
+        },
+        cancelClose() {
+            this.closeConfirming = false;
+            this.closeForm.confirm = "";
+        },
+        closeSessionNow() {
+            let vm = this;
+            const sess = vm.closeSession;
+            vm.doHttp(false, "policy_close_session",
+                { acad_session: sess, confirm: vm.closeForm.confirm, note: vm.closeForm.note },
+                (body) => {
+                    vm.setStatusMessage(body.already_closed ?
+                        `Academic session ${sess} was already closed.` :
+                        `Academic session ${sess} closed; policy up to it is now sealed.`);
+                    vm.closedSessions = body.closed_sessions;
+                    vm.sealLine = body.seal_line;
+                    vm.closeForm = { acad_session: "", note: "", confirm: "" };
+                    vm.closeConfirming = false;
+                    vm.closeFormKey += 1;
+                    // Sealed/Open badges and governed sessions have changed.
+                    vm.loadVersions();
+                },
                 (err) => vm.setStatusMessage(err));
         },
         loadVersions() {

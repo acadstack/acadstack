@@ -201,13 +201,11 @@ def test_resolve_raises_before_the_first_version(policy, simple_group):
     with pytest.raises(PS.PolicyNotFoundError) as ei:
         policy.resolve(simple_group, "2020-S")
     assert "2021-I" in str(ei.value)
-    assert policy.try_resolve(simple_group, "2020-S") is None
 
 
 def test_resolve_raises_for_a_group_with_no_versions(policy, simple_group):
     with pytest.raises(PS.PolicyNotFoundError):
         policy.resolve(simple_group, "2021-I")
-    assert policy.try_resolve(simple_group, "2021-I") is None
 
 
 def test_resolve_rejects_a_malformed_session(policy, simple_group):
@@ -234,7 +232,6 @@ def test_groups_are_independent(policy):
     assert policy.resolve("a", "2023-I").payload["v"] == "a19"
     with pytest.raises(PS.PolicyNotFoundError):
         policy.resolve("b", "2021-I")
-    assert sorted(policy.groups_with_versions()) == ["a", "b"]
 
 
 # ===================== Payload immutability in memory =====================

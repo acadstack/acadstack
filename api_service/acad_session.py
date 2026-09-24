@@ -8,10 +8,10 @@ per suffix.
 
 Why this is a module of its own, with no imports
 ------------------------------------------------
-``models.py`` needs it (the policy tables store a session ordinal and
-guard writes with it) and ``models`` is imported by ``common``, so
-anything this module imported from ``common`` would be a cycle. It is
-deliberately dependency-free: pure string/int work, no DB, no config.
+It is used from the bottom of the import graph upward (``policy_store``,
+``api_common``, domain code), and the policy tables' SQL twin of
+:func:`ordinal` in migrations/0001_baseline.sql must agree with it, so it
+is deliberately dependency-free: pure string/int work, no DB, no config.
 
 Session types run in parallel, not in sequence
 ----------------------------------------------
@@ -69,10 +69,6 @@ __status__ = "Development"
 """
 
 import re
-
-#: Calendar month the academic year starts in (July). Used only to map a
-#: session onto a real month for display; ordering never consults it.
-ACAD_YEAR_START_MONTH = 7
 
 #: Months in a year, and therefore the multiplier between consecutive
 #: academic years on the ordinal scale.
@@ -193,94 +189,6 @@ def ordinal(acad_session):
     """
     year, suffix = parse(acad_session)
     return year * MONTHS_PER_YEAR + SUFFIX_OFFSET[suffix]
-
-
-def span(acad_session):
-    """``(start_ordinal, end_ordinal)`` for a session, end exclusive.
-
-    A session runs until the next one in its OWN calendar begins (the last
-    one runs to the end of the academic year). This is what makes "the
-    change landed mid-session" a statement you can check rather than a
-    guess.
-    """
-    year, suffix = parse(acad_session)
-    own = suffixes_for(SUFFIX_TYPE[suffix])
-    start = SUFFIX_OFFSET[suffix]
-    later = [SUFFIX_OFFSET[s] for s in own if SUFFIX_OFFSET[s] > start]
-    end = min(later) if later else MONTHS_PER_YEAR
-    base = year * MONTHS_PER_YEAR
-    return base + start, base + end
-
-
-def calendar_month(acad_session):
-    """``(calendar_year, calendar_month)`` this session begins in.
-
-    Display only -- ordering never uses it. An academic year labelled
-    ``2021`` starts in :data:`ACAD_YEAR_START_MONTH` of calendar 2021, so
-    sessions past December fall in the following calendar year.
-    """
-    year, suffix = parse(acad_session)
-    month0 = (ACAD_YEAR_START_MONTH - 1) + SUFFIX_OFFSET[suffix]
-    return year + month0 // MONTHS_PER_YEAR, month0 % MONTHS_PER_YEAR + 1
-
-
-def sessions_at_ordinal(ord_value):
-    """Every session sharing this ordinal, i.e. starting in that month.
-
-    More than one means concurrent sessions in different calendars, which
-    is normal. Empty means no declared session starts in that month.
-    """
-    if not isinstance(ord_value, int) or isinstance(ord_value, bool):
-        raise InvalidAcadSession(
-            f"Session ordinal must be an int, got {ord_value!r}")
-    year, offset = divmod(ord_value, MONTHS_PER_YEAR)
-    if year < 0 or year > 9999:
-        raise InvalidAcadSession(
-            f"{ord_value} is not a valid academic session ordinal")
-    return tuple(f"{year:04d}-{s}" for s in SUFFIXES
-                 if SUFFIX_OFFSET[s] == offset)
-
-
-def from_ordinal(ord_value, session_type=None):
-    """Inverse of :func:`ordinal`, within one calendar.
-
-    ``session_type`` is required whenever more than one calendar starts a
-    session in that month, because there is then no single right answer.
-    Use :func:`sessions_at_ordinal` to get all of them, or
-    :func:`label_for_ordinal` for a message.
-
-    Raises:
-        InvalidAcadSession: if the ordinal names no session, or names
-            several and no session type was given to choose between them.
-    """
-    candidates = sessions_at_ordinal(ord_value)
-    if session_type is not None:
-        suffixes = suffixes_for(session_type)
-        candidates = tuple(c for c in candidates
-                           if c.split("-", 1)[1] in suffixes)
-    if not candidates:
-        raise InvalidAcadSession(
-            f"{ord_value} is not a valid academic session ordinal"
-            + (f" for session type {session_type!r}" if session_type else ""))
-    if len(candidates) > 1:
-        raise InvalidAcadSession(
-            f"Ordinal {ord_value} is shared by concurrent sessions "
-            f"{', '.join(candidates)}. Pass session_type= to choose one, or "
-            f"use sessions_at_ordinal().")
-    return candidates[0]
-
-
-def label_for_ordinal(ord_value):
-    """A human-readable name for a point on the timeline, for messages.
-
-    Names every session starting there, so a seal line that covers two
-    concurrent sessions says so instead of silently picking one.
-    """
-    at = sessions_at_ordinal(ord_value)
-    if not at:
-        year, offset = divmod(ord_value, MONTHS_PER_YEAR)
-        return f"{year:04d} month {offset}"
-    return " / ".join(at)
 
 
 def sort_key(acad_session):
