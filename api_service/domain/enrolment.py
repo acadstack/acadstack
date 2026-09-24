@@ -36,7 +36,6 @@ from create_email import send_enrolment_email
 from domain import academic_calendar as CAL
 from domain import attendance as ATT
 from domain import persistence
-from domain import plugins
 from domain import policy as POL
 from domain import workflow as WF
 from domain.context import Actor
@@ -175,7 +174,8 @@ def existing_enrolment(co_id, student_id):
 # and editable as data; see domain/workflow.py). What stays in code is
 # what the rows refer to by name: the ownership guards, which need the
 # batched SQL in ownership_flags(), the calendar/offering check, and the
-# notification.
+# notification. An institution extends the chain by registering more of
+# these from a plugin (domain/plugins.py) and naming them in its table.
 
 ENROLMENT = "enrolment"
 
@@ -192,13 +192,14 @@ def _is_advisor(ctx):
 
 @WF.check("enrolment.change_allowed")
 def _change_allowed(ctx):
-    # Offering running/enrolling, add/drop (or withdraw) window open.
+    # Offering running/enrolling, add/drop (or withdraw) window open, and
+    # the target a known status. Returns early for enrolment.override.
     VAL.validate_enrolment_change(ctx.record, ctx.to_status, actor=ctx.actor)
 
 
 @WF.effect("notify.enrolment")
 def _notify(ctx):
-    plugins.call(plugins.ENROLMENT_NOTIFY, ctx.record.id)
+    notify_status_change(ctx.record.id)
 
 
 def _decision(pri, frm, action, to, permission, guards=(), label=None,
@@ -211,17 +212,21 @@ def _decision(pri, frm, action, to, permission, guards=(), label=None,
 
 
 _OWNER = "enrolment.decide_as_owner"
-_WINDOW = ("enrolment.change_allowed",)
 
 #: The approval chain as it has always behaved, as a table. The two
 #: oddities tests/test_enrolment_state_machine.py pins are rows here, not
 #: accidents of branch order: an advisor acting alone takes any status
 #: (including a fresh IPEN) straight to ENRO (rows 30/31, from "*"), and
 #: an HOD may decide any APEN enrolment with no ownership at all (60/61).
+#:
+#: The calendar/offering check is workflow-wide rather than per row so
+#: that every move runs it, including rows an institution adds; it lets
+#: enrolment.override holders (rows 10/11) through by itself.
 BASELINE = WF.Workflow(
     name=ENROLMENT,
     status_vocab="enrolment_statuses",
     match_on=WF.MATCH_ON_ACTION,
+    checks=(WF.Step("enrolment.change_allowed"),),
     locked_message="Unexpected user role: {role}",
     denied_message=("You do not have privileges to change one or more "
                     "enrollments!"),
@@ -231,37 +236,29 @@ BASELINE = WF.Workflow(
         _decision(11, "*", "reject", "ASREJ", "enrolment.override"),
         # Coordinating instructor only.
         _decision(20, "*", "approve", "APEN", _OWNER,
-                  ["enrolment.is_instructor", "!enrolment.is_advisor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_instructor", "!enrolment.is_advisor"]),
         _decision(21, "*", "reject", "IREJ", _OWNER,
-                  ["enrolment.is_instructor", "!enrolment.is_advisor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_instructor", "!enrolment.is_advisor"]),
         # Batch advisor only.
         _decision(30, "*", "approve", "ENRO", _OWNER,
-                  ["enrolment.is_advisor", "!enrolment.is_instructor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_advisor", "!enrolment.is_instructor"]),
         _decision(31, "*", "reject", "AREJ", _OWNER,
-                  ["enrolment.is_advisor", "!enrolment.is_instructor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_advisor", "!enrolment.is_instructor"]),
         # Instructor AND advisor: the two steps collapse onto one user,
         # who still walks them one at a time.
         _decision(40, "IPEN", "approve", "APEN", _OWNER,
-                  ["enrolment.is_instructor", "enrolment.is_advisor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_instructor", "enrolment.is_advisor"]),
         _decision(41, "IPEN", "reject", "AREJ", _OWNER,
-                  ["enrolment.is_instructor", "enrolment.is_advisor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_instructor", "enrolment.is_advisor"]),
         _decision(50, "APEN", "approve", "ENRO", _OWNER,
-                  ["enrolment.is_instructor", "enrolment.is_advisor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_instructor", "enrolment.is_advisor"]),
         _decision(51, "APEN", "reject", "AREJ", _OWNER,
-                  ["enrolment.is_instructor", "enrolment.is_advisor"],
-                  checks=_WINDOW),
+                  ["enrolment.is_instructor", "enrolment.is_advisor"]),
         # HOD standing in for the advisor.
         _decision(60, "APEN", "approve", "ENRO",
-                  "enrolment.decide_advisor_pending", checks=_WINDOW),
+                  "enrolment.decide_advisor_pending"),
         _decision(61, "APEN", "reject", "AREJ",
-                  "enrolment.decide_advisor_pending", checks=_WINDOW),
+                  "enrolment.decide_advisor_pending"),
     ),
 )
 
@@ -286,7 +283,6 @@ def _context(actor, ownership, current_status, action, record=None):
                "is_advisor": bool(ownership[1])})
 
 
-@plugins.extension_point(plugins.ENROLMENT_NEXT_STATUS)
 def default_next_enrol_status(actor: Actor, ownership, current_status,
                               action, workflow=None) -> str:
     """The status an approve/reject moves an enrolment to.
@@ -313,8 +309,7 @@ def default_next_enrol_status(actor: Actor, ownership, current_status,
     return WF.select(wf, ctx).target(current_status)
 
 
-@plugins.extension_point(plugins.ENROLMENT_NOTIFY)
-def default_notify_status_change(enrolment_id, old_record=None):
+def notify_status_change(enrolment_id, old_record=None):
     """Tells the student and instructor that an enrolment changed."""
     send_enrolment_email(enrolment_id, old_rec=old_record)
 
@@ -339,36 +334,19 @@ def change_status(actor: Actor, enrolment_ids, action) -> list:
     status actually changed. An enrolment the actor may not act on, or a
     transition the academic calendar forbids, raises and rolls the whole
     batch back.
-
-    An institution that overrides ``ENROLMENT_NEXT_STATUS`` with a plugin
-    gets the pre-table contract: its function picks the status, the
-    calendar check runs, and ``ENROLMENT_NOTIFY`` is called.
     """
     ownership = ownership_flags(actor, enrolment_ids)
-    custom = plugins.is_overridden(plugins.ENROLMENT_NEXT_STATUS)
-    wf = None if custom else WF.load(ENROLMENT)
+    wf = WF.load(ENROLMENT)
     changed = []
     with DB.db.atomic() as txn:
         for eid in enrolment_ids:
             ce = DB.CourseEnrollment.get_by_id(eid)
-            ctx = None
-            if custom:
-                new_status = plugins.call(plugins.ENROLMENT_NEXT_STATUS, actor,
-                                          ownership[eid], ce.enrol_status,
-                                          action)
-                VAL.validate_enrolment_change(ce, new_status, actor=actor)
-            else:
-                ctx = _context(actor, ownership[eid], ce.enrol_status, action,
-                               record=ce)
-                WF.decide(wf, ctx)
-                new_status = ctx.to_status
-
-            ce.enrol_status = new_status
+            ctx = _context(actor, ownership[eid], ce.enrol_status, action,
+                           record=ce)
+            WF.decide(wf, ctx)
+            ce.enrol_status = ctx.to_status
             if persistence.update(DB.CourseEnrollment, ce, actor) == 1:
-                if custom:
-                    plugins.call(plugins.ENROLMENT_NOTIFY, eid)
-                else:
-                    WF.run_effects(ctx)
+                WF.run_effects(ctx)
                 changed.append(eid)
         txn.commit()
     return changed
@@ -439,7 +417,7 @@ def request_enrolment(actor: Actor, student_id, co_ids, enrol_type,
                     persistence.save(coe, actor)
                 logging.debug("Saved: {}".format(coe))
                 VAL.check_enrolled_credits(student_id, co.acad_session)
-                plugins.call(plugins.ENROLMENT_NOTIFY, coe.id)
+                notify_status_change(coe.id)
 
         txn.commit()
     return outcome
@@ -487,7 +465,7 @@ def drop_or_withdraw(actor: Actor, enrolment_id, status, policy=None):
     ce = DB.CourseEnrollment.get_by_id(enrolment_id)
     ce.enrol_status = status
     persistence.save(ce, actor)
-    plugins.call(plugins.ENROLMENT_NOTIFY, enrolment_id)
+    notify_status_change(enrolment_id)
     return ce
 
 
@@ -518,7 +496,7 @@ def save_enrolment(actor: Actor, form_data) -> SaveOutcome:
             persistence.save(coe, actor)
             logging.debug(f"Inserted DB.CourseEnrollment: {coe}")
 
-        plugins.call(plugins.ENROLMENT_NOTIFY, coe.id, old_data)
+        notify_status_change(coe.id, old_data)
         txn.commit()
 
     return SaveOutcome(enrolment_id=coe.id)
