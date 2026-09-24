@@ -268,8 +268,10 @@ def describe_settings() -> list:
         gs = _REGISTRY[group]
         for name in sorted(gs.specs):
             spec = gs.specs[name]
+            key = f"{group}.{name}"
+            prov = provenance(key)
             out.append({
-                "key": f"{group}.{name}",
+                "key": key,
                 "group": group,
                 "group_doc": gs.doc,
                 "name": name,
@@ -280,8 +282,14 @@ def describe_settings() -> list:
                 "choices": list(spec.choices) if spec.choices else None,
                 "min_value": spec.min_value,
                 "max_value": spec.max_value,
+                "item_type": spec.item_type.__name__ if spec.item_type else None,
                 "nullable": spec.nullable,
-                "value": setting(f"{group}.{name}"),
+                "value": setting(key),
+                # BaseModel provenance of the stored row, or None for both
+                # when the setting has never been explicitly saved (still
+                # at its declared default, so there is no row to attribute).
+                "updated_by": prov["updated_by"] if prov else None,
+                "updated_ts": prov["updated_ts"] if prov else None,
             })
     return out
 
@@ -501,11 +509,14 @@ def validate_stored_settings() -> list:
 # ===================== Cache =====================
 
 class _Snapshot:
-    __slots__ = ("version", "values")
+    __slots__ = ("version", "values", "provenance")
 
-    def __init__(self, version: int, values: dict):
+    def __init__(self, version: int, values: dict, provenance: dict = None):
         self.version = version
         self.values = values
+        # key -> (txn_login_id, upd_ts) of the stored row, for the admin
+        # GUI's provenance display. Absent for a key with no stored row.
+        self.provenance = provenance if provenance is not None else {}
 
 
 _EMPTY_SNAPSHOT = _Snapshot(-1, {})
@@ -560,6 +571,7 @@ def _value_from_row(row) -> Any:
 def _load_values(version: int) -> _Snapshot:
     values = {}
     seen_json = {}
+    provenance = {}
     query = (M.SystemSetting.select()
              .where((M.SystemSetting.is_deleted == False) &  # noqa: E712
                     (M.SystemSetting.group != SYS_GROUP)))
@@ -579,7 +591,8 @@ def _load_values(version: int) -> _Snapshot:
                 continue
         seen_json[key] = row.is_json
         values[key] = _value_from_row(row)
-    return _Snapshot(version, values)
+        provenance[key] = (row.txn_login_id, row.upd_ts)
+    return _Snapshot(version, values, provenance)
 
 
 def _refresh_snapshot() -> _Snapshot:
@@ -708,6 +721,18 @@ def setting(key: str, default: Any = _UNSET) -> Any:
     if not isinstance(default, _Unset):
         return default
     return copy.deepcopy(spec.default) if spec else None
+
+
+def provenance(key: str) -> Optional[dict]:
+    """Who last saved this setting's stored row and when (BaseModel's
+    txn_login_id/upd_ts), or None if it has never been explicitly saved --
+    i.e. it is still serving its declared default, so there is no row to
+    attribute a change to."""
+    row = _current_snapshot().provenance.get(key)
+    if row is None:
+        return None
+    login_id, upd_ts = row
+    return {"updated_by": login_id, "updated_ts": upd_ts}
 
 
 def settings_in_group(group: str) -> dict:

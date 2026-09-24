@@ -292,5 +292,17 @@
         "href": "#/myphoto",
         "menu": "",
         "permission": "nav.student_self_service"
+    },
+    {
+        "label": "System Settings",
+        "href": "#/admin.settings",
+        "menu": "Administration",
+        "permission": "system.manage_settings"
+    },
+    {
+        "label": "Academic Policy Versions",
+        "href": "#/admin.policy",
+        "menu": "Administration",
+        "permission": "system.manage_academic_policy"
     }
 ]

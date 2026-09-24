@@ -59,6 +59,8 @@ import MyPhdProgressReports from "../components/MyPhdProgressReports.vue";
 import OnlineFeesSubmission from "../components/OnlineFeesSubmission.vue";
 import KnownFaceUpload from "../components/KnownFaceUpload.vue";
 import CourseAttendance from "../components/CourseAttendance.vue"
+import SystemSettingsAdmin from "../components/SystemSettingsAdmin.vue"
+import AcademicPolicyAdmin from "../components/AcademicPolicyAdmin.vue"
 
 // 2. Define routes
 const appRoutes = [{
@@ -358,6 +360,16 @@ const appRoutes = [{
   name: 'CourseAttendance',
   path: '/co.att/:co_id/:att_dt',
   component: CourseAttendance
+},
+{
+  name: 'admin.settings',
+  path: '/admin.settings',
+  component: SystemSettingsAdmin
+},
+{
+  name: 'admin.policy',
+  path: '/admin.policy',
+  component: AcademicPolicyAdmin
 }
 ]
 
