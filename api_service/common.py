@@ -39,6 +39,9 @@ class JSONEncoderWithDate(JSONEncoder):
 emailer = Emailer()
 
 TS_FORMAT = "%Y%m%d_%H%M%S"
+# Order is load-bearing: CourseSlotTiming.week_day stores the INDEX into
+# this list, not a code, so it must stay a fixed, ordered code constant
+# rather than move to an admin-editable vocab (which permits reordering).
 WEEK_DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 
 # The grade vocabulary (formerly VALID_GRADES/VALID_AUDIT_GRADES here) now
@@ -47,15 +50,11 @@ WEEK_DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 # importing constants from this module. Not re-exported here to avoid a
 # settings_store <-> common import cycle (settings_store already imports
 # AcadStackException from this module).
-
-ACAD_EVENT_CODES = ['ADD_DROP_E', 'ADD_DROP_S',
-                    'CLASSES_E', 'CLASSES_S', 'COURSE_REG_E',
-                    'COURSE_REG_S', 'FEEDBACK_E', 'FEEDBACK_S',
-                    'GRADE_SUB_E', 'GRADE_SUB_S', 'MAJOR_EXAM_E',
-                    'MAJOR_EXAM_S', 'MINOR_EXAM_E', 'MINOR_EXAM_S',
-                    'SESSION_E', 'SESSION_S', 'WITHDRAW_E',
-                    'WITHDRAW_S', 'FEEDBACK_MID_E', 'FEEDBACK_MID_S',
-                    'SHOW_MIDSEM_FB_S', 'SHOW_ENDSEM_FB_S','RESULT_DECLARATION']
+#
+# The academic-calendar event-code vocabulary (formerly ACAD_EVENT_CODES
+# here, and never actually referenced anywhere) now lives in
+# vocab_defaults.ACAD_EVENT_CODES for the same reason; read it via
+# settings_store.vocab_codes("acad_event_codes").
 
 class AcadStackException(Exception):
     """
@@ -283,17 +282,7 @@ def this_user_name_login_id():
 def app_config(key: str, default_value: Optional[Any] = None) -> Any:
     return current_app.config.get(key, default_value)
 
-
-def course_code_for_pg(code:str)->bool:
-    """Checks if the supplied course code represents a PG course. Any code
-    number starting with a digit greater than 5 will be considered a
-    PG course. E.g., CS504, EE677, etc. are PG courses.
-
-    Args:
-        code (str): Course code in the format CCddd.
-
-    Returns:
-        bool: True if yes.
-    """
-    code = "" if not code else code
-    return re.match(r"^[A-Za-z]{2,3}[5,6,7,8,9]\d{2}$", code, re.IGNORECASE)
+# course_code_for_pg() moved to domain/course.py: it now reads the PG
+# threshold digit from settings_store, which this module cannot import
+# (settings_store already imports AcadStackException from here, so the
+# reverse import would cycle).

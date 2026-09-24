@@ -10,11 +10,13 @@ registered here and referenced by name.
 """
 
 import logging
+import re
 
 import peewee as ORM
 
 import common as C
 import models as DB
+import settings_store as ST
 from create_email import send_course_updated_email
 from domain import persistence
 from domain import workflow as WF
@@ -22,6 +24,21 @@ from domain.context import Actor
 from domain.errors import DomainError, PermissionDenied, PolicyViolation
 
 COURSE = "course"
+
+
+def course_code_for_pg(code: str) -> bool:
+    """Whether a course code represents a PG course: its number starts
+    with a digit at or above the configured threshold (course.
+    pg_course_min_leading_digit, default 5). E.g. CS504, EE677 are PG
+    courses under the default.
+
+    Args:
+        code: course code in the format CCddd.
+    """
+    code = "" if not code else code
+    min_digit = ST.setting("course.pg_course_min_leading_digit")
+    return bool(re.match(
+        rf"^[A-Za-z]{{2,3}}[{min_digit}-9]\d{{2}}$", code, re.IGNORECASE))
 
 
 # ============================== checks / effects ==============================
@@ -62,7 +79,7 @@ def _pg_only_for_roles(ctx, roles=("RES",)):
     if ctx.from_status is None:
         return
     if ctx.actor.has_role(list(roles)) and \
-            not C.course_code_for_pg(ctx.record.code):
+            not course_code_for_pg(ctx.record.code):
         raise PolicyViolation("You can edit only PG/PhD courses!")
 
 

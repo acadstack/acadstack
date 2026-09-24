@@ -16,6 +16,7 @@ import playhouse.shortcuts as PS
 import models as M
 import api_common as apiVC
 import common as C
+import settings_store as ST
 from domain import course as CRS
 from domain import dc as DCD
 from domain import enrolment as ENR
@@ -119,6 +120,12 @@ async def dates_save():
         logging.info(f"Saving academic dates : {fd}")
         session = fd.get("session")
         eventdates = fd.get("eventDates")
+        valid_codes = ST.vocab_codes("acad_event_codes")
+        unknown = sorted(x for x in eventdates if x not in valid_codes)
+        if unknown:
+            return apiVC.error_json(
+                f"Unknown academic calendar event code(s): "
+                f"{', '.join(unknown)}.")
         ac = M.AcademicCalendar()
         for x in eventdates:
             (ac.insert(acad_session=session, event_code=x, \

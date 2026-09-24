@@ -176,6 +176,10 @@ DEPARTMENTS = [
     {"code": "ALL", "label": "All Departments"},
 ]
 
+# Core vs elective (used by sql_statements.toml's dept_wise_course_load/
+# core_courses_taught/electives_taught): SC/PC/GR/HC are core, SE/PE/HE/OC
+# are elective; CP/CT/NN are neither. Not modeled as a field on each item
+# below since only that hand-written SQL currently needs the grouping.
 COURSE_TYPES = [
     {"code": "SC", "label": "Science Requirement Core"},
     {"code": "SE", "label": "Science Electives"},
@@ -284,6 +288,40 @@ MINOR_CONC_SPECIALIZATIONS = [
     {"code": "CCME", "label": "Concentration in Computational Mechanics"},
 ]
 
+# Academic-calendar event codes: the keys AcademicCalendar.event_code
+# takes (see models.py), matched against by domain.academic_calendar's
+# is_today_between_events()/event_date(). AddAcademicDates.vue still has
+# one fixed row per event rather than looping over this list, so the
+# labels below aren't rendered anywhere yet -- declaring it as a
+# vocabulary mainly makes the codes admin-visible/exportable like every
+# other controlled list, and lets dates_save (api_wflow.py) reject an
+# unknown code instead of silently storing it.
+ACAD_EVENT_CODES = [
+    {"code": "SESSION_S", "label": "Academic Session Start"},
+    {"code": "SESSION_E", "label": "Academic Session End"},
+    {"code": "COURSE_REG_S", "label": "Course Registration Start"},
+    {"code": "COURSE_REG_E", "label": "Course Registration End"},
+    {"code": "CLASSES_S", "label": "Classes Start"},
+    {"code": "CLASSES_E", "label": "Classes End"},
+    {"code": "ADD_DROP_S", "label": "Add/Drop Start"},
+    {"code": "ADD_DROP_E", "label": "Add/Drop End"},
+    {"code": "FEEDBACK_MID_S", "label": "Mid-Semester Feedback Start"},
+    {"code": "FEEDBACK_MID_E", "label": "Mid-Semester Feedback End"},
+    {"code": "MINOR_EXAM_S", "label": "Minor Exam Start"},
+    {"code": "MINOR_EXAM_E", "label": "Minor Exam End"},
+    {"code": "WITHDRAW_S", "label": "Withdraw Start"},
+    {"code": "WITHDRAW_E", "label": "Withdraw End"},
+    {"code": "MAJOR_EXAM_S", "label": "Major Exam Start"},
+    {"code": "MAJOR_EXAM_E", "label": "Major Exam End"},
+    {"code": "FEEDBACK_S", "label": "End-Semester Feedback Start"},
+    {"code": "FEEDBACK_E", "label": "End-Semester Feedback End"},
+    {"code": "GRADE_SUB_S", "label": "Grade Submission Start"},
+    {"code": "GRADE_SUB_E", "label": "Grade Submission End"},
+    {"code": "SHOW_MIDSEM_FB_S", "label": "Show Mid-Semester Feedback From"},
+    {"code": "SHOW_ENDSEM_FB_S", "label": "Show End-Semester Feedback From"},
+    {"code": "RESULT_DECLARATION", "label": "Result Declaration"},
+]
+
 # ===================== Registry =====================
 
 # Every vocabulary, keyed by the name used in "vocab.<name>" setting keys.
@@ -308,6 +346,7 @@ ALL = {
     "ppr_statuses": PPR_STATUSES,
     "student_statuses": STUDENT_STATUSES,
     "minor_conc_specializations": MINOR_CONC_SPECIALIZATIONS,
+    "acad_event_codes": ACAD_EVENT_CODES,
 }
 
 # Maps each vocabulary to the key it used to have in the hand-maintained
@@ -338,6 +377,7 @@ STATIC_DATA_KEYS = {
     "ppr_statuses": ("PPRStatuses", False),
     "minor_conc_specializations": ("MinorConcSpecialization", True),
     "student_statuses": ("StudentStatus", False),
+    "acad_event_codes": ("AcadEventCodes", False),
 }
 
 

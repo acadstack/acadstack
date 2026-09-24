@@ -9,6 +9,7 @@ __status__ = "Development"
 
 import json, logging, os, re, uuid
 import numpy as np
+import acad_session as AS
 import common as C
 import models as M
 import permissions as PERM
@@ -59,7 +60,8 @@ def np_to_json(obj):
 
 
 def entry_years_valid(years:str)->bool:
-    """Entry years for students must be 20xx, e.g. 2010, 2018, etc.
+    """Entry years for students must be plausible 4-digit academic years
+    (app.min_academic_year..app.max_academic_year), e.g. 2010, 2018.
 
     Args:
         years (str): Comma-separated list of strings representing years.
@@ -70,11 +72,10 @@ def entry_years_valid(years:str)->bool:
     """
     years = "" if not years else years
     years = "".join(years.split())
-    return re.match(r"^(20\d{2}[,]?)+$", years, re.IGNORECASE)
-
-
-# Moved to common so the domain layer can use it.
-course_code_for_pg = C.course_code_for_pg
+    if not re.match(r"^(\d{4}[,]?)+$", years):
+        return False
+    lo, hi = ST.setting("app.min_academic_year"), ST.setting("app.max_academic_year")
+    return all(lo <= int(y) <= hi for y in re.findall(r"\d{4}", years))
 
 
 def current_login_id():
@@ -84,13 +85,19 @@ def current_login_id():
 
 
 def roll_number_valid(rollno:str)->bool:
-    """Checks whether the roll number is in correct format.
+    """Checks whether the roll number is in correct format: a plausible
+    4-digit entry year (app.min_academic_year..app.max_academic_year)
+    followed by 2-4 letters and up to 4 digits.
     Args:
         rollno (str): Roll number string.
     Returns:
         bool: True if valid, else False
     """
-    return re.match(r"^20\d{2}[A-Za-z]{2,4}\d{0,4}$", rollno, re.IGNORECASE)
+    m = re.match(r"^(\d{4})[A-Za-z]{2,4}\d{0,4}$", rollno, re.IGNORECASE)
+    if not m:
+        return False
+    lo, hi = ST.setting("app.min_academic_year"), ST.setting("app.max_academic_year")
+    return lo <= int(m.group(1)) <= hi
 
 
 def is_user_in_role(role):
@@ -210,7 +217,10 @@ def static_data_dict():
 
 
 def academic_session_valid(ac_sess:str)->bool:
-    return re.match(r"^20\d{2}-([S]|I{0,2}|T[1-4])$", ac_sess, re.IGNORECASE)
+    """Whether ac_sess is a well-formed "YYYY-<suffix>" academic session,
+    per the canonical suffix table in acad_session.py (the single source
+    for session ordering/validity -- see that module's docstring)."""
+    return AS.is_valid(ac_sess)
 
 
 def static_data_item(item_key):
@@ -356,11 +366,13 @@ def init_navbar_items(role_code:str, degree:str)->Dict[str, Any]:
                 if not PERM.role_has_permission(role_code, perm):
                     continue
 
+                restrict_degree = n.pop("restrictToDegree", None)
+                if restrict_degree and role_code == "STU" and \
+                        degree != restrict_degree:
+                    continue
+
                 m = n.pop("menu")
                 if m:
-                    if role_code == "STU" and degree != "PHD" and \
-                        m.upper() == "PHD":
-                        continue
                     if m not in menus:
                         menus[m] = []
                     menus[m].append(n)
@@ -382,21 +394,17 @@ current_acad_session = CAL.current_acad_session
 
 
 def __next_acad_session(cas):
-    sm = {
-            "S":"I","I":"II",
-            "II":"S","T1":"T2",
-            "T2":"T3","T3":"T4",
-            "T4":"T1"
-        }
-
-    # I->II->S->I 
-    cy = int(cas[:4])
-    cs = cas[5:]
-    
-    ny =  cy+1 if cs in ["S","T4"] else cy
-    ns = sm[cs]
-
-    return "{0}-{1}".format(ny, ns)
+    """The session that follows `cas` within its own academic calendar
+    (semester/quarter), wrapping to next year after the calendar's last
+    suffix. Derived from acad_session.py's suffix ordering rather than a
+    hand-maintained succession map, so it can never disagree with the
+    ordinal comparisons policy_store.py relies on."""
+    year, suffix = AS.parse(cas)
+    own = AS.suffixes_for(AS.session_type(cas))
+    idx = own.index(suffix)
+    if idx + 1 < len(own):
+        return "{0}-{1}".format(year, own[idx + 1])
+    return "{0}-{1}".format(year + 1, own[0])
 
 def __acad_sessions_nearby():
     cas_list = __current_acad_sessions_with_dates()
