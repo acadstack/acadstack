@@ -75,6 +75,14 @@ app.mixin({
             return this.$root.eventsStatusMap.includes(`${acad_session}:ADD_DROP`) ||
                 this.$root.eventsStatusMap.includes(`${acad_session}:COURSE_REG`);
         },
+        isLowAttendance(pct) {
+            // pct is domain.attendance.percent_for_enrolment()'s mixed
+            // return: the int 0 (no attendance recorded yet) or a
+            // two-decimal string. Number() handles both. Purely a display
+            // hint -- nothing is blocked by falling below the threshold.
+            const min = this.SD && this.SD.MinAttendancePercentRequired;
+            return min != null && pct !== "" && pct != null && Number(pct) < min;
+        },
     },
     computed: {
         eventsStatus: {

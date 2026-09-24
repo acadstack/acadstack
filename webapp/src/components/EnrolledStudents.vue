@@ -65,8 +65,11 @@ Component for showing the enrolled student in a course.
           <div class="col">{{s.acad_session}}</div>
           <div class="col">
             <span v-if="s.attendance">
-              <a v-if="!isStudent" :href="`#/att.detail/${s.id}`">{{s.attendance}}%</a>
-              <span v-else>{{s.attendance}}%</span>
+              <a v-if="!isStudent" :href="`#/att.detail/${s.id}`"
+                :class="{ 'text-danger fw-bold': isLowAttendance(s.attendance) }"
+                :title="isLowAttendance(s.attendance) ? `Below the minimum attendance of ${SD.MinAttendancePercentRequired}%` : ''"
+                >{{s.attendance}}%</a>
+              <span v-else :class="{ 'text-danger fw-bold': isLowAttendance(s.attendance) }">{{s.attendance}}%</span>
             </span>
             <span v-else>--</span>
           </div>

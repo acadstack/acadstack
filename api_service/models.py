@@ -159,10 +159,14 @@ class AcademicCalendar(BaseModel):
 
     """
     acad_session | event_code | event_value_type | event_value
-    2020-W      | SESS_START_DT | DATE | 2020-12-30
-    2020-W      | SESS_END_DT | DATE | 2021-03-30
-    2020-W      | MID_SEM_START_DT | DATE | 2021-01-24
-    2020-W      | MIN_ATTEND_REQD | INT | 60
+    2020-W      | SESSION_S | DATE | 2020-12-30
+    2020-W      | SESSION_E | DATE | 2021-03-30
+    2020-W      | MINOR_EXAM_S | DATE | 2021-01-24
+
+    (The minimum-attendance requirement is NOT a row here -- it applies
+    across every session, not per-calendar, so it lives as
+    settings_store's "attendance.min_percent_required" instead. See
+    domain/attendance.py.)
     """
 
 

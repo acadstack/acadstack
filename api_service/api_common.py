@@ -213,6 +213,7 @@ def static_data_dict():
         sd[json_key] = rows
     acs = __acad_sessions_nearby()
     sd["AcademicSessions"] = acs if acs else []
+    sd["MinAttendancePercentRequired"] = ST.setting("attendance.min_percent_required")
     return sd
 
 
