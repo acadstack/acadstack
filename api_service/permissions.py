@@ -120,6 +120,18 @@ ST.declare_group(
         _spec("system.manage_workflows", ["SUP"],
               "Edit the approval workflow transition tables "
               "(domain/workflow.py)."),
+        _spec("system.manage_settings", ["SUP"],
+              "Edit DB-backed system settings and controlled vocabularies "
+              "(settings_store.py) through the admin GUI."),
+        _spec("system.manage_academic_policy", ["SUP"],
+              "Create new versions of effective-dated academic policy "
+              "(policy_store.py), e.g. the grade point map. Kept as its "
+              "own permission rather than folded into "
+              "system.manage_settings: policy of record can retroactively "
+              "affect how a transcript reads, which is categorically more "
+              "dangerous than an operational knob like a semester date, "
+              "so an institution can delegate settings without also "
+              "delegating this."),
         _spec("system.view_active_users", ["ACA", "SUP", "DEA"],
               "View the list of currently active users."),
         _spec("user.search", ALL_BUT_STU,

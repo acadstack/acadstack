@@ -21,7 +21,9 @@ import api_dc as apiDC
 import api_faces as apiFC
 import api_feedback as apiVF
 import api_grades as apiVG
+import api_policy as apiPL
 import api_reports as apiRP
+import api_settings as apiST
 import api_wflow as apiWF
 import api_common as apiVC
 import common as C
@@ -167,6 +169,8 @@ def create_app(is_testing=False):
     apiVF.init_routes(apiVC.vbp)
     apiVG.init_routes(apiVC.vbp)
     apiWF.init_routes(apiVC.vbp)
+    apiPL.init_routes(apiVC.vbp)
+    apiST.init_routes(apiVC.vbp)
 
     # Register the blueprint for the application
     myapp.register_blueprint(apiVC.vbp, url_prefix='/acadstack')
