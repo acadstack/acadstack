@@ -14,6 +14,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import api_auth as apiAU
+import api_config as apiCFG
 import api_course_enrolment as apiCE
 import api_course_offering as apiCO
 import api_course as apiCR
@@ -171,6 +172,7 @@ def create_app(is_testing=False):
     apiWF.init_routes(apiVC.vbp)
     apiPL.init_routes(apiVC.vbp)
     apiST.init_routes(apiVC.vbp)
+    apiCFG.init_routes(apiVC.vbp)
 
     # Register the blueprint for the application
     myapp.register_blueprint(apiVC.vbp, url_prefix='/acadstack')

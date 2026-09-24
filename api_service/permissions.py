@@ -132,6 +132,23 @@ ST.declare_group(
               "dangerous than an operational knob like a semester date, "
               "so an institution can delegate settings without also "
               "delegating this."),
+        _spec("system.export_config", ["SUP"],
+              "Export the full configuration document (config_transfer.py) "
+              "-- every settings/vocab group INCLUDING the permission->role "
+              "mapping, plus full policy history. Broader than "
+              "system.manage_settings/system.manage_academic_policy, which "
+              "each see only their own slice; kept separate so those two "
+              "can be delegated without also handing out a full-install "
+              "config dump."),
+        _spec("system.import_config", ["SUP"],
+              "Import a configuration document (config_transfer.py), "
+              "overwriting every settings/vocab group it names and adding "
+              "any policy version it names that this install can still "
+              "accept. The single most powerful write in the admin "
+              "surface -- can rewrite the permission->role mapping and "
+              "every operational setting in one call -- so it is not "
+              "folded into any of the narrower settings/policy/permission "
+              "permissions."),
         _spec("system.view_active_users", ["ACA", "SUP", "DEA"],
               "View the list of currently active users."),
         _spec("user.search", ALL_BUT_STU,

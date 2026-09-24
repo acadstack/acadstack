@@ -12,6 +12,7 @@ from quart import Blueprint
 from quart.views import request
 
 import api_common as apiVC
+import config_integrity as CI
 import permissions as PERM
 import settings_store as ST
 from common import AcadStackException, rbac
@@ -64,7 +65,7 @@ async def settings_save():
             return apiVC.error_json(
                 "These settings are managed on a separate screen and "
                 f"cannot be changed here: {', '.join(blocked)}")
-        ST.save_settings(values, login_id=apiVC.current_login_id())
+        CI.guarded_save_settings(values, login_id=apiVC.current_login_id())
         return apiVC.ok_json(_visible(ST.describe_settings()))
     except AcadStackException as ex:
         return apiVC.error_json(str(ex))
@@ -87,7 +88,7 @@ async def settings_delete():
             return apiVC.error_json(
                 "This setting is managed on a separate screen and cannot "
                 "be reset here.")
-        ST.delete_setting(key, login_id=apiVC.current_login_id())
+        CI.guarded_delete_setting(key, login_id=apiVC.current_login_id())
         return apiVC.ok_json(_visible(ST.describe_settings()))
     except AcadStackException as ex:
         return apiVC.error_json(str(ex))
