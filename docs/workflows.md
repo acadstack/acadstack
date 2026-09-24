@@ -71,7 +71,7 @@ Messages may use `{role}`, `{from_status}`, `{to_status}`, `{from_label}`,
 
 Anything that needs a real query lives in the domain module that owns the
 workflow, registered with `@WF.guard` / `@WF.check` / `@WF.effect`. Institutions
-can register more from a plugin (`domain/plugins.py`). Enrolment ownership is
+can register more from a plugin (see section 7). Enrolment ownership is
 computed once by the batched SQL in `ownership_flags()` and handed to the guards
 as precomputed `facts`, so approving a batch costs one query, not one per row.
 
@@ -158,9 +158,40 @@ must stay active.
 
 ## 7. Plugins
 
-`ENROLMENT_NEXT_STATUS` is a plugin hook for enrolment-status logic that the
-transition table can't express: its default resolves the table (guards
-only); an institution's override picks the status itself, and the calendar
-check and `ENROLMENT_NOTIFY` still run around it either way. Most changes —
-adding, removing or reassigning an approval step — are an edit to the table
-instead of a plugin.
+The transition table is the only thing that decides how a record moves and what
+happens afterwards. There is no plugin hook that replaces the decision.
+
+When an institution needs logic the stock guards, checks and effects can't
+express, its own package registers more of them by name. It advertises an
+`acadstack.plugins` entry point, and at startup `create_app` calls
+`plugins.load_plugins()`, which imports each one and calls it:
+
+```python
+# iitrpr_acadstack/hooks.py  (entry point: iitrpr = "iitrpr_acadstack.hooks:register")
+from domain import workflow as WF
+from domain.errors import PolicyViolation
+
+def register():
+    @WF.check("iitrpr.no_backlogs")
+    def no_backlogs(ctx, max_backlogs=0):
+        if backlog_count(ctx.record.student) > max_backlogs:
+            raise PolicyViolation("Clear your backlogs first.")
+```
+
+Registering a name does nothing until the table uses it. The institution adds
+`{"name": "iitrpr.no_backlogs", "params": {"max_backlogs": 1}}` to the
+workflow's `checks` (every transition) or to one row's `checks`, and saves it
+through `POST /workflow_save`. The new name appears in the `GET /workflow/<name>`
+list, and the save validation accepts it, only when the plugin loaded. A plugin
+that fails to import is logged and skipped. Guards (`@WF.guard`) and effects
+(`@WF.effect`) work the same way. To send notifications through a different
+channel, for example, register an effect and put it in place of
+`notify.enrolment` on the rows.
+
+The enrolment table's calendar/offering check (`enrolment.change_allowed`) is a
+workflow-level check, so it runs on every move, including rows an institution
+adds. It lets `enrolment.override` holders through by itself.
+
+Enrolment notifications that don't come from a transition (a student's request,
+a drop/withdraw, a form edit of the record) call
+`enrolment.notify_status_change` directly and can't be swapped by a plugin.

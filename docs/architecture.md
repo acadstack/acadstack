@@ -116,12 +116,13 @@ Domain modules are plain synchronous functions over the models. They never impor
 function — not the adapter — owns the `db.atomic()` transaction.
 
 `api_course_enrolment.py` + `domain/enrolment.py` are the reference example.
-`domain/plugins.py` is the in-process seam institutions use to override specific
-domain behaviour. The detail lives with the code: `domain/__init__.py` states the
+`domain/plugins.py` loads institution packages, which register extra approval
+workflow guards/checks/effects by name. It does not override domain behaviour
+directly. The detail lives with the code: `domain/__init__.py` states the
 rules the package keeps to (and `tests/test_domain_boundaries.py` enforces them),
 `domain/context.py` explains how the acting user reaches a domain function,
-`domain/policy.py` the shape policy arrives in, and `domain/plugins.py` the
-extension-point contract.
+`domain/policy.py` the shape policy arrives in, and `domain/plugins.py` how an
+institution's plugin is loaded.
 
 ### Approval workflows
 

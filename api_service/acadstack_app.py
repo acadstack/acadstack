@@ -123,8 +123,9 @@ def create_app(is_testing=False):
     cfg = _load_config_from_env()
     myapp.config.update(cfg)
 
-    # Institution-specific domain overrides, if any are installed. Safe
-    # to call when none are: it is a no-op. See domain/plugins.py.
+    # Institution plugins, if any are installed, register extra workflow
+    # guards/checks/effects. Safe to call when none are: it is a no-op.
+    # See domain/plugins.py.
     plugins.load_plugins()
 
     if not is_testing:

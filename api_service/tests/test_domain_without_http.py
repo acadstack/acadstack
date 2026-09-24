@@ -18,8 +18,9 @@ from conftest import create_user, login_as  # noqa: E402
 from domain import enrolment as ENR  # noqa: E402
 from domain import persistence  # noqa: E402
 from domain import plugins  # noqa: E402
+from domain import workflow as WF  # noqa: E402
 from domain.context import Actor  # noqa: E402
-from domain.errors import PermissionDenied  # noqa: E402
+from domain.errors import PermissionDenied, PolicyViolation  # noqa: E402
 
 ACAD_SESSION = "2024-I"
 _seq = 0
@@ -91,9 +92,13 @@ def test_batch_rolls_back_entirely_when_one_enrolment_is_forbidden(db):
     assert DB.CourseEnrollment.get_by_id(not_mine.id).enrol_status == "IPEN"
 
 
-def test_plugin_override_changes_what_the_http_route_does(client):
-    """An institution's override is in force for the real endpoint, with
+def test_plugin_check_is_enforced_by_the_http_route(client, monkeypatch):
+    """An institution's plugin registers a workflow check; once its
+    stored enrolment table names it, the real endpoint enforces it with
     no change to the route, the adapter or the domain module."""
+    import dataclasses
+    import importlib.metadata
+
     offering = _offering()
     student = _student("stu_plugin")
     ce = DB.CourseEnrollment.create(course_offering=offering, student=student,
@@ -101,21 +106,38 @@ def test_plugin_override_changes_what_the_http_route_does(client):
     aca = create_user("ACA", "aca_plugin")
     login_as(client, aca.login_id)
 
-    @plugins.override(plugins.ENROLMENT_NEXT_STATUS)
-    def always_park_for_advisor(actor, ownership, current_status, action):
-        # This deployment routes even academic-section approvals through
-        # the batch advisor.
-        return "APEN" if action == "approve" else "ASREJ"
+    def register():
+        @WF.check("test.no_fresh_approvals")
+        def no_fresh_approvals(ctx):
+            # This deployment wants every request seen by the instructor
+            # first, even when the academic section is the one acting.
+            if ctx.from_status == "IPEN":
+                raise PolicyViolation("Awaiting the instructor's review.")
 
-    try:
-        res = client.post("/acadstack/change_enroll_status",
-                          json={"ids": [ce.id], "status": "approve"})
-        assert res.json["status"] == "OK", res.json
-        assert DB.CourseEnrollment.get_by_id(ce.id).enrol_status == "APEN"
-    finally:
-        plugins.clear_overrides()
+    class EntryPoint:
+        name, value = "inst", "tests:register"
 
-    # ...and the stock behaviour is back once the override is gone.
+        def load(self):
+            return register
+
+    monkeypatch.setattr(WF, "_CHECKS", dict(WF._CHECKS))
+    monkeypatch.setattr(importlib.metadata, "entry_points",
+                        lambda group: [EntryPoint()])
+    assert plugins.load_plugins() == ["inst"]
+
+    # The institution names the plugin's check in its stored table.
+    wf = WF.load(ENR.ENROLMENT)
+    WF.store(dataclasses.replace(
+        wf, checks=wf.checks + (WF.Step("test.no_fresh_approvals"),)))
+
+    res = client.post("/acadstack/change_enroll_status",
+                      json={"ids": [ce.id], "status": "approve"})
+    assert res.json["status"] == "ERROR", res.json
+    assert "instructor's review" in res.json["body"]
+    assert DB.CourseEnrollment.get_by_id(ce.id).enrol_status == "IPEN"
+
+    # ...and the stock behaviour is back once the table no longer names it.
+    WF.store(wf)
     res = client.post("/acadstack/change_enroll_status",
                       json={"ids": [ce.id], "status": "approve"})
     assert res.json["status"] == "OK", res.json

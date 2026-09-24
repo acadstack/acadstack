@@ -19,12 +19,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from domain import enrolment as ENR  # noqa: E402
 from domain import plugins  # noqa: E402
 from domain import policy as POL  # noqa: E402
 from domain import transcript as TR  # noqa: E402
+from domain import workflow as WF  # noqa: E402
 from domain.context import Actor  # noqa: E402
 from domain.enrolment import default_next_enrol_status  # noqa: E402
-from domain.errors import PermissionDenied  # noqa: E402
+from domain.errors import PermissionDenied, PolicyViolation  # noqa: E402
 
 
 def actor(role, user_id=1, login_id="tester"):
@@ -244,44 +246,76 @@ def test_the_computation_hardcodes_no_degree_code():
 
 
 # ===================== the plugin seam =====================
+#
+# Institutions extend enrolment approval one way only: a plugin registers
+# workflow guards/checks/effects by name, and the transition table names
+# them. There is no second path that replaces the decision.
+
+class _EntryPoint:
+    def __init__(self, name, target):
+        self.name, self.value, self._target = name, f"tests:{name}", target
+
+    def load(self):
+        return self._target
+
 
 @pytest.fixture
-def clean_registry():
-    yield
-    plugins.clear_overrides()
+def installed(monkeypatch):
+    """Isolates the workflow check registry and lets a test pretend a
+    set of ``acadstack.plugins`` entry points is installed."""
+    import importlib.metadata
+
+    monkeypatch.setattr(WF, "_CHECKS", dict(WF._CHECKS))
+
+    def install(**targets):
+        eps = [_EntryPoint(n, t) for n, t in targets.items()]
+        monkeypatch.setattr(importlib.metadata, "entry_points",
+                            lambda group: eps if group == "acadstack.plugins"
+                            else [])
+    return install
 
 
-def test_core_registers_a_default_for_every_declared_point():
-    assert plugins.implementation(plugins.ENROLMENT_NEXT_STATUS) is \
-        default_next_enrol_status
-    assert plugins.implementation(plugins.ENROLMENT_NOTIFY) is not None
+def _register_hold_check():
+    @WF.check("test.hold_status")
+    def hold(ctx, status):
+        if ctx.from_status == status:
+            raise PolicyViolation(f"Enrolments in {status} are on hold.")
 
 
-def test_override_replaces_the_default_and_can_be_dropped(clean_registry):
-    @plugins.override(plugins.ENROLMENT_NEXT_STATUS)
-    def two_step_advisor(actor, ownership, current_status, action):
-        return "APEN"
+def test_load_plugins_registers_workflow_steps_and_skips_broken_ones(installed):
+    def broken():
+        raise RuntimeError("plugin bug")
 
-    assert plugins.is_overridden(plugins.ENROLMENT_NEXT_STATUS)
-    assert plugins.call(plugins.ENROLMENT_NEXT_STATUS, actor("ACA"),
-                        NEITHER, "IPEN", "approve") == "APEN"
+    installed(good=_register_hold_check, bad=broken)
 
-    plugins.clear_overrides()
-    assert not plugins.is_overridden(plugins.ENROLMENT_NEXT_STATUS)
-    assert plugins.call(plugins.ENROLMENT_NEXT_STATUS, actor("ACA"),
-                        NEITHER, "IPEN", "approve") == "ENRO"
+    assert plugins.load_plugins() == ["good"]
+    assert "test.hold_status" in WF._CHECKS
 
 
-def test_unknown_extension_point_is_an_error_not_a_silent_no_op():
-    with pytest.raises(LookupError):
-        plugins.call("enrolment.no_such_point")
+def test_a_plugin_check_named_in_the_table_is_enforced(installed):
+    installed(inst=_register_hold_check)
+    plugins.load_plugins()
+    wf = dataclasses.replace(
+        ENR.BASELINE, checks=ENR.BASELINE.checks + (
+            WF.Step("test.hold_status", {"status": "IPEN"}),))
+
+    held = ENR._context(actor("ACA"), NEITHER, "IPEN", "approve")
+    with pytest.raises(PolicyViolation, match="IPEN are on hold"):
+        WF.decide(wf, held)
+
+    # Other statuses are untouched; the table still picks the status.
+    free = ENR._context(actor("ACA"), NEITHER, "APEN", "approve")
+    assert WF.decide(wf, free).target("APEN") == "ENRO"
 
 
-def test_registered_reports_what_is_installed(clean_registry):
-    @plugins.override(plugins.ENROLMENT_NOTIFY)
-    def quiet(enrolment_id, old_record=None):
-        return None
+def test_plugins_is_only_a_loader():
+    assert [n for n in vars(plugins) if not n.startswith("_")
+            and callable(getattr(plugins, n))] == ["load_plugins"]
 
-    entry = plugins.registered()[plugins.ENROLMENT_NOTIFY]
-    assert entry["default"] == "default_notify_status_change"
-    assert entry["override"].endswith("quiet")
+
+def test_every_baseline_enrolment_move_runs_the_calendar_check():
+    # The old plugin path ran validate_enrolment_change on every move,
+    # including the academic section's; the table must not do less.
+    for t in ENR.BASELINE.transitions:
+        names = [s.name for s in ENR.BASELINE.checks + t.checks]
+        assert "enrolment.change_allowed" in names, t
