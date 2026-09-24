@@ -64,8 +64,11 @@ Component for showing the academics details of a student.
                   </div>
                   <div class="col-md-1">{{ c.grade }}</div>
                   <div class="col-md-1">
-                    <a :href="`#/att.detail/${c.id}`" v-if="!isPlacement">{{ c.attendance }}%</a>
-                    <span v-else>{{ c.attendance }}%</span>
+                    <a :href="`#/att.detail/${c.id}`" v-if="!isPlacement"
+                      :class="{ 'text-danger fw-bold': isLowAttendance(c.attendance) }"
+                      :title="isLowAttendance(c.attendance) ? `Below the minimum attendance of ${SD.MinAttendancePercentRequired}%` : ''"
+                      >{{ c.attendance }}%</a>
+                    <span v-else :class="{ 'text-danger fw-bold': isLowAttendance(c.attendance) }">{{ c.attendance }}%</span>
                   </div>
                   <div class="col-md-1">
                     <div class="dropdown me-2" v-if="show_add_withdraw(c)">

@@ -979,6 +979,22 @@ declare_group(
     doc="Photo-based attendance / face-recognition policy."
 )
 
+declare_group(
+    "attendance",
+    [
+        Spec("min_percent_required", float, default=75.0,
+             min_value=0.0, max_value=100.0,
+             doc="Minimum attendance percentage a student is expected to "
+                 "maintain per course enrolment. Purely informational: "
+                 "surfaced as a warning wherever attendance is displayed "
+                 "(sent to the frontend via static_data_dict()'s "
+                 "MinAttendancePercentRequired), nothing is blocked by it "
+                 "-- see domain/attendance.py for why this is an "
+                 "operational setting rather than versioned policy."),
+    ],
+    doc="Minimum attendance policy."
+)
+
 
 def _validate_vocab_items(items):
     """Shared Spec.validator for every "vocab.*" setting: each item must
