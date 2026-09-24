@@ -964,8 +964,29 @@ declare_group(
         Spec("active_user_window_secs", int, default=1800, min_value=1,
              doc="How many seconds since last access a user still counts "
                  "as active."),
+        Spec("min_academic_year", int, default=2000, min_value=1,
+             doc="Earliest calendar year accepted in a student entry year "
+                 "or roll number (api_common.entry_years_valid/"
+                 "roll_number_valid)."),
+        Spec("max_academic_year", int, default=2099, min_value=1,
+             doc="Latest calendar year accepted in a student entry year "
+                 "or roll number (api_common.entry_years_valid/"
+                 "roll_number_valid)."),
     ],
     doc="General application-wide operational settings."
+)
+
+declare_group(
+    "course",
+    [
+        Spec("pg_course_min_leading_digit", int, default=5,
+             min_value=1, max_value=9,
+             doc="A course code's number is treated as a PG course "
+                 "(domain.course.course_code_for_pg) when its leading "
+                 "digit is at or above this. E.g. CS504, EE677 are PG "
+                 "courses under the default of 5."),
+    ],
+    doc="Course classification policy."
 )
 
 declare_group(

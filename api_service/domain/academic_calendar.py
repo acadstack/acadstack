@@ -78,3 +78,28 @@ def is_course_add_drop_open(for_acad_session):
 def is_course_withdraw_open(for_acad_session):
     return is_today_between_events("WITHDRAW_S", "WITHDRAW_E",
                                    for_acad_session)
+
+
+def is_feedback_open(acad_session, fb_form_type):
+    """Whether feedback submission is open for the given academic session.
+
+    Args:
+        acad_session (str): Academic session. E.g. 2025-II etc.
+        fb_form_type (str): Type of feedback -- END_SEM_FB or MID_SEM_FB
+            (vocab.form_types).
+
+    Raises:
+        DomainError: fb_form_type is neither END_SEM_FB nor MID_SEM_FB.
+
+    Returns:
+        bool: True if the supplied feedback type is open for the session.
+    """
+    if fb_form_type == "END_SEM_FB":
+        return is_today_between_events("FEEDBACK_S", "FEEDBACK_E",
+                                       acad_session)
+    elif fb_form_type == "MID_SEM_FB":
+        return is_today_between_events("FEEDBACK_MID_S", "FEEDBACK_MID_E",
+                                       acad_session)
+    else:
+        raise DomainError(
+            "Unsupported feedback form type: {}".format(fb_form_type))

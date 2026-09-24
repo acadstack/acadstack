@@ -104,6 +104,7 @@ is_course_add_drop_open = CAL.is_course_add_drop_open
 is_course_withdraw_open = CAL.is_course_withdraw_open
 is_today_between_events = CAL.is_today_between_events
 get_event_date = CAL.event_date
+is_feedback_open = CAL.is_feedback_open
 
 
 def validate_enrolment_change(enrl, status, actor=None):
@@ -201,33 +202,6 @@ def is_enrollment_owner_valid(coe, actor=None):
         logging.error(msg)
         send_access_violation_alert(msg)
     return valid
-
-
-def is_feedback_open(acad_session, fb_form_type):
-    """Checks whether the feedback submission is open for the given academic
-    session.
-
-    Args:
-        acad_session (str): Academic session. E.g. 2025-II etc.
-        fb_form_type (str): Type of feedback for. E.g. mid-semester or
-        end-semester feedback.
-
-    Raises:
-        AcadStackException: When fb_form_type is not END_SEM_FB or MID_SEM_FB
-
-    Returns:
-        bool: True if the supplied feedback type is open for the
-        given academic session.
-    """
-    if fb_form_type == "END_SEM_FB":
-        return is_today_between_events("FEEDBACK_S", "FEEDBACK_E", 
-                                       acad_session)
-    elif fb_form_type == "MID_SEM_FB":
-        return is_today_between_events("FEEDBACK_MID_S", "FEEDBACK_MID_E",
-                                       acad_session)
-    else:
-        raise AcadStackException("Unsupported feedback form type: {}".format(
-            fb_form_type))
 
 
 def is_current_user_in_role_and_id(role, get_by, arg_for_get_by, error_msg,

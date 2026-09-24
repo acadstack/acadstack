@@ -123,24 +123,28 @@ credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role,
     HAVING u.role = 'FAC';
     """
 
+# 'core'/'elective' category codes (vocab.course_types): PC/SC/GR/HC are
+# core, SE/PE/HE/OC are elective (CP/CT/NN are neither). Kept in sync with
+# dept_wise_course_load's CASE below, which is the canonical classification
+# -- core_courses_taught/electives_taught used to omit GR/OC respectively.
 core_courses_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
     count(*) as core,t.acad_session  from (Select u.id, u.first_name,
-    u.last_name, u.role,o.acad_session from public.user u 
+    u.last_name, u.role,o.acad_session from public.user u
     join  public.courseinstructor i  on u.id = i.instructor_id
     join public.courseoffering o on i.offering_id = o.id
     left join public.coursecategory c on o.id=c.offering_id
-    Where c.category in ('SC','PC','HC')) t
+    Where c.category in ('SC','PC','HC','GR')) t
     group by t.id,t.acad_session having t.acad_session = %s;
     """
 
 electives_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
     count(*) as elective,t.acad_session from
     (Select u.id, u.first_name,u.last_name,u.role,o.acad_session
-    from public.user u 
+    from public.user u
     join public.courseinstructor i on u.id = i.instructor_id
     join public.courseoffering o on i.offering_id = o.id
     left join public.coursecategory c on o.id=c.offering_id
-    Where c.category in ('SE','PE','HE')) t
+    Where c.category in ('SE','PE','HE','OC')) t
     group by t.id,t.acad_session having t.acad_session= %s;
     """
 

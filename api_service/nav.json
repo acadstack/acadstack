@@ -237,25 +237,29 @@
         "label": "Doctoral Committe Formulation",
         "href": "#/dc.form",
         "menu": "PhD",
-        "permission": "dc.save"
+        "permission": "dc.save",
+        "restrictToDegree": "PHD"
     },
     {
         "label": "Search Doctoral Committe",
         "href": "#/dc.find",
         "menu": "PhD",
-        "permission": "nav.general_access"
+        "permission": "nav.general_access",
+        "restrictToDegree": "PHD"
     },
     {
         "label": "Submit Progress Report",
         "href": "#/ppr",
         "menu": "PhD",
-        "permission": "nav.submit_progress_report"
+        "permission": "nav.submit_progress_report",
+        "restrictToDegree": "PHD"
     },
     {
         "label": "My Progress Reports",
         "href": "#/myppr",
         "menu": "PhD",
-        "permission": "nav.general_access"
+        "permission": "nav.general_access",
+        "restrictToDegree": "PHD"
     },
     {
         "label": "Check the Submitted Grades",
