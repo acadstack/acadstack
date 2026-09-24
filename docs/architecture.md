@@ -34,7 +34,7 @@ three tiers:
 │   ├── server_error.log
 │   ├── server.log
 │   ├── sql_statements.toml
-│   ├── static_data.json.  <--- Dropdown labels and values.
+│   ├── vocab_defaults.py.  <--- Dropdown labels/values (static_data.json no longer exists).
 │   ├── tests
 │   │   ├── config_test.json
 │   │   └── ...
@@ -202,6 +202,13 @@ This entry implies that the navigation menu named "Courses" will have an item na
 "Offer a Course For Enrolment" only when the logged in user's role holds the
 `nav.offer_course` permission (currently `FAC, ACA`).
 
+An entry may also declare `"restrictToDegree": "PHD"` (the PhD menu's four entries do)
+to additionally require, for `STU` role users only, that the logged-in student's
+degree matches — `init_navbar_items()` reads this field explicitly rather than
+comparing the menu's display label to a hard-coded degree code, so renaming the menu
+or relabelling the `PHD` vocab entry can no longer silently desync the gate from the
+label.
+
 The backend sends the logged-in user's permission set (`permissions.py`'s
 `permissions_for_role()`) alongside `nav` in the login/`current_user` response, and
 `webapp/src/main.js` exposes it to components via `hasPermission(name)`. The older
@@ -341,15 +348,115 @@ codebase runs hand-written SQL and peewee bulk updates that never reach
 `Model.save()`.
 
 Effective-dating is keyed on academic session (`YYYY-S`), following
-`AcademicCalendar`'s precedent, not on wall-clock dates. `acad_session.py` defines the
-total order (`T1 < T2 < T3 < T4 < I < II < S` within a year — the same order the
-transcript code sorts by) and the integer ordinal that resolution binary-searches, so
-resolving per course during transcript building costs no query.
+`AcademicCalendar`'s precedent, not on wall-clock dates. Sessions are **not** ranked on
+one arbitrary within-year order — an earlier scheme did that (`T1 < T2 < T3 < T4 < I <
+II < S`) and it was a fiction, since `2021-T1` and `2021-I` both begin the academic
+year. `acad_session.py` instead gives every suffix a month offset into the academic
+year (`SESSION_TYPES`) and derives each session's ordinal as `year * 12 + offset`, so
+concurrent sessions in different calendars (a semester programme and a quarter
+programme) correctly share an ordinal, and resolution is a binary search over that
+ordinal list — no query per course during transcript building. `api_common.py`'s
+session-succession and validity helpers delegate to this module rather than
+maintaining their own copies of the suffix table.
 
-Nothing has been migrated onto this store yet: `compute_cgpa_sgpa_ec` still holds
-the live rules. See **docs/versioned-policy.md** for the design argument, the
-`SystemSetting`-vs-`PolicyVersion` boundary, what must happen before the rules move,
-and the recommendation on freezing `StudentCredits`.
+The grading policy is the one ruleset actually migrated onto this store:
+`compute_cgpa_sgpa_ec` (`domain/transcript.py`) calls `domain.policy.load_grading_policy()`,
+which resolves the version in force for a session and falls back to
+`BASELINE_GRADING_VERSIONS` in code if nothing is stored yet. `default_seed_data.py` seeds
+that baseline on first boot (unless it would land in already-sealed history). See
+**docs/versioned-policy.md** for the full design argument and the
+`SystemSetting`-vs-`PolicyVersion` boundary.
+
+### Admin GUI
+
+Both stores have a dedicated admin screen, gated by their own permission (so one can
+be delegated without the other — see `permissions.py`'s
+`system.manage_academic_policy` doc for why):
+
+- **System Settings** (`#/admin.settings`, `system.manage_settings`,
+  `api_settings.py` + `SystemSettingsAdmin.vue`) — edits scalar settings and
+  vocabularies in place, through `settings_save`/`settings_delete`. Excludes the
+  `"permission"` group (see below).
+- **Academic Policy Versions** (`#/admin.policy`, `system.manage_academic_policy`,
+  `api_policy.py` + `AcademicPolicyAdmin.vue`) — read-only version history plus an
+  append-only "record a new version" form (`policy_validate` dry-runs a payload,
+  `policy_supersede` records it). No edit/delete route exists, matching
+  `policy_store.supersede()` being the only write.
+
+The `"permission"` settings group (the permission→role mapping) is not reachable from
+the generic Settings screen: `api_settings.py`'s `_EXCLUDED_GROUPS` blocks it, because
+it has its own write path, `permissions.save_permission_mapping()`, with a
+self-lockout guard (refuses to save a change that would drop the acting admin's own
+role from `system.manage_permissions`) and its own permission
+(`system.manage_permissions`).
+
+### Referential integrity on configuration changes
+
+`settings_store.py` validates a value against its own declared `Spec` (type, choices,
+bounds) but is deliberately unaware of `models.py`'s business tables — so nothing
+there would have stopped an admin from deleting a `vocab.degrees` code that a
+`Person` row, or a `vocab.roles` code that a `permission.*` mapping, still depends on.
+`config_integrity.py` closes that gap by wrapping the settings write path the same
+way `save_permission_mapping()` wraps it for its own dangerous case: before a
+`vocab.*` write is allowed through, it checks whether any code the write would drop is
+still used —
+
+1. in a mapped business-table column (`VOCAB_MODEL_FIELDS`, e.g. `Person.degree` for
+   `"degrees"`, `User.role` for `"roles"`);
+2. in another setting drawn from the same vocabulary (any declared `Spec` whose
+   `choices` matches it — this is what catches "a role that permission mappings
+   depend on"); or
+3. in a `WorkflowTransition` under a workflow whose `status_vocab` names it —
+
+and raises before any write if so, naming what still depends on it.
+`api_settings.py`'s `settings_save`/`settings_delete` and `config_transfer.py`'s
+import path (below) both go through this guard rather than calling
+`settings_store.save_settings()`/`delete_setting()` directly.
+
+### Exporting and importing configuration
+
+`config_transfer.py` serializes an institution's full configuration — every declared
+settings/vocab/permission group, plus every recorded policy version — into one JSON
+document (`export_config()`), and applies such a document back (`import_config()`).
+It is the Phase 1 seeder (`default_seed_data.py`) run in reverse: where the seeder
+inserts `vocab_defaults.py`'s lists as rows, export walks the same stores and
+serializes whatever is actually recorded; import feeds a document back through the
+same validated write paths the admin GUI uses (`save_settings`, `supersede`,
+`save_permission_mapping` for the `"permission"` group, so its lockout guard still
+applies).
+
+Settings/vocab/permission groups are a full-overwrite snapshot: importing replaces
+this install's effective values for every group the document names, atomically (all
+values are validated — including the referential-integrity check above — before
+anything is written). Policy groups are different in kind, because `policy_store` is
+insert-only: a document can only *add* versions, never replace what is already
+recorded. A version whose session already has policy, or that lands at or before the
+install's seal line, cannot be applied; `import_config()` reports that per version
+(`"status": "skipped"`) rather than treating it as an error or silently dropping it —
+importing a fixture into an install that already has its own history is an expected
+outcome, not a malformed document.
+
+Reachable from `#/admin.config_transfer` (`ConfigTransfer.vue`), gated by two new
+permissions — `system.export_config`/`system.import_config`, both broader than
+`system.manage_settings`/`system.manage_academic_policy` individually (a full export
+includes the permission mapping; a full import can rewrite it), so kept separate
+rather than folded into either. Uses: cloning a configured institution, seeding a test
+fixture with known policy, or diffing two exports to review a policy change
+out-of-band.
+
+### Minimum-attendance policy
+
+Attendance percentage is computed per enrolment (`domain/attendance.py`) but nothing
+enforces a minimum — `attendance.min_percent_required` (a `settings_store` value,
+default 75%) is purely informational today: it rides along in `static_data_dict()` as
+`MinAttendancePercentRequired`, and the two places a student's attendance is already
+displayed (`StudentAcademics.vue`, `EnrolledStudents.vue`) shade the number and add a
+tooltip when it falls below the threshold. Nothing is blocked by it — no grade entry,
+no registration. It stays a `settings_store` value rather than versioned policy for
+exactly that reason: per the versioned-policy test above ("must an already-issued
+document change too?"), a display-only threshold doesn't qualify. If a later phase
+makes it gate an actual decision, evaluated per session, that is the point at which it
+belongs in `policy_store` instead.
 
 ## Frontend implementation
 The frontend GUI is built using [VueJS Router](https://router.vuejs.org/guide/)

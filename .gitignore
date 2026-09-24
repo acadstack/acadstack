@@ -176,3 +176,4 @@ cython_debug/
 # Internal planning/design notes: kept locally, deliberately not published.
 docs/refactor-plan.md
 docs/service-layer.md
+CLAUDE.md
