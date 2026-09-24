@@ -175,7 +175,7 @@ async def login():
 
         u = DB.User.get_or_none(DB.User.login_id == login_id)
         valid = False
-        if u:
+        if u and plain_pass:
             if u.is_locked:
                 return apiVC.error_json("DB.User is locked! Please contact admin.")
             logging.info("Got user: {0}, {1}".format(u.login_id, u.first_name))

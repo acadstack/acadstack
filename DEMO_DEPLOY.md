@@ -32,7 +32,11 @@ $ docker exec -it acadstack_backend /bin/bash
 root@2f1cd5e70109:/app# 
 ```
 1. In the above container shell, run the following to create the demo data:
-`python demo_data.py config.json` You should see something like the following:
+`python demo_data.py config.json`. `config.json` here is the copy baked into the image at
+build time (it is not mounted from the host), so it already has DB credentials matching
+`app_env_vars.env`; if you changed the DB password in `app_env_vars.env` you must edit
+`config.json` inside this same container shell to match before running the command. You
+should see something like the following:
 ```bash
 $ docker exec -it acadstack_backend /bin/bash
 root@2f1cd5e70109:/app# python demo_data.py config.json 

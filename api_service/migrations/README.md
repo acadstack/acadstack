@@ -41,5 +41,5 @@ When in doubt, add the migration anyway -- it's a no-op once applied.
 A no-op marker (comment only). It exists so `schema_migrations` has a row
 after the first startup post-upgrade, and so future migrations have a
 concrete "migrations start here" anchor to number from. Everything before
-it is captured by `models.py` / `scripts/initdb/schema_only.sql` as they
-stood at the time this tooling was introduced.
+it is captured by `models.py` as it stood at the time this tooling was
+introduced.

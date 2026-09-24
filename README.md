@@ -66,11 +66,17 @@ The `docker buildx inspect` command will confirm that the builder is ready and s
 
 After setting up the workspace as per the steps listed above you can deploy and run the application for development. Following are the steps:
 
+**Note:** `config.json` and `app_env_vars.env` are two separate config surfaces, and both
+need matching database credentials. `config.json` is read only by the one-off bootstrap
+scripts (`demo_data.py`, `migrate.py`); the running server (`main.py`) reads its
+configuration entirely from environment variables (`app_env_vars.env`), never from
+`config.json`. If you change the DB password in one, change it in the other too.
+
 1. `cd ./webapp`
 1. Compile the VueJS app: `npm run build`
 1. Start the PostgreSQL server.
-1. Edit the `./api_service/config.json` to set proper values for the database connection information, and other settings.
-1. Edit the `app_env_vars.env` to set require environment variables
+1. Edit the `./api_service/config.json` to set proper values for the database connection information, and other settings. This is used by `demo_data.py`/`migrate.py` only, not by the running server.
+1. Edit the `app_env_vars.env` to set required environment variables — this is what actually configures `main.py`, including the database connection.
 1. Source this file to set these variables in 
 current shell: `source app_env_vars.env`
 1. `cd ./api_service`
@@ -113,7 +119,11 @@ $ docker exec -it acadstack_backend /bin/bash
 root@2f1cd5e70109:/app# 
 ```
 1. In the above container shell, run the following to create the demo data:
-`python demo_data.py config.json` You should see something like the following:
+`python demo_data.py config.json`. `config.json` here is the copy baked into the image at
+build time (it is not mounted from the host), so it already has DB credentials matching
+`app_env_vars.env`; if you changed the DB password in `app_env_vars.env` you must edit
+`config.json` inside this same container shell to match before running the command. You
+should see something like the following:
 ```bash
 $ docker exec -it acadstack_backend /bin/bash
 root@2f1cd5e70109:/app# python demo_data.py config.json 
