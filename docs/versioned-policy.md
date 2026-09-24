@@ -6,7 +6,7 @@ different thing from a system setting.
 Code: `api_service/acad_session.py`, `api_service/policy_store.py`,
 the grading group declared in `api_service/domain/policy.py`, the `PolicyVersion` /
 `ClosedAcademicSession` models in `api_service/models.py`, and
-`api_service/migrations/0003_versioned_policy_store.sql`.
+`api_service/migrations/0001_baseline.sql`.
 
 ---
 
@@ -178,8 +178,9 @@ such as `T1 < T2 < T3 < T4 < I < II < S`. That ordering is a fiction as soon
 as two calendars run concurrently: two sessions beginning in the same
 calendar month must resolve to the same ruleset, and a rank-based order
 cannot express that — it would place them an arbitrary number of ranks
-apart instead of tying them. Migration `0004_session_type_month_ordinals.sql`
-computes the month-offset ordinal for every stored session record.
+apart instead of tying them. `acadstack_session_ordinal()`
+(`migrations/0001_baseline.sql`) computes the month-offset ordinal for
+every session record.
 
 **A session is governed by the policy in force at its start.** Because
 sessions span several months while the timeline is monthly, a policy change

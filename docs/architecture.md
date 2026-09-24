@@ -343,7 +343,7 @@ PS.close_session("2023-II")                    # seals policy up to that session
 Closing an academic session (`ClosedAcademicSession`) seals every version effective
 from at or before it: no update, no delete, and no new version backdated into it.
 That is enforced in `policy_store`, again in `models.py`, and again by Postgres
-triggers from `migrations/0003_versioned_policy_store.sql` — the last because this
+triggers from `migrations/0001_baseline.sql` — the last because this
 codebase runs hand-written SQL and peewee bulk updates that never reach
 `Model.save()`.
 

@@ -713,8 +713,9 @@ class PolicyVersion(BaseModel):
 
     ``effective_from_ord`` is the session's ordinal (see acad_session.py),
     denormalised so that resolution and the write guards are plain integer
-    comparisons on an index. Migration 0003 adds a CHECK constraint tying
-    it to ``effective_from_session``, so the two cannot disagree.
+    comparisons on an index. migrations/0001_baseline.sql adds a CHECK
+    constraint tying it to ``effective_from_session``, so the two cannot
+    disagree.
     """
 
     policy_group = ORM.CharField(max_length=60, index=True)
@@ -779,10 +780,10 @@ class PolicyVersion(BaseModel):
         session's rules) and updating/soft-deleting a sealed row. Rows
         that govern only open sessions stay writable.
 
-        This is the ORM-level guard; migration 0003 installs equivalent
-        triggers so that raw SQL -- which this codebase does use -- cannot
-        go around it, and so that bulk ``.update()``/``.delete()`` queries,
-        which never call this method, are caught too.
+        This is the ORM-level guard; migrations/0001_baseline.sql installs
+        equivalent triggers so that raw SQL -- which this codebase does use
+        -- cannot go around it, and so that bulk ``.update()``/``.delete()``
+        queries, which never call this method, are caught too.
         """
         self._reject_if_sealed("insert" if self._pk is None else "modify")
         return super().save(force_insert=force_insert, **kwargs)

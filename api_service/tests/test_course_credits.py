@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import common as C  # noqa: E402
 import models as DB  # noqa: E402
-from schema_migrations import run_pending_migrations  # noqa: E402
 
 
 # ===================== common.compute_course_ltp =====================
@@ -94,32 +93,3 @@ def test_course_save_recomputes_credits_server_side_on_edit(client, auth):
     assert edited["ltp"] == "4-0-0-8.0-4.0"
     assert edited["s_hours"] == 8.0
     assert edited["credits"] == 4.0
-
-
-# ===================== migration 0002 backfill =====================
-
-def test_migration_0002_backfills_existing_courses_from_ltp(db):
-    # Simulates a pre-migration row: ltp set (with a stale suffix, like
-    # the real demo_data.py rows had), s_hours/credits still NULL --
-    # i.e. exactly what an upgrading (not fresh) deployment has before
-    # this migration runs.
-    DB.Course.create(code="MIGTEST1", title="Migration Test", status="APP",
-                     ltp="2-3-2-3-6")
-
-    applied = run_pending_migrations()
-    assert "0002_add_course_credit_columns.sql" in applied
-
-    row = DB.Course.get(DB.Course.code == "MIGTEST1")
-    assert row.s_hours == 2.0
-    assert row.credits == 3.0
-
-
-def test_migration_0002_leaves_unparseable_ltp_null(db):
-    DB.Course.create(code="MIGTEST2", title="Migration Test 2", status="APP",
-                     ltp=None)
-
-    run_pending_migrations()
-
-    row = DB.Course.get(DB.Course.code == "MIGTEST2")
-    assert row.s_hours is None
-    assert row.credits is None

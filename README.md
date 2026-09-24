@@ -38,6 +38,10 @@ This application acadstack to efficiently manage information about various **cou
 
 ### Creating docker images for the application
 
+Copy `api_service/config.json.example` to `api_service/config.json` first — the
+Dockerfile bakes `api_service/config.json` into the image, and there is no default
+committed to the repo.
+
 To build a Docker image for hosts having different CPU architecture than the one on
 which you are building the images (e.g. linux/amd64 Docker image on a macOS machine,
 which uses an ARM-based Apple M-series processor), you must use Docker's buildx command.
@@ -75,8 +79,8 @@ configuration entirely from environment variables (`app_env_vars.env`), never fr
 1. `cd ./webapp`
 1. Compile the VueJS app: `npm run build`
 1. Start the PostgreSQL server.
-1. Edit the `./api_service/config.json` to set proper values for the database connection information, and other settings. This is used by `demo_data.py`/`migrate.py` only, not by the running server.
-1. Edit the `app_env_vars.env` to set required environment variables — this is what actually configures `main.py`, including the database connection.
+1. Copy `./api_service/config.json.example` to `./api_service/config.json` and edit it to set proper values for the database connection information, and other settings. This is used by `demo_data.py`/`migrate.py` only, not by the running server.
+1. Copy `app_env_vars.env.example` to `app_env_vars.env` and edit it to set required environment variables — this is what actually configures `main.py`, including the database connection.
 1. Source this file to set these variables in 
 current shell: `source app_env_vars.env`
 1. `cd ./api_service`
@@ -102,8 +106,8 @@ You may exclude building this image/container if you do not want to use it._
 
 1. On the target host, create a directory from where you will be deploying. E.g. by running `mkdir $HOME/acadstack-docker`
 1. Change directories into that folder: `cd $HOME/acadstack-docker`
-1. Copy the `docker-compose.yml` and `app_env_vars.env` to `$HOME/acadstack-docker` folder.
-1. Edit `app_env_vars.env` if needed. For simple demo you can leave it unchanged (except for the port number 
+1. Copy the `docker-compose.yml` and `app_env_vars.env.example` to `$HOME/acadstack-docker` folder.
+1. Copy `app_env_vars.env.example` to `app_env_vars.env` and edit it if needed. For simple demo you can leave it unchanged (except for the port number 
 if it collides with something already running on your host).
 1. Run `docker compose --env-file app_env_vars.env up -d` to launch the containers.
 1. Run `docker ps | grep acadstack` to verify that the containers are up. You may see something like the following:
