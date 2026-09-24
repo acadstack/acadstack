@@ -1,6 +1,5 @@
-"""Tests for the Phase 2 settings seam (settings_store.py): the
-``setting()`` accessor, the policy-version-keyed cache, and write-time
-validation.
+"""Tests for the settings seam (settings_store.py): the ``setting()``
+accessor, the policy-version-keyed cache, and write-time validation.
 
 These run against the real test database (the ``db`` fixture in
 conftest.py) because the cache's correctness is a property of what

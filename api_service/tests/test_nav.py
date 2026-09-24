@@ -1,14 +1,14 @@
-"""Tests for nav.json + api_common.init_navbar_items() now that they key
-off permissions (permissions.py) instead of raw role-list strings.
+"""Tests for nav.json + api_common.init_navbar_items(), which key
+visibility off permissions (permissions.py) rather than raw role-list
+strings.
 
-Every nav.json entry used to carry a "roles" string like "ACA,DEA,SUP",
-"-STU,-PLA" (negation) or "-PLA,*" (wildcard + negation), matched with
-substring containment. Phase 8 pre-resolves each entry's role set into a
-named "permission" key, seeded to reproduce the old substring-matched
-visibility exactly -- these tests pin that per-role equivalence for a
-representative slice of entries, including the negation/wildcard forms
-and the one pre-existing bug that got preserved rather than silently
-fixed (see permissions.py's "nav.view_attendance" doc).
+Each nav.json entry names one "permission" key, seeded to reproduce the
+visibility of the old role-list strings ("ACA,DEA,SUP", "-STU,-PLA"
+negation, "-PLA,*" wildcard + negation) exactly -- these tests pin that
+per-role equivalence for a representative slice of entries, including the
+negation/wildcard forms and the one pre-existing bug that was preserved
+rather than silently fixed (see permissions.py's "nav.view_attendance"
+doc).
 """
 import asyncio
 import sys

@@ -1,5 +1,8 @@
-"""Tests for the Phase 8 permission->role mapping (permissions.py) and
-the two substring-matching bugs fixed alongside it.
+"""Tests for the permission->role mapping (permissions.py): reading it
+(roles_for_permission, role_has_permission, permissions_for_role,
+Actor.can), the self-lockout guard on save_permission_mapping(), and the
+real-membership behaviour of is_user_in_role()/Actor.has_role() and
+locked-status checks against comma-joined role/status strings.
 """
 import asyncio
 import sys

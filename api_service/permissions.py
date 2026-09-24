@@ -1,12 +1,12 @@
 """Named permissions, backed by the ``"permission"`` settings_store group.
 
-Phase 8 (permission-based RBAC). Authority used to be spelled out as a raw
-role list at each call site -- an ``@rbac(roles=[...])`` decorator, an
-inline ``is_user_in_role()``/``Actor.has_role()`` check -- so the same
-authority ended up written inconsistently in different places, and adding
-a role meant auditing every site by hand.
+Authority is granted through named permissions rather than a raw role list
+spelled out at each call site -- an ``@rbac(roles=[...])`` decorator, an
+inline ``is_user_in_role()``/``Actor.has_role()`` check -- which would let
+the same authority end up written inconsistently in different places, and
+would mean auditing every site by hand to add a role.
 
-Every one of those decisions now has a name (``course.approve``,
+Every one of those decisions has a name (``course.approve``,
 ``grades.export``, ...) and the name's current role list lives in one
 place: the ``SystemSetting`` rows of the ``"permission"`` settings group
 (declared in ``settings_store.py``, seeded in ``default_seed_data.py``).

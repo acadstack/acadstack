@@ -10,21 +10,22 @@ to), `domain/milestones.py`, the `WorkflowDefinition` / `WorkflowTransition` /
 
 ---
 
-## 1. The problem
+## 1. Why workflows are data
 
-Each approval chain used to be written as code, and each in a different place:
+Enrolment, doctoral committee (DC) and course approval each have their own
+chain: who may move a record from which status to which, and what happens
+when they do. A chain expressed as conditional logic inside its own handler
+has two costs. First, the server can only validate a requested transition
+against whatever that handler's conditionals happen to check — for a chain
+whose legal moves live solely in the frontend's button logic, the server
+has no independent way to refuse an illegal one. Second, changing a chain
+means changing code: an institution cannot add, remove or reassign an
+approval step on its own.
 
-- **Enrolment**: a nested `if/elif` over the user's role, their relationship to
-  the enrolment (course instructor, batch advisor, both) and the current status.
-- **Doctoral committee**: an inline `{"HOD": "SUB,RTH", "FAC": "DRA,RTS"}` map of
-  which statuses each role may *edit*. It never checked the status being moved
-  *to*, so the approval graph existed only as an `actionsMap` in `DcDetails.vue`.
-- **Course**: a rule that APP/RET are locked, and nothing else. The
-  HAP → CAP → APP chain existed only as an `actionsMap` in `CourseDetails.vue`.
-
-That meant an institution could not add or remove an approval step without
-changing code, and for DC and course the server accepted any status the client
-sent.
+Representing a chain as rows instead — a `WorkflowDefinition` plus its
+`WorkflowTransition` rows, resolved by one shared engine — gives the server
+a table to validate every request against regardless of which workflow it
+is, and gives an institution a row to edit instead of a deploy.
 
 ## 2. The model
 
@@ -71,7 +72,7 @@ Messages may use `{role}`, `{from_status}`, `{to_status}`, `{from_label}`,
 Anything that needs a real query lives in the domain module that owns the
 workflow, registered with `@WF.guard` / `@WF.check` / `@WF.effect`. Institutions
 can register more from a plugin (`domain/plugins.py`). Enrolment ownership is
-still computed by the batched SQL in `ownership_flags()` and handed to the guards
+computed once by the batched SQL in `ownership_flags()` and handed to the guards
 as precomputed `facts`, so approving a batch costs one query, not one per row.
 
 ## 3. How a request is resolved
@@ -84,10 +85,15 @@ as precomputed `facts`, so approving a batch costs one query, not one per row.
 4. Run the workflow's `checks`, then the row's `checks`.
 5. Save the record, then run the row's `effects`.
 
-The locked/denied split is what reproduces the old enrolment errors exactly. An
-uninvolved faculty member holds `enrolment.decide_as_owner`, so rows leave every
-status and they get the "privileges" message when no guard matches. A role with
-no enrolment permission at all gets "Unexpected user role".
+The locked/denied split lets the engine distinguish two different reasons a
+request can fail: holding no relevant permission at all for the record's
+current status (`locked_message`) versus holding a relevant permission but
+not satisfying any row's guards for the specific move requested
+(`denied_message`). For enrolment, this is why an uninvolved faculty member
+who holds `enrolment.decide_as_owner` — a permission that leaves rows open
+from every status — sees a "privileges" message when no guard matches
+(not the course's instructor, not the batch's advisor), while a role with
+no enrolment permission at all sees "Unexpected user role".
 
 ## 4. The shipped tables
 
@@ -97,24 +103,25 @@ time and never merged into an edited table, so a removed step does not come
 back. Until something is stored, `workflow.load()` answers from the baseline,
 which is what lets domain tests run without a database.
 
-- **Enrolment** reproduces the old chain exactly. That includes the two quirks
-  `tests/test_enrolment_state_machine.py` pins: an advisor acting alone takes any
-  status straight to ENRO, and an HOD may decide any APEN enrolment with no
-  ownership check. `tests/test_workflows.py` compares the table with a verbatim
-  copy of the old chain across every role × ownership × status × action.
-- **DC** enforces the graph the UI always offered. The supervisor drafts, submits
-  and deletes (DRA/RTS). The HoD of the student's department forwards or returns
-  (SUB/RTH). The Dean approves or returns (FTD). The academic section moves any
-  non-draft DC to any status. Creating a DC records `DC_PROPOSED`, and moving it
-  to APP records `DC_APPROVED`.
-- **Course** also enforces the UI's graph. The author submits DRA/HAR/CAR → HAP,
-  the HoD of the course's department (its author's department, check
-  `course.actor_in_course_dept`) takes HAP → CAP/HAR, and the Dean or
-  academic section takes
-  CAP → APP/CAR. Editing in place (`=`) is open to course editors until APP/RET,
-  and after that needs `course.edit_locked_status`. Every edit of an existing
-  course first passes `course.author_or_permitted`. The author may always edit.
-  Holders of `course.edit_any` (ACA/DEA/RES) may edit any course, and holders of
+- **Enrolment.** Two rules worth calling out, both pinned by
+  `tests/test_enrolment_state_machine.py`: an advisor acting alone may move
+  any enrolment straight to `ENRO`, and an HOD may decide any `APEN`
+  enrolment with no ownership check. `tests/test_workflows.py` verifies the
+  table's behaviour against every role × ownership × status × action
+  combination.
+- **DC** enforces the full approval graph. The supervisor drafts, submits
+  and deletes (DRA/RTS). The HoD of the student's department forwards or
+  returns (SUB/RTH). The Dean approves or returns (FTD). The academic
+  section moves any non-draft DC to any status. Creating a DC records
+  `DC_PROPOSED`, and moving it to APP records `DC_APPROVED`.
+- **Course** enforces the full approval graph too. The author submits
+  DRA/HAR/CAR → HAP, the HoD of the course's department (its author's
+  department, checked by `course.actor_in_course_dept`) takes HAP →
+  CAP/HAR, and the Dean or academic section takes CAP → APP/CAR. Editing
+  in place (`=`) is open to course editors until APP/RET, and after that
+  needs `course.edit_locked_status`. Every edit of an existing course first
+  passes `course.author_or_permitted`. The author may always edit. Holders
+  of `course.edit_any` (ACA/DEA/RES) may edit any course, and holders of
   `course.edit_in_dept` (HOD) only their own department's.
 
 ## 5. Changing a workflow
@@ -151,8 +158,9 @@ must stay active.
 
 ## 7. Plugins
 
-`ENROLMENT_NEXT_STATUS` still exists. Its default resolves the enrolment table
-(guards only). An institution that overrides it keeps the old contract: its
-function picks the status, the calendar check runs, and `ENROLMENT_NOTIFY`
-fires. Most changes no longer need a plugin, because they are an edit to the
-table.
+`ENROLMENT_NEXT_STATUS` is a plugin hook for enrolment-status logic that the
+transition table can't express: its default resolves the table (guards
+only); an institution's override picks the status itself, and the calendar
+check and `ENROLMENT_NOTIFY` still run around it either way. Most changes —
+adding, removing or reassigning an approval step — are an edit to the table
+instead of a plugin.

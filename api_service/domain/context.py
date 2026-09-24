@@ -58,7 +58,7 @@ class Actor:
         comma-separated string such as ``"DEA,ACA,RES"`` -- the string
         form is split into codes before the membership test, so a role
         code that happens to be a substring of another never matches by
-        accident (Phase 8 fixed this; it used to be a substring test).
+        accident.
         """
         codes = roles.split(",") if isinstance(roles, str) else roles
         return self.role in codes

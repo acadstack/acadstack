@@ -262,7 +262,7 @@ def declared_groups() -> dict:
 
 def describe_settings() -> list:
     """Machine-readable description of every declared setting, for the
-    admin GUI to render an editing form from (Phase 10)."""
+    admin GUI to render an editing form from."""
     out = []
     for group in sorted(_REGISTRY):
         gs = _REGISTRY[group]
