@@ -136,6 +136,23 @@ def create_app(is_testing=False):
     myapp.before_request(apiVC.update_active_users)
     myapp.before_serving(lambda: setup_app_state(myapp))
 
+    # Central replacement for the try/except AcadStackException/Exception
+    # boilerplate every route handler used to repeat. A handler may still
+    # keep a local try/except for exception types it treats specially
+    # (cleanup, a message users rely on, a partial result) - anything else
+    # propagates here.
+    @myapp.errorhandler(C.AcadStackException)
+    async def handle_acadstack_exception(ex):
+        return apiVC.error_json(str(ex))
+
+    @myapp.errorhandler(Exception)
+    async def handle_unexpected_exception(ex):
+        logging.exception("Unhandled exception while processing request.",
+                          exc_info=ex)
+        return apiVC.error_json(
+            "An unexpected error occurred. Please try again or contact "
+            "support if the problem persists.")
+
     # Add custom filters
     myapp.add_template_filter(C.jinja2_filter_datefmt, "datefmt")
 

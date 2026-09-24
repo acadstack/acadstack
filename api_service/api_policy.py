@@ -10,14 +10,12 @@ __license__ = "MIT"
 __status__ = "Development"
 """
 
-import logging
-
 from quart import Blueprint
 from quart.views import request
 
 import api_common as apiVC
 import policy_store as PS
-from common import AcadStackException, rbac
+from common import rbac
 
 _PERM = "system.manage_academic_policy"
 
@@ -53,73 +51,49 @@ def _version_json(v: PS.ResolvedPolicy) -> dict:
 
 @rbac(permissions=[_PERM])
 async def policy_groups():
-    try:
-        groups = PS.declared_groups()
-        return apiVC.ok_json([{"name": name, "doc": spec.doc}
-                              for name, spec in sorted(groups.items())])
-    except Exception as ex:
-        msg = "Error when loading policy groups."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    groups = PS.declared_groups()
+    return apiVC.ok_json([{"name": name, "doc": spec.doc}
+                          for name, spec in sorted(groups.items())])
 
 
 @rbac(permissions=[_PERM])
 async def policy_versions(group):
-    try:
-        spec = PS.spec_for(group)
-        if spec is None:
-            return apiVC.error_json(f"No such policy group: {group}")
-        return apiVC.ok_json({
-            "group": group,
-            "doc": spec.doc,
-            "seal_line": PS.seal_line(),
-            "versions": [_version_json(v) for v in PS.versions(group)],
-        })
-    except Exception as ex:
-        msg = "Error when loading policy versions."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    spec = PS.spec_for(group)
+    if spec is None:
+        return apiVC.error_json(f"No such policy group: {group}")
+    return apiVC.ok_json({
+        "group": group,
+        "doc": spec.doc,
+        "seal_line": PS.seal_line(),
+        "versions": [_version_json(v) for v in PS.versions(group)],
+    })
 
 
 @rbac(permissions=[_PERM])
 async def policy_validate():
     """Dry-runs a proposed ruleset through the group's builder/validator
     without storing it, so the UI can check a draft before superseding."""
-    try:
-        fd = await request.get_json(force=True)
-        PS.validate_payload(fd.get("group"), fd.get("payload"))
-        return apiVC.ok_json("Payload is valid.")
-    except AcadStackException as ex:
-        return apiVC.error_json(str(ex))
-    except Exception as ex:
-        msg = "Error when validating the policy payload."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fd = await request.get_json(force=True)
+    PS.validate_payload(fd.get("group"), fd.get("payload"))
+    return apiVC.ok_json("Payload is valid.")
 
 
 @rbac(permissions=[_PERM])
 async def policy_supersede():
-    try:
-        fd = await request.get_json(force=True)
-        group = fd.get("group")
-        effective_from_session = fd.get("effective_from_session")
-        payload = fd.get("payload")
-        if not group or not effective_from_session or \
-                not isinstance(payload, dict):
-            return apiVC.error_json(
-                "Please supply the policy group, the session this version "
-                "takes effect from, and the complete ruleset payload.")
-        PS.supersede(group, effective_from_session, payload,
-                     note=fd.get("note"),
-                     login_id=apiVC.current_login_id())
-        return apiVC.ok_json({
-            "group": group,
-            "seal_line": PS.seal_line(),
-            "versions": [_version_json(v) for v in PS.versions(group)],
-        })
-    except AcadStackException as ex:
-        return apiVC.error_json(str(ex))
-    except Exception as ex:
-        msg = "Error when storing the new policy version."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fd = await request.get_json(force=True)
+    group = fd.get("group")
+    effective_from_session = fd.get("effective_from_session")
+    payload = fd.get("payload")
+    if not group or not effective_from_session or \
+            not isinstance(payload, dict):
+        return apiVC.error_json(
+            "Please supply the policy group, the session this version "
+            "takes effect from, and the complete ruleset payload.")
+    PS.supersede(group, effective_from_session, payload,
+                 note=fd.get("note"),
+                 login_id=apiVC.current_login_id())
+    return apiVC.ok_json({
+        "group": group,
+        "seal_line": PS.seal_line(),
+        "versions": [_version_json(v) for v in PS.versions(group)],
+    })

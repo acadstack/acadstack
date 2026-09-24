@@ -76,64 +76,46 @@ def __encode_and_save_face(photo_buff, user_id):
 
 @C.rbac(permissions=["user.bulk_upload_faces"])
 async def kface_bulk_add():
-    try:
-        zipf = (await request.files)['zip_file']
-        if zipf.filename == '':
-            return apiVC.error_json("No file supplied!")
-        filename = secure_filename(zipf.filename)
-        file_path = os.path.join(apiVC.get_upload_folder_for_user(), filename)
-        zipf.save(file_path)
-        APP.add_background_task(process_photos_zip, file_path)
-        return apiVC.ok_json("Submitted the photos for processing.")
-    except Exception as ex:
-        msg = "Error when handling ZIP file."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    zipf = (await request.files)['zip_file']
+    if zipf.filename == '':
+        return apiVC.error_json("No file supplied!")
+    filename = secure_filename(zipf.filename)
+    file_path = os.path.join(apiVC.get_upload_folder_for_user(), filename)
+    zipf.save(file_path)
+    APP.add_background_task(process_photos_zip, file_path)
+    return apiVC.ok_json("Submitted the photos for processing.")
 
 
 @C.rbac()
 async def kface_add():
-    try:
-        ph_file = (await request.files)['photo_file']
-        if ph_file.filename == '':
-            return apiVC.error_json("No file supplied!")
-        photo = ph_file.read()
-        cu = apiVC.logged_in_user()
-        __encode_and_save_face(photo, cu.id)
-        return apiVC.ok_json("Photos processed.")
-    except Exception as ex:
-        msg = "Error when processing face photo."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    ph_file = (await request.files)['photo_file']
+    if ph_file.filename == '':
+        return apiVC.error_json("No file supplied!")
+    photo = ph_file.read()
+    cu = apiVC.logged_in_user()
+    __encode_and_save_face(photo, cu.id)
+    return apiVC.ok_json("Photos processed.")
 
 
 @C.rbac
 async def get_class_photo(file_name, user_id):
-    try:
-        is_current_user_in_role_and_id("STU", "user_id", user_id,
-            "Cannot access other's data! Your attempt has been reported.")
-        qry = DB.KnownFace.select().where(DB.KnownFace.user == user_id)
-        gp = os.path.join(apiVC.get_upload_folder("photos"),
-                                secure_filename(file_name))
-        for kf in qry:
-            fp = os.path.join(apiVC.get_upload_folder("photos"),
-                                secure_filename(kf.photo))
-            marked = fapi.mark_person_in_photo(fp, gp)
-            if not marked:
-                continue
-            return await send_file(marked,
-                     attachment_filename='marked_pic.jpg',
-                     mimetype='image/jpg')
-        
-        img = fapi.write_text_on_image(gp, "User not found in photo.", (10, 50))
-        return await send_file(img,
-                     attachment_filename='marked_pic.jpg',
-                     mimetype='image/jpg')
+    is_current_user_in_role_and_id("STU", "user_id", user_id,
+        "Cannot access other's data! Your attempt has been reported.")
+    qry = DB.KnownFace.select().where(DB.KnownFace.user == user_id)
+    gp = os.path.join(apiVC.get_upload_folder("photos"),
+                            secure_filename(file_name))
+    for kf in qry:
+        fp = os.path.join(apiVC.get_upload_folder("photos"),
+                            secure_filename(kf.photo))
+        marked = fapi.mark_person_in_photo(fp, gp)
+        if not marked:
+            continue
+        return await send_file(marked,
+                 attachment_filename='marked_pic.jpg',
+                 mimetype='image/jpg')
+    
+    img = fapi.write_text_on_image(gp, "User not found in photo.", (10, 50))
+    return await send_file(img,
+                 attachment_filename='marked_pic.jpg',
+                 mimetype='image/jpg')
         # return "Person not found in photo."
-    except C.AcadStackException as ae:
-        logging.exception(ae)
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when marking the person in photo."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
