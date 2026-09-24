@@ -26,12 +26,10 @@ declared per session type in :data:`SESSION_TYPES`, and its ordinal is
 **equal ordinals**, which is the correct answer to "which ruleset was in
 force" -- policy in force in that month governs both.
 
-This replaces an earlier scheme that ranked every suffix on one arbitrary
-within-year order (``T1 < T2 < T3 < T4 < I < II < S``). That order was a
-fiction: it placed ``2021-T1`` four ranks before ``2021-I`` though they
-start together, which made a policy change landing partway through the
-year look like it oscillated between tracks. Migration 0004 recomputes
-the stored ordinals.
+A rank-based order (``T1 < T2 < T3 < T4 < I < II < S``) would be a
+fiction: it would place ``2021-T1`` four ranks before ``2021-I`` though
+they start together, making a policy change landing partway through the
+year look like it oscillated between tracks.
 
 A session is governed by the policy in force at its START
 --------------------------------------------------------

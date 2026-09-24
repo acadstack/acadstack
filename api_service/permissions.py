@@ -101,9 +101,8 @@ ALL_ROLES = VD.codes("roles")
 # One Spec per permission. The default is the role list that reproduces
 # today's behaviour at the call site(s) the permission replaces -- see
 # each Spec's doc for exactly which @rbac(roles=[...])/is_user_in_role()/
-# Actor.has_role() site(s) it replaces, and docs/permissions.md for the
-# sites that collapsed into one permission because they already expressed
-# the same authority with inconsistently-spelled role lists.
+# Actor.has_role() site(s) it replaces, and docs/architecture.md's RBAC
+# section for the overall design.
 
 def _spec(name, default, doc):
     return ST.Spec(name, list, default=default, item_type=str,

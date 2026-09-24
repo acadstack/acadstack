@@ -53,8 +53,8 @@ times over, on purpose:
 1. here, in :func:`supersede`, with the best error message;
 2. in ``models.py`` (``PolicyVersion.save``/``delete_instance``), so any
    ORM caller is covered, not just this module;
-3. in Postgres triggers (``migrations/0003_versioned_policy_store.sql``),
-   so hand-written SQL -- which this codebase does execute -- bulk
+3. in Postgres triggers (``migrations/0001_baseline.sql``), so
+   hand-written SQL -- which this codebase does execute -- bulk
    ``.update()``/``.delete()`` queries, and psql cannot go around it.
 
 An admin editing the grade point map through a future GUI therefore
@@ -526,8 +526,8 @@ def close_session(acad_session: str, note: Optional[str] = None,
 
     Idempotent: closing an already-closed session returns the existing
     record. Closure is irreversible by design (see the append-only
-    trigger in migration 0003), so this is the one call in the module
-    that cannot be undone.
+    trigger in migrations/0001_baseline.sql), so this is the one call in
+    the module that cannot be undone.
     """
     ord_value = _session_ordinal_or_error(acad_session)
 

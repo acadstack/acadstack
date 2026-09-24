@@ -38,8 +38,8 @@ When in doubt, add the migration anyway -- it's a no-op once applied.
 
 ## 0001_baseline.sql
 
-A no-op marker (comment only). It exists so `schema_migrations` has a row
-after the first startup post-upgrade, and so future migrations have a
-concrete "migrations start here" anchor to number from. Everything before
-it is captured by `models.py` as it stood at the time this tooling was
-introduced.
+The DDL that `models.py`'s `create_schema()` cannot express: the
+session-ordinal SQL function, the CHECK constraints tying
+`PolicyVersion`/`ClosedAcademicSession` to it, and the policy
+immutability triggers. Everything else is created by `create_schema()`
+directly and needs no migration. Number future migrations `0002` onward.

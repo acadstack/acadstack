@@ -7,9 +7,10 @@ separately, because each catches something the others cannot:
 * ``policy_store.supersede`` -- the curated write path, best message;
 * ``models.PolicyVersion.save``/``delete_instance`` -- any ORM caller,
   including code that never heard of policy_store;
-* Postgres triggers from migration 0003 -- raw ``db.execute_sql``, which
-  this codebase does use, and peewee's bulk ``.update()``/``.delete()``
-  queries, which never call ``Model.save()`` at all.
+* Postgres triggers from migrations/0001_baseline.sql -- raw
+  ``db.execute_sql``, which this codebase does use, and peewee's bulk
+  ``.update()``/``.delete()`` queries, which never call ``Model.save()``
+  at all.
 
 A test that only exercised the service layer would pass just as happily
 against a design where immutability was a convention the UI is trusted

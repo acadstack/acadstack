@@ -9,9 +9,9 @@ Three things matter here beyond the obvious parsing checks:
 * chronology must have exactly one definition in the codebase, or a
   transcript could accumulate CGPA in one session order while policy
   resolved in another; and
-* the Python ordinal and the SQL ordinal function (migration 0003, redefined
-  by 0004) must agree, since the CHECK constraints use the SQL one to police
-  what Python writes.
+* the Python ordinal and the SQL ordinal function
+  (migrations/0001_baseline.sql) must agree, since the CHECK constraints
+  use the SQL one to police what Python writes.
 """
 import re
 import sys
@@ -261,9 +261,10 @@ def test_no_module_reimplements_the_suffix_order():
 
 
 def test_sql_ordinal_function_agrees_with_python(db):
-    """Migration 0003 reimplements ordinal() in SQL so it can be used in a
-    CHECK constraint. The two implementations must not drift: the SQL one
-    decides what may be stored, the Python one decides what is resolved."""
+    """migrations/0001_baseline.sql reimplements ordinal() in SQL so it can
+    be used in a CHECK constraint. The two implementations must not drift:
+    the SQL one decides what may be stored, the Python one decides what is
+    resolved."""
     sessions = [f"{y}-{s}" for y in (1999, 2021, 2024) for s in AS.SUFFIXES]
     cur = db.execute_sql(
         "SELECT s, acadstack_session_ordinal(s) FROM unnest(%s::text[]) AS s",
