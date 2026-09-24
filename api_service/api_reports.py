@@ -44,7 +44,6 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/stu.strength', view_func=degree_wise_students, methods=['POST'])
 
 
-
 def __get_total_credits_data(form_data):
     degree = form_data.get("degree")
     dept_name = form_data.get("dept_name")
@@ -74,44 +73,34 @@ def __get_total_credits_data(form_data):
 
 @C.rbac
 async def credits_earned_report():
-    try:
-        if not apiVC.has_permission("reports.view"):
-            return apiVC.error_json("Students not allowed access!")
-        fd = await request.get_json(force=True)
-        acad_session = fd.get("acad_session")
+    if not apiVC.has_permission("reports.view"):
+        return apiVC.error_json("Students not allowed access!")
+    fd = await request.get_json(force=True)
+    acad_session = fd.get("acad_session")
 
-        if not apiVC.academic_session_valid(acad_session):
-            return apiVC.error_json("Expected academic session in YYYY-S format.")
+    if not apiVC.academic_session_valid(acad_session):
+        return apiVC.error_json("Expected academic session in YYYY-S format.")
 
-        data = __get_total_credits_data(fd)
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except Exception as ex:
-        msg = "Error when fetching credit stats."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    data = __get_total_credits_data(fd)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac
 async def course_lect_in_session(acad_session):
-    try:
-        if not apiVC.has_permission("reports.view"):
-            return apiVC.error_json("Students not allowed access!")
-        if not apiVC.academic_session_valid(acad_session):
-            return apiVC.error_json("Expected academic session in YYYY-S format.")
+    if not apiVC.has_permission("reports.view"):
+        return apiVC.error_json("Students not allowed access!")
+    if not apiVC.academic_session_valid(acad_session):
+        return apiVC.error_json("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("course_lectures_in_session"),
-                                [str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'lecture': row[0], 'acad_session': row[1], 
-                         'code': row[2], 'title': row[3]})
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except Exception as ex:
-        msg = "Error when fetching lecture stats."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    cursor = DB.db.execute_sql(C.sql_by_id("course_lectures_in_session"),
+                            [str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'lecture': row[0], 'acad_session': row[1], 
+                     'code': row[2], 'title': row[3]})
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 def __get_earned_credit_data(form_data):
     degree = form_data.get("degree")
@@ -176,182 +165,140 @@ def __replace_ct_with_labels(creds, ctypes):
 
 @C.rbac
 async def earned_credit_check():
-    try:
-        fd = await request.get_json(force=True)
-        data = __get_earned_credit_data(fd)
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error when fetching credit stats."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fd = await request.get_json(force=True)
+    data = __get_earned_credit_data(fd)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac(permissions=["reports.notify_credit_violation"])
 async def notify_credit_violation():
-    try:
-        fd = await request.get_json(force=True)
-        rep_name = fd.get("report_name")
-        data = []
-        if rep_name == "EARNED_CREDITS":
-            data = __get_total_credits_data(fd)
+    fd = await request.get_json(force=True)
+    rep_name = fd.get("report_name")
+    data = []
+    if rep_name == "EARNED_CREDITS":
+        data = __get_total_credits_data(fd)
 
-        elif rep_name == "CAT_CREDITS_CHECK":
-            data = __get_earned_credit_data(fd)
+    elif rep_name == "CAT_CREDITS_CHECK":
+        data = __get_earned_credit_data(fd)
 
-        mt = fd.get("mark_type")
-        marked_items = fd.get("marked_items")
-        email_count = 0
-        for row in data:
-            user_id = row["user_id"]
-            if ("exclude" == mt and user_id in marked_items) \
-                    or ("include" == mt and user_id not in marked_items):
-                continue
+    mt = fd.get("mark_type")
+    marked_items = fd.get("marked_items")
+    email_count = 0
+    for row in data:
+        user_id = row["user_id"]
+        if ("exclude" == mt and user_id in marked_items) \
+                or ("include" == mt and user_id not in marked_items):
+            continue
 
-            send_credit_violation_email(row)
-            email_count += 1
+        send_credit_violation_email(row)
+        email_count += 1
 
-        return apiVC.ok_json(f"Emails sent to {email_count} students!")
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error when notifying the credit violation to students."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    return apiVC.ok_json(f"Emails sent to {email_count} students!")
 
 
 @C.rbac(permissions=["reports.generate"])
 async def get_fees_payment_transactions():
-    try:
-        form_data = await request.get_json(force=True)
-        degree = form_data.get("degree")
-        dept_name = form_data.get("dept_name")
-        entry_year = form_data.get("entry_year")
-        acad_session = form_data.get("acad_session") or ""
+    form_data = await request.get_json(force=True)
+    degree = form_data.get("degree")
+    dept_name = form_data.get("dept_name")
+    entry_year = form_data.get("entry_year")
+    acad_session = form_data.get("acad_session") or ""
 
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("fees_payment_report"),
-                                [str(entry_year), str(entry_year),
-                                 str(degree), str(degree),
-                                 str(dept_name), str(dept_name),
-                                 str(acad_session), str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'acad_session': row[0], 'student_id': row[1],
-                         'first_name': row[2], 'last_name': row[3], 'org_id': row[4],
-                         'txn_info': json.loads("[{}]".format(row[5]))})
+    cursor = DB.db.execute_sql(C.sql_by_id("fees_payment_report"),
+                            [str(entry_year), str(entry_year),
+                             str(degree), str(degree),
+                             str(dept_name), str(dept_name),
+                             str(acad_session), str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'acad_session': row[0], 'student_id': row[1],
+                     'first_name': row[2], 'last_name': row[3], 'org_id': row[4],
+                     'txn_info': json.loads("[{}]".format(row[5]))})
 
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error when fetching payment transactions data."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_course_enrolments():
-    try:
-        form_data = await request.get_json(force=True)
+    form_data = await request.get_json(force=True)
 
-        dept_name = form_data.get("dept_name")
-        entry_year = form_data.get("entry_year")
-        acad_session = form_data.get("acad_session")
-        if dept_name == "-":
-            dept_name = ""
-        if entry_year == "-":
-            entry_year = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    dept_name = form_data.get("dept_name")
+    entry_year = form_data.get("entry_year")
+    acad_session = form_data.get("acad_session")
+    if dept_name == "-":
+        dept_name = ""
+    if entry_year == "-":
+        entry_year = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("generate_course_enrolments"),
-                                [str(entry_year), str(entry_year),
-                                 str(dept_name), str(dept_name),
-                                 str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'first_name': row[0], 'last_name': row[1],
-                         'email': row[2], 'entry_no': row[3], 
-                         'entry_year': row[4], 'dept_name': row[5],
-                         'title': row[11], 'code': row[6], 'acad_session': row[7],
-                         'enrol_type': row[8], 'user_id': row[10]})
+    cursor = DB.db.execute_sql(C.sql_by_id("generate_course_enrolments"),
+                            [str(entry_year), str(entry_year),
+                             str(dept_name), str(dept_name),
+                             str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'first_name': row[0], 'last_name': row[1],
+                     'email': row[2], 'entry_no': row[3], 
+                     'entry_year': row[4], 'dept_name': row[5],
+                     'title': row[11], 'code': row[6], 'acad_session': row[7],
+                     'enrol_type': row[8], 'user_id': row[10]})
 
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching Semester Course enrolments."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_feedback_stats():
-    try:
-        form_data = await request.get_json(force=True)
-        form_type = form_data.get("form_type")
-        acad_session = form_data.get("acad_session")
-        if form_type == "-":
-            form_type = ""
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    form_data = await request.get_json(force=True)
+    form_type = form_data.get("form_type")
+    acad_session = form_data.get("acad_session")
+    if form_type == "-":
+        form_type = ""
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("generate_feedback_stats"),
-                                [str(acad_session), str(acad_session), 
-                                 str(form_type)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'students_enrolled': row[0], 
-                         'no_of_students_voted': row[1],
-                         'pct_students_voted': float(row[2]), 
-                         'code': row[3], 'title': row[4],
-                         'ltp': row[5],'offering_department': row[6],
-                         'acad_session': row[7],'first_name': row[8], 
-                         'last_name': row[9]})
+    cursor = DB.db.execute_sql(C.sql_by_id("generate_feedback_stats"),
+                            [str(acad_session), str(acad_session), 
+                             str(form_type)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'students_enrolled': row[0], 
+                     'no_of_students_voted': row[1],
+                     'pct_students_voted': float(row[2]), 
+                     'code': row[3], 'title': row[4],
+                     'ltp': row[5],'offering_department': row[6],
+                     'acad_session': row[7],'first_name': row[8], 
+                     'last_name': row[9]})
 
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching Semester Course enrolments."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac
 async def get_slotwise_courses(acad_session):
-    try:
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("slotwise_courses"),
-                                [str(acad_session)])
-        data = {}
-        for row in cursor.fetchall():
-            slot = row[0].strip() or "NA"
-            if slot not in data:
-                data[slot] = []
-            data[slot].append({'co_id': row[1], 'code': row[2],
-                               'title': row[3], 'ltp': row[4], 
-                               'instructor': row[5]})
+    cursor = DB.db.execute_sql(C.sql_by_id("slotwise_courses"),
+                            [str(acad_session)])
+    data = {}
+    for row in cursor.fetchall():
+        slot = row[0].strip() or "NA"
+        if slot not in data:
+            data[slot] = []
+        data[slot].append({'co_id': row[1], 'code': row[2],
+                           'title': row[3], 'ltp': row[4], 
+                           'instructor': row[5]})
 
-        return apiVC.ok_json(data)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching slotwise courses."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    return apiVC.ok_json(data)
 
 def __process_credits_gen_request(acad_session):
     try:
@@ -412,248 +359,189 @@ def __process_credits_gen_request(acad_session):
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_students_credits_info(acad_session):
-    try:
-        job_key = TH.create_task(__process_credits_gen_request, acad_session)
-        logging.info(f"Submitted background job with key {job_key}")
-        return apiVC.ok_json({"job_key": job_key, "message": 
-                           "Request successfully submitted."})
-    except Exception as ex:
-        msg = "Failed to generate the students credits data."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    job_key = TH.create_task(__process_credits_gen_request, acad_session)
+    logging.info(f"Submitted background job with key {job_key}")
+    return apiVC.ok_json({"job_key": job_key, "message": 
+                       "Request successfully submitted."})
 
 
 @C.rbac(permissions=["reports.generate"])
 async def get_background_task_status(job_key):
-    try:
-        task_result = TH.pop_task_info_if_done(job_key)
-        if not task_result:
-            logging.error(f"Background job with key {job_key} not found.")
-            return apiVC.error_json(f"Job info not found for {job_key}")
-        if task_result["status"] != "done":
-            return apiVC.ok_json({"status": task_result["status"], "result": "Job not done yet."})
-        
-        return apiVC.ok_json(task_result)
-    except Exception as ex:
-        msg = f"Failed to get the background job status for {job_key}."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    task_result = TH.pop_task_info_if_done(job_key)
+    if not task_result:
+        logging.error(f"Background job with key {job_key} not found.")
+        return apiVC.error_json(f"Job info not found for {job_key}")
+    if task_result["status"] != "done":
+        return apiVC.ok_json({"status": task_result["status"], "result": "Job not done yet."})
+    
+    return apiVC.ok_json(task_result)
 
 
 @C.rbac(permissions=["reports.generate"])
 async def grade_distribution():
-    try:
-        form_data = await request.get_json(force=True)
+    form_data = await request.get_json(force=True)
 
-        degree = form_data.get("degree")
-        acad_session = form_data.get("acad_session")
-        if degree == "-":
-            degree = ""
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    degree = form_data.get("degree")
+    acad_session = form_data.get("acad_session")
+    if degree == "-":
+        degree = ""
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("generate_grade_distribution"),
-                                [str(acad_session), str(degree)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'no_of_students': row[0], 'dept_name': row[1],
-                         'grade': row[2], 'code': row[3]})
+    cursor = DB.db.execute_sql(C.sql_by_id("generate_grade_distribution"),
+                            [str(acad_session), str(degree)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'no_of_students': row[0], 'dept_name': row[1],
+                     'grade': row[2], 'code': row[3]})
 
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching Generate rade Distribution."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 @C.rbac(permissions=["reports.view_cgpa_sgpa"])
 async def cgpa_sgpa():
-    try:
-        form_data = await request.get_json(force=True)
-        acad_session = form_data.get("acad_session")
-       
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    form_data = await request.get_json(force=True)
+    acad_session = form_data.get("acad_session")
+   
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("generate_cgpa_sgpa"),
-                                [str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'roll_no': row[0], 'first_name': row[1],
-                         'last_name': row[2],'dept_name': row[3],
-                         'cgpa': row[4], 'sgpa': row[5], 
-                         'cred_earned': row[6], 'cred_registered': row[7],
-                         'cred_earned_total': row[8]})
+    cursor = DB.db.execute_sql(C.sql_by_id("generate_cgpa_sgpa"),
+                            [str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'roll_no': row[0], 'first_name': row[1],
+                     'last_name': row[2],'dept_name': row[3],
+                     'cgpa': row[4], 'sgpa': row[5], 
+                     'cred_earned': row[6], 'cred_registered': row[7],
+                     'cred_earned_total': row[8]})
 
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching Generate CGPA SGPA Report."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_dept_wise_avg():
-    try:
-        form_data = await request.get_json(force=True)
-        form_type = form_data.get("form_type")
-        acad_session = form_data.get("acad_session")
-        if form_type == "-":
-            form_type = ""
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    form_data = await request.get_json(force=True)
+    form_type = form_data.get("form_type")
+    acad_session = form_data.get("acad_session")
+    if form_type == "-":
+        form_type = ""
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("dept_wise_average"),
-                                [ str(form_type), str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'dept_name': row[0], 'acad_session': row[1],
-                         'question': row[2], 'avg_score': float(row[3])})
+    cursor = DB.db.execute_sql(C.sql_by_id("dept_wise_average"),
+                            [ str(form_type), str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'dept_name': row[0], 'acad_session': row[1],
+                     'question': row[2], 'avg_score': float(row[3])})
 
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching deptartment wise avgerage:."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac(permissions=["reports.generate"])
 async def course_wise_faculty_score():
-    try:
-        form_data = await request.get_json(force=True)
-        form_type = form_data.get("form_type")
-        acad_session = form_data.get("acad_session")
-        if form_type == "-":
-            form_type = ""
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    form_data = await request.get_json(force=True)
+    form_type = form_data.get("form_type")
+    acad_session = form_data.get("acad_session")
+    if form_type == "-":
+        form_type = ""
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("course_wise_faculty_score"),
-                                [ str(form_type), str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'first_name': row[0], 'last_name': row[1],
-                         'acad_session': row[2],'course_code': row[3],
-                         'dept_name': row[4], 'faculty_score': float(row[5]),
-                         'total_votes': float(row[6])})
-            
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching Course Wise Faculty Score."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    cursor = DB.db.execute_sql(C.sql_by_id("course_wise_faculty_score"),
+                            [ str(form_type), str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'first_name': row[0], 'last_name': row[1],
+                     'acad_session': row[2],'course_code': row[3],
+                     'dept_name': row[4], 'faculty_score': float(row[5]),
+                     'total_votes': float(row[6])})
+        
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac(permissions=["reports.generate"])
 async def que_wise_facfeedbkp_score():
-    try:
-        form_data = await request.get_json(force=True)
-        form_type = form_data.get("form_type")
-        acad_session = form_data.get("acad_session")
-        if form_type == "-":
-            form_type = ""
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    form_data = await request.get_json(force=True)
+    form_type = form_data.get("form_type")
+    acad_session = form_data.get("acad_session")
+    if form_type == "-":
+        form_type = ""
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("que_wise_facfeedbk_score"),
-                                [ str(form_type), str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'first_name': row[0], 'last_name': row[1],  
-                         'course_code': row[2],'dept_name': row[3],
-                         'acad_session': row[4], 'question': row[5],
-                         'q_score': float(row[6]), 'total_votes': float(row[7])})
-            
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in fetching Questions Wise Faculty Feedback."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    cursor = DB.db.execute_sql(C.sql_by_id("que_wise_facfeedbk_score"),
+                            [ str(form_type), str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'first_name': row[0], 'last_name': row[1],  
+                     'course_code': row[2],'dept_name': row[3],
+                     'acad_session': row[4], 'question': row[5],
+                     'q_score': float(row[6]), 'total_votes': float(row[7])})
+        
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 @C.rbac(permissions=["reports.generate"])
 async def degree_wise_students():
-    try:
-        form_data = await request.get_json(force=True)
-        course_code = form_data.get("course_code")
-        acad_session = form_data.get("acad_session")
-        if course_code == "-":
-            course_code = ""
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    form_data = await request.get_json(force=True)
+    course_code = form_data.get("course_code")
+    acad_session = form_data.get("acad_session")
+    if course_code == "-":
+        course_code = ""
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        cursor = DB.db.execute_sql(C.sql_by_id("degree_wise_students"),
-                                [str(course_code), str(course_code),
-                                 str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'code': row[0], 'title': row[1],  'ltp': row[2],
-                         'offering_department': row[3],'acad_session': row[4],
-                         'degree': row[5], 'no_of_students': row[6]})
-            
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in Fetching Degree Wise Students."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    cursor = DB.db.execute_sql(C.sql_by_id("degree_wise_students"),
+                            [str(course_code), str(course_code),
+                             str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'code': row[0], 'title': row[1],  'ltp': row[2],
+                     'offering_department': row[3],'acad_session': row[4],
+                     'degree': row[5], 'no_of_students': row[6]})
+        
+    res = {"data": data}
+    return apiVC.ok_json(res)
 
 
 @C.rbac(permissions=["grades.export"])
 async def generate_grade_status():
-    try:
-        form_data = await request.get_json(force=True)
-        grades_st = form_data.get("selected")
-        acad_session = form_data.get("acad_session")
+    form_data = await request.get_json(force=True)
+    grades_st = form_data.get("selected")
+    acad_session = form_data.get("acad_session")
 
-        if acad_session == "-":
-            acad_session = ""
-        if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+    if acad_session == "-":
+        acad_session = ""
+    if acad_session and not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-        if grades_st == "GS":
-            sql_id = "grades_status_submitted"
-        else:
-            sql_id = 'grades_status_pending'
+    if grades_st == "GS":
+        sql_id = "grades_status_submitted"
+    else:
+        sql_id = 'grades_status_pending'
 
-        cursor = DB.db.execute_sql(C.sql_by_id(sql_id), [str(acad_session)])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'code': row[0], 'acad_session': row[1], 
-                         'title': row[2], 'first_name': row[3], 
-                         'last_name': row[4], 'dept_name' : row[5]})
+    cursor = DB.db.execute_sql(C.sql_by_id(sql_id), [str(acad_session)])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'code': row[0], 'acad_session': row[1], 
+                     'title': row[2], 'first_name': row[3], 
+                     'last_name': row[4], 'dept_name' : row[5]})
 
-        res = {"data": data}
-        return apiVC.ok_json(res)
-    except C.AcadStackException as aex:
-        return apiVC.error_json(str(aex))
-    except Exception as ex:
-        msg = "Error in Generate Grade Status."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = {"data": data}
+    return apiVC.ok_json(res)

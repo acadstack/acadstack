@@ -6,8 +6,6 @@ __license__ = "MIT"
 __status__ = "Development"
 """
 
-import logging
-
 from quart import Blueprint
 from quart.views import request
 
@@ -15,7 +13,7 @@ import api_common as apiVC
 import config_integrity as CI
 import permissions as PERM
 import settings_store as ST
-from common import AcadStackException, rbac
+from common import rbac
 
 _PERM = "system.manage_settings"
 
@@ -44,55 +42,36 @@ def init_routes(bp: Blueprint):
 async def settings_describe():
     """Every declared setting/vocabulary, grouped, with its current
     effective value -- the schema the admin form renders itself from."""
-    try:
-        return apiVC.ok_json(_visible(ST.describe_settings()))
-    except Exception as ex:
-        msg = "Error when loading system settings."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    return apiVC.ok_json(_visible(ST.describe_settings()))
 
 
 @rbac(permissions=[_PERM])
 async def settings_save():
-    try:
-        fd = await request.get_json(force=True)
-        values = fd.get("values") or {}
-        if not values:
-            return apiVC.error_json("Nothing supplied to save.")
-        blocked = sorted(k for k in values
-                         if k.split(".", 1)[0] in _EXCLUDED_GROUPS)
-        if blocked:
-            return apiVC.error_json(
-                "These settings are managed on a separate screen and "
-                f"cannot be changed here: {', '.join(blocked)}")
-        CI.guarded_save_settings(values, login_id=apiVC.current_login_id())
-        return apiVC.ok_json(_visible(ST.describe_settings()))
-    except AcadStackException as ex:
-        return apiVC.error_json(str(ex))
-    except Exception as ex:
-        msg = "Error when saving system settings."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fd = await request.get_json(force=True)
+    values = fd.get("values") or {}
+    if not values:
+        return apiVC.error_json("Nothing supplied to save.")
+    blocked = sorted(k for k in values
+                     if k.split(".", 1)[0] in _EXCLUDED_GROUPS)
+    if blocked:
+        return apiVC.error_json(
+            "These settings are managed on a separate screen and "
+            f"cannot be changed here: {', '.join(blocked)}")
+    CI.guarded_save_settings(values, login_id=apiVC.current_login_id())
+    return apiVC.ok_json(_visible(ST.describe_settings()))
 
 
 @rbac(permissions=[_PERM])
 async def settings_delete():
     """Reverts one setting to its declared default by removing its stored
     row (settings_store.delete_setting)."""
-    try:
-        fd = await request.get_json(force=True)
-        key = fd.get("key")
-        if not key:
-            return apiVC.error_json("Please supply the setting key to reset.")
-        if key.split(".", 1)[0] in _EXCLUDED_GROUPS:
-            return apiVC.error_json(
-                "This setting is managed on a separate screen and cannot "
-                "be reset here.")
-        CI.guarded_delete_setting(key, login_id=apiVC.current_login_id())
-        return apiVC.ok_json(_visible(ST.describe_settings()))
-    except AcadStackException as ex:
-        return apiVC.error_json(str(ex))
-    except Exception as ex:
-        msg = "Error when resetting the system setting."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fd = await request.get_json(force=True)
+    key = fd.get("key")
+    if not key:
+        return apiVC.error_json("Please supply the setting key to reset.")
+    if key.split(".", 1)[0] in _EXCLUDED_GROUPS:
+        return apiVC.error_json(
+            "This setting is managed on a separate screen and cannot "
+            "be reset here.")
+    CI.guarded_delete_setting(key, login_id=apiVC.current_login_id())
+    return apiVC.ok_json(_visible(ST.describe_settings()))

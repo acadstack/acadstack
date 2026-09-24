@@ -231,12 +231,7 @@ def static_data_item(item_key):
 
 @C.rbac
 async def get_static_data():
-    try:
-        return ok_json(static_data_dict())
-    except Exception as ex:
-        msg = "Error when loading static data."
-        logging.exception(msg)
-        return error_json(msg)
+    return ok_json(static_data_dict())
 
 
 def label_for_static_data_item(item_code, items_map):
@@ -316,22 +311,17 @@ async def home():
 
 @C.rbac(permissions=["system.view_active_users"])
 async def get_active_users():
-    try:
-        users = []
-        active_window = ST.setting("app.active_user_window_secs")
-        for k in list(APP.active_users.keys()):
-            v = APP.active_users.get(k)
-            sec_since_last_access = (DT.now() - v).total_seconds()
-            if sec_since_last_access < active_window:
-                users.append("{0}. | Last access {1:.2f} min ago".format(k, sec_since_last_access/60))
-            else:
-                APP.active_users.pop(k, None)
-        
-        return ok_json(users)
-    except Exception as ex:
-        msg = "Failed to get active users."
-        logging.exception(msg)
-        return error_json(msg)
+    users = []
+    active_window = ST.setting("app.active_user_window_secs")
+    for k in list(APP.active_users.keys()):
+        v = APP.active_users.get(k)
+        sec_since_last_access = (DT.now() - v).total_seconds()
+        if sec_since_last_access < active_window:
+            users.append("{0}. | Last access {1:.2f} min ago".format(k, sec_since_last_access/60))
+        else:
+            APP.active_users.pop(k, None)
+    
+    return ok_json(users)
 
 
 def update_active_users():

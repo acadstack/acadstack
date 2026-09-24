@@ -130,139 +130,116 @@ def _get_face_enc_and_user_info(ap):
 
 @C.rbac(permissions=["dc.mark_attendance"])
 async def mark_attendance():
-    try:
-        form = await request.form
-        files = await request.files
-        co = form.get('course_offering')
-        photos = files.getlist("group_photos")
-        if not photos:
-            return apiVC.error_json("Please select at least one photo.")
-        if not VAL.validate_course_instructor(co, allowed_role=["ACA", "DEA"]):
-            return apiVC.error_json("Insufficient privileges. Only the course coordinator can upload attendance.")
+    form = await request.form
+    files = await request.files
+    co = form.get('course_offering')
+    photos = files.getlist("group_photos")
+    if not photos:
+        return apiVC.error_json("Please select at least one photo.")
+    if not VAL.validate_course_instructor(co, allowed_role=["ACA", "DEA"]):
+        return apiVC.error_json("Insufficient privileges. Only the course coordinator can upload attendance.")
 
-        # Raises exception when change not allowed
-        VAL.validate_coff_status(int(co))
-        ap_ids = []
-        with DB.db.atomic() as txn:
-            for ph in photos:
-                f_nm = "ATTEND_{0}.jpg".format(uuid.uuid4())
-                file_path = os.path.join(apiVC.get_upload_folder("photos"), f_nm)
-                ph.save(file_path)
-                ap = DB.AttendancePhoto(attend_dt = DT.now(), 
-                        status = "PENDING", offering=int(co),
-                        file_name=f_nm)
-                if apiVC.save_entity(ap) != 1:
-                    raise C.AcadStackException("Could not save the attendance file record.")
-                
-                ap_ids.append(ap.id)
+    # Raises exception when change not allowed
+    VAL.validate_coff_status(int(co))
+    ap_ids = []
+    with DB.db.atomic() as txn:
+        for ph in photos:
+            f_nm = "ATTEND_{0}.jpg".format(uuid.uuid4())
+            file_path = os.path.join(apiVC.get_upload_folder("photos"), f_nm)
+            ph.save(file_path)
+            ap = DB.AttendancePhoto(attend_dt = DT.now(), 
+                    status = "PENDING", offering=int(co),
+                    file_name=f_nm)
+            if apiVC.save_entity(ap) != 1:
+                raise C.AcadStackException("Could not save the attendance file record.")
+            
+            ap_ids.append(ap.id)
 
-            txn.commit()
+        txn.commit()
 
-        for apid in ap_ids:
-            APP.add_background_task(_process_attendance_photos, apid)
+    for apid in ap_ids:
+        APP.add_background_task(_process_attendance_photos, apid)
 
-        return apiVC.ok_json(f"Saved {len(photos)} photos for processing.")
-    except Exception as ex:
-        msg = "Error when saving attendance photos."
-        logging.exception(msg, ex)
-        return apiVC.error_json(msg)
+    return apiVC.ok_json(f"Saved {len(photos)} photos for processing.")
 
 
 @C.rbac(permissions=["dc.view_instructor_academics"])
 async def get_instructor_academics(my_id):
-    try:
-        VAL.is_current_user_in_role_and_id("FAC", "user_id", my_id, 
-                                      ("Instructor attempted to access other's"
-                                      " academic information."))
+    VAL.is_current_user_in_role_and_id("FAC", "user_id", my_id, 
+                                  ("Instructor attempted to access other's"
+                                  " academic information."))
 
-        fd = await request.get_json(force=True)
-        pg_no = int(fd.get('pg_no', 1))
-        subquery = DB.CourseEnrollment.select(DB.CourseEnrollment.course_offering_id,
-                    DB.ORM.fn.COUNT(DB.CourseEnrollment.student_id)\
-                        .alias('classSize')).group_by(
-                            DB.CourseEnrollment.course_offering_id)
-        
-        query = DB.CourseOffering.select(DB.CourseOffering.course_id, 
-                                         DB.CourseOffering.acad_session,
-                                      subquery.c.course_offering_id, 
-                                      subquery.c.classSize, DB.Course.code, 
-                                      DB.Course.ltp, DB.Course.title, 
-                                      DB.CourseInstructor.instructor_id)\
-                                        .join(DB.Course).switch(
-                                        DB.CourseOffering).join(
-                                            DB.CourseInstructor).join(
-                                                subquery, on=(subquery.c.course_offering_id \
-                                                              == DB.CourseOffering.id))\
-                                    .where(DB.CourseInstructor.instructor_id == my_id)
+    fd = await request.get_json(force=True)
+    pg_no = int(fd.get('pg_no', 1))
+    subquery = DB.CourseEnrollment.select(DB.CourseEnrollment.course_offering_id,
+                DB.ORM.fn.COUNT(DB.CourseEnrollment.student_id)\
+                    .alias('classSize')).group_by(
+                        DB.CourseEnrollment.course_offering_id)
+    
+    query = DB.CourseOffering.select(DB.CourseOffering.course_id, 
+                                     DB.CourseOffering.acad_session,
+                                  subquery.c.course_offering_id, 
+                                  subquery.c.classSize, DB.Course.code, 
+                                  DB.Course.ltp, DB.Course.title, 
+                                  DB.CourseInstructor.instructor_id)\
+                                    .join(DB.Course).switch(
+                                    DB.CourseOffering).join(
+                                        DB.CourseInstructor).join(
+                                            subquery, on=(subquery.c.course_offering_id \
+                                                          == DB.CourseOffering.id))\
+                                .where(DB.CourseInstructor.instructor_id == my_id)
 
-        courses = query.order_by(DB.CourseOffering.course_id).paginate(pg_no, apiVC.page_size())
+    courses = query.order_by(DB.CourseOffering.course_id).paginate(pg_no, apiVC.page_size())
 
-        serialized = [{"id": r['course_offering_id'], "code": r['course'], 
-                       "session": r['acad_session'], "classSize": r['classSize'], 
-                       "name": r['code'] + ' ' + r['title'] + '(' + r['ltp'] + ')',
-                       "insId": r['instructor'], "feedback": 'NA'}
-                      for r in courses.dicts()]
+    serialized = [{"id": r['course_offering_id'], "code": r['course'], 
+                   "session": r['acad_session'], "classSize": r['classSize'], 
+                   "name": r['code'] + ' ' + r['title'] + '(' + r['ltp'] + ')',
+                   "insId": r['instructor'], "feedback": 'NA'}
+                  for r in courses.dicts()]
 
-        has_next = len(courses) >= apiVC.page_size()
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
-               "has_next": has_next}
+    has_next = len(courses) >= apiVC.page_size()
+    res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
+           "has_next": has_next}
 
-        return apiVC.ok_json(res)
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error in Instructor Academics."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    return apiVC.ok_json(res)
 
 
 @C.rbac
 async def attendance_find():
-    try:
-        fd = await request.get_json(force=True)
-        code, ltp, title = fd.get("code"), fd.get("ltp"), fd.get("title")
-        pg_no = int(fd.get('pg_no', 1))
-        query = DB.CourseOffering.select().join(DB.Course)
-        if ltp:
-            query = query.where(DB.CourseOffering.course.ltp == ltp)
+    fd = await request.get_json(force=True)
+    code, ltp, title = fd.get("code"), fd.get("ltp"), fd.get("title")
+    pg_no = int(fd.get('pg_no', 1))
+    query = DB.CourseOffering.select().join(DB.Course)
+    if ltp:
+        query = query.where(DB.CourseOffering.course.ltp == ltp)
 
-        if code:
-            query = query.where(DB.CourseOffering.course.code.contains(code))
+    if code:
+        query = query.where(DB.CourseOffering.course.code.contains(code))
 
-        if title:
-            query = query.where(DB.CourseOffering.course.title.contains(title))
+    if title:
+        query = query.where(DB.CourseOffering.course.title.contains(title))
 
-        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.page_size())
-        serialized = [apiVC.model_to_dict(r, exclude=[DB.CourseOffering.course.author]) 
-                      for r in courses]
+    courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.page_size())
+    serialized = [apiVC.model_to_dict(r, exclude=[DB.CourseOffering.course.author]) 
+                  for r in courses]
 
-        has_next = len(courses) >= apiVC.page_size()
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
-               "has_next": has_next}
-        return apiVC.ok_json(res)
-
-    except Exception as ex:
-        msg = "Error when finding courses."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    has_next = len(courses) >= apiVC.page_size()
+    res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
+           "has_next": has_next}
+    return apiVC.ok_json(res)
 
 
 @C.rbac(permissions=["dc.view_advisor_detail"])
 async def get_advisor_detail(my_id):
-    try:
-        res = DB.BatchAdvisors.select().where(
-            DB.BatchAdvisors.user_id == my_id)
-        if res:
-            serialized = [{"year": r.year_of_entry, 
-                           "dept": r.user.person.dept_name, 
-                           "for_degree": r.for_degree} for r in res]
-            return apiVC.ok_json(serialized)
-        else:
-            return apiVC.error_json(f"Record not found for advisor {my_id}")
-    except Exception as ex:
-        msg = "Error when fetching advisor year details."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = DB.BatchAdvisors.select().where(
+        DB.BatchAdvisors.user_id == my_id)
+    if res:
+        serialized = [{"year": r.year_of_entry, 
+                       "dept": r.user.person.dept_name, 
+                       "for_degree": r.for_degree} for r in res]
+        return apiVC.ok_json(serialized)
+    else:
+        return apiVC.error_json(f"Record not found for advisor {my_id}")
 
 
 def __get_attendance_photos(co, attend_dt):
@@ -273,96 +250,76 @@ def __get_attendance_photos(co, attend_dt):
 
 @C.rbac
 async def get_student_attendance_details(my_id):
-    try:
-        ce = DB.CourseEnrollment.select().where(DB.CourseEnrollment.id == my_id)
-        if ce:
-            roll_no = ce[0].student.person.org_id
-            VAL.is_current_user_in_role_and_id("STU", "org_id", roll_no, 
-                                      "Student attempted to view other's attendance records.")
-            attendance = list(ce[0].attendance)  # A list of DB.StudentAttendance objects
-            course_title = ce[0].course_offering.course.title
-            acad_session = ce[0].course_offering.acad_session
-            
-            data = [{"lectureDate": attd.attend_dt,
-                     "attendance": attd.attend,
-                     "photos": __get_attendance_photos(
-                                ce[0].course_offering, attd.attend_dt),
-                     "remarks": attd.remarks}
-                    for attd in attendance]
+    ce = DB.CourseEnrollment.select().where(DB.CourseEnrollment.id == my_id)
+    if ce:
+        roll_no = ce[0].student.person.org_id
+        VAL.is_current_user_in_role_and_id("STU", "org_id", roll_no, 
+                                  "Student attempted to view other's attendance records.")
+        attendance = list(ce[0].attendance)  # A list of DB.StudentAttendance objects
+        course_title = ce[0].course_offering.course.title
+        acad_session = ce[0].course_offering.acad_session
+        
+        data = [{"lectureDate": attd.attend_dt,
+                 "attendance": attd.attend,
+                 "photos": __get_attendance_photos(
+                            ce[0].course_offering, attd.attend_dt),
+                 "remarks": attd.remarks}
+                for attd in attendance]
 
-            final_res = {"user_id": ce[0].student.id, 
-                        "rollNo": roll_no, "course": course_title,
-                        "session": acad_session, "records": data}
+        final_res = {"user_id": ce[0].student.id, 
+                    "rollNo": roll_no, "course": course_title,
+                    "session": acad_session, "records": data}
 
-            return apiVC.ok_json(final_res)
-        else:
-            return apiVC.error_json(f"Attendance record not found for ID {my_id}")
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when fetching attendance details."
-        logging.exception(msg, ex)
-        return apiVC.error_json(msg)
+        return apiVC.ok_json(final_res)
+    else:
+        return apiVC.error_json(f"Attendance record not found for ID {my_id}")
 
 
 @C.rbac(permissions=["course.manage_slot_timings"])
 async def load_course_slot_timings():
-    try:
-        cst = DB.CourseSlotTiming.select().where(
-            DB.CourseSlotTiming.is_deleted != True)
-        data = [apiVC.model_to_dict(x) for x in cst]
-        return apiVC.ok_json(data)
-    except Exception as ex:
-        logging.error(ex)
-        return apiVC.error_json("Error occurred when loading course slot timings.")
+    cst = DB.CourseSlotTiming.select().where(
+        DB.CourseSlotTiming.is_deleted != True)
+    data = [apiVC.model_to_dict(x) for x in cst]
+    return apiVC.ok_json(data)
 
 
 @C.rbac()
 async def get_open_events():
-    try:
-        qry = C.sql_by_id("get_open_events")
-        cursor = DB.db.execute_sql(qry)
-        # Add the data rows
-        result = []
-        for row in cursor.fetchall():
-            # Each item is a string "acad_session:event_code_prefix"
-            # Example: 2020-W:COURSE_REG
-            result.append(f"{row[0]}:{row[1]}")
-        return apiVC.ok_json(result)
-    except Exception as ex:
-        logging.error(ex)
-        return apiVC.error_json("Failed to fetch open events.")
+    qry = C.sql_by_id("get_open_events")
+    cursor = DB.db.execute_sql(qry)
+    # Add the data rows
+    result = []
+    for row in cursor.fetchall():
+        # Each item is a string "acad_session:event_code_prefix"
+        # Example: 2020-W:COURSE_REG
+        result.append(f"{row[0]}:{row[1]}")
+    return apiVC.ok_json(result)
 
 
 @C.rbac(permissions=["student.export_list"])
 async def download_students_list(degree, year_of_entry, dept_name,acad_session):
-    try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
-        
-        if degree == "-":
-            degree = ""
-        if year_of_entry == "-":
-            year_of_entry = ""
-        if dept_name == "-":
-            dept_name = "" 
-        if acad_session == "-":
-            acad_session = ""   
-        
-        cursor = DB.db.execute_sql(C.sql_by_id("generate_student_list"),
-                                [str(degree), 
-                                 str(year_of_entry),
-                                 str(dept_name),
-                                 str(acad_session)])
+    if apiVC.is_user_in_role("STU"):
+        return apiVC.error_json("Students cannot download!")
+    
+    if degree == "-":
+        degree = ""
+    if year_of_entry == "-":
+        year_of_entry = ""
+    if dept_name == "-":
+        dept_name = "" 
+    if acad_session == "-":
+        acad_session = ""   
+    
+    cursor = DB.db.execute_sql(C.sql_by_id("generate_student_list"),
+                            [str(degree), 
+                             str(year_of_entry),
+                             str(dept_name),
+                             str(acad_session)])
 
-        fp = apiVC.db_result_to_excel(cursor)
-        return await send_file(fp,
-                         attachment_filename="download_student_list.csv",
-                         as_attachment=True)
-    except Exception as ex:
-        msg = "Error when loading enrolment data as CSV."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fp = apiVC.db_result_to_excel(cursor)
+    return await send_file(fp,
+                     attachment_filename="download_student_list.csv",
+                     as_attachment=True)
 
 
 def schedule_event_alerts(config=None):
@@ -387,43 +344,33 @@ def schedule_event_alerts(config=None):
 
 @C.rbac(permissions=["reports.generate"])
 async def download_dept_wise_avg(form_type, acad_session):
-    try:
-        if form_type == "-":
-            form_type = ""
-        if acad_session == "-":
-            acad_session = ""
+    if form_type == "-":
+        form_type = ""
+    if acad_session == "-":
+        acad_session = ""
 
-        cursor = DB.db.execute_sql(C.sql_by_id("dept_wise_average"),
-                                [str(form_type), str(acad_session)])
+    cursor = DB.db.execute_sql(C.sql_by_id("dept_wise_average"),
+                            [str(form_type), str(acad_session)])
 
-        fp = apiVC.db_result_to_excel(cursor)
-        return await send_file(fp,
-                         attachment_filename="download_dept_wise_avg.csv",
-                         as_attachment=True)
-    except Exception as ex:
-        msg = "Error when Downloading department wise feedback as CSV."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fp = apiVC.db_result_to_excel(cursor)
+    return await send_file(fp,
+                     attachment_filename="download_dept_wise_avg.csv",
+                     as_attachment=True)
 
 @C.rbac(permissions=["dc.download_degree_wise_students"])
 async def download_degree_wise_students(course_code, acad_session):
-    try:
-        if course_code == "-":
-            course_code = ""
-        if acad_session == "":
-            acad_session = ""
+    if course_code == "-":
+        course_code = ""
+    if acad_session == "":
+        acad_session = ""
 
-        cursor = DB.db.execute_sql(C.sql_by_id("degree_wise_students"),
-                                [str(course_code), str(course_code),str(acad_session)])
+    cursor = DB.db.execute_sql(C.sql_by_id("degree_wise_students"),
+                            [str(course_code), str(course_code),str(acad_session)])
 
-        fp = apiVC.db_result_to_excel(cursor)
-        return await send_file(fp,
-                         attachment_filename="download_degree_wise_students.csv",
-                         as_attachment=True)
-    except Exception as ex:
-        msg = "Error when Downloading Degree Wise Students CSV."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fp = apiVC.db_result_to_excel(cursor)
+    return await send_file(fp,
+                     attachment_filename="download_degree_wise_students.csv",
+                     as_attachment=True)
 
 
 @C.rbac(permissions=["dc.save"])
@@ -476,95 +423,76 @@ def __to_dc_dict(dc, excl_list=None):
 
 @C.rbac()
 async def dc_details(dc_id):
-    try:
-        dc_qry = DB.DcForStudent.select().where(DB.DcForStudent.id == int(dc_id))
-        dcd = {}
-        if dc_qry.exists():
-            dcd = __to_dc_dict(dc_qry[0])
-        return apiVC.ok_json(dcd)
-
-    except C.AcadStackException as ae:
-        logging.exception(ae)
-        return apiVC.error_json(str(ae))
-
-    except Exception as ex:
-        msg = "Error when loading Dc details."
-        logging.exception(msg, ex)
-        return apiVC.error_json(msg)
+    dc_qry = DB.DcForStudent.select().where(DB.DcForStudent.id == int(dc_id))
+    dcd = {}
+    if dc_qry.exists():
+        dcd = __to_dc_dict(dc_qry[0])
+    return apiVC.ok_json(dcd)
 
 
 @C.rbac
 async def dc_search():
-    try:
-        fd = await request.get_json(force=True)
-        stu_id = fd.get("student_id") or 0
-        mem_id = fd.get("member_id") or 0
-        mem_role = fd.get("member_role") or ""
-        dept_name = fd.get("dept_name") or ""
-        entry_year = fd.get("entry_year") or ""
-        status = fd.get("status") or ""
-        if not (stu_id or mem_id or mem_role or dept_name or \
-                entry_year or status):
-            return apiVC.error_json("At least one search criterion is required!")
-        if (mem_role and not mem_id) or (not mem_role and mem_id):
-            return apiVC.error_json("Member and role must be selected together!")
-        
+    fd = await request.get_json(force=True)
+    stu_id = fd.get("student_id") or 0
+    mem_id = fd.get("member_id") or 0
+    mem_role = fd.get("member_role") or ""
+    dept_name = fd.get("dept_name") or ""
+    entry_year = fd.get("entry_year") or ""
+    status = fd.get("status") or ""
+    if not (stu_id or mem_id or mem_role or dept_name or \
+            entry_year or status):
+        return apiVC.error_json("At least one search criterion is required!")
+    if (mem_role and not mem_id) or (not mem_role and mem_id):
+        return apiVC.error_json("Member and role must be selected together!")
+    
 
-        dc_qry = DB.DcForStudent.select().join_from(DB.DcForStudent,
-                    DB.DcMember, DB.ORM.JOIN.LEFT_OUTER).join(DB.User, 
-                    on=(DB.DcForStudent.student == DB.User.id)).join(DB.Person)
-        
-        if stu_id:
-            dc_qry = dc_qry.where(DB.DcForStudent.student == stu_id)
-        if status:
-            dc_qry = dc_qry.where(DB.DcForStudent.status == status)
-        if mem_id:
-            if mem_role == "S":
-                dc_qry = dc_qry.where(DB.DcForStudent.supervisor == mem_id)
-            else:
-                dc_qry = dc_qry.where((DB.DcMember.member == mem_id) &
-                (DB.DcMember.role == mem_role))
-        if dept_name:
-            dc_qry = dc_qry.where(DB.DcForStudent.student.person.
-                                  dept_name == dept_name)
-        if entry_year:
-            dc_qry = dc_qry.where(DB.DcForStudent.student.person.
-                                  year_of_entry == entry_year)
-        
-        dc_qry.order_by(-DB.DcForStudent.id).distinct()
+    dc_qry = DB.DcForStudent.select().join_from(DB.DcForStudent,
+                DB.DcMember, DB.ORM.JOIN.LEFT_OUTER).join(DB.User, 
+                on=(DB.DcForStudent.student == DB.User.id)).join(DB.Person)
+    
+    if stu_id:
+        dc_qry = dc_qry.where(DB.DcForStudent.student == stu_id)
+    if status:
+        dc_qry = dc_qry.where(DB.DcForStudent.status == status)
+    if mem_id:
+        if mem_role == "S":
+            dc_qry = dc_qry.where(DB.DcForStudent.supervisor == mem_id)
+        else:
+            dc_qry = dc_qry.where((DB.DcMember.member == mem_id) &
+            (DB.DcMember.role == mem_role))
+    if dept_name:
+        dc_qry = dc_qry.where(DB.DcForStudent.student.person.
+                              dept_name == dept_name)
+    if entry_year:
+        dc_qry = dc_qry.where(DB.DcForStudent.student.person.
+                              year_of_entry == entry_year)
+    
+    dc_qry.order_by(-DB.DcForStudent.id).distinct()
 
-        res = []
-        added = []
-        for dc in dc_qry:
-            dcd = __to_dc_dict(dc)
-            if dc.id not in added:
-                added.append(dc.id)
-                res.append(dcd)
-        
-        return apiVC.ok_json(res)
-    except Exception as ex:
-        msg = "Error when searching dc details."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    res = []
+    added = []
+    for dc in dc_qry:
+        dcd = __to_dc_dict(dc)
+        if dc.id not in added:
+            added.append(dc.id)
+            res.append(dcd)
+    
+    return apiVC.ok_json(res)
 
 
 @C.rbac
 async def get_dc_students():
-    try:
-        if not apiVC.has_permission("dc.view_dc_students"):
-            return apiVC.error_json("You are not allowed to access this data.")
-        uid = apiVC.logged_in_user().id
-        cursor = DB.db.execute_sql(C.sql_by_id("get_dc_students"),[uid])
-        data = []
-        for row in cursor.fetchall():
-            data.append({'user_id': row[0], 'first_name': row[1],
-                        'last_name': row[2], 'email': row[3],
-                        'dept_name': row[4], 'year_of_entry': row[5],
-                        'org_id': row[6]})
-        return apiVC.ok_json(data)
-    except Exception as ex:
-        logging.error(ex)
-        return apiVC.error_json("Failed to fetch DC students.")
+    if not apiVC.has_permission("dc.view_dc_students"):
+        return apiVC.error_json("You are not allowed to access this data.")
+    uid = apiVC.logged_in_user().id
+    cursor = DB.db.execute_sql(C.sql_by_id("get_dc_students"),[uid])
+    data = []
+    for row in cursor.fetchall():
+        data.append({'user_id': row[0], 'first_name': row[1],
+                    'last_name': row[2], 'email': row[3],
+                    'dept_name': row[4], 'year_of_entry': row[5],
+                    'org_id': row[6]})
+    return apiVC.ok_json(data)
 
 
 def __is_dc_member_or_admin(uid, student_id):
@@ -585,7 +513,6 @@ def __raise_on_invalid_ppr_status(old_st, new_st):
         raise C.AcadStackException("Cannot change the report status!")
 
 
-
 def __ppr_exists(stu_id, acad_sess, dcm_id):
     q1 = DB.PhDProgressReport.select()
     q1 = q1.where(DB.PhDProgressReport.student == stu_id)
@@ -596,154 +523,121 @@ def __ppr_exists(stu_id, acad_sess, dcm_id):
 
 @C.rbac
 async def save_progress_report():
-    try:
-        if not apiVC.has_permission("dc.manage_progress_report"):
-            msg = (f"Student {apiVC.current_login_id()} attempted to "
-                    "submit progress report.")
-            send_access_violation_alert(msg)
-            return apiVC.error_json("You are not allowed to access this data.")
-        uid = apiVC.logged_in_user().id
-        fd = await request.get_json(force=True)
-        pprid = fd.get("id") or 0
-        ppr = DB.PhDProgressReport()
-        if not __is_dc_member_or_admin(uid, fd.get("student")):
-            raise C.AcadStackException("You must be a DC member!")
-        rc = 0
-        with DB.db.atomic() as txn:
-            if pprid > 0:
-                ppr = DB.PhDProgressReport.get_by_id(pprid)
-                __raise_on_invalid_ppr_status(ppr.status, fd.get("status"))
-                C.update_model_skip_unknown(ppr, fd)
-                if ppr.status == "APP" and not is_dc_chair(uid, ppr.student.id):
-                    return apiVC.error_json("Only DC chair can approve the report!")
-                
-                rc = apiVC.update_entity(DB.PhDProgressReport, ppr)
-            else:
-                C.update_model_skip_unknown(ppr, fd)
-                ppr.status = "DRA"
-                dq = DB.DcMember.select().where(DB.DcMember.member==uid)
-                if not dq.exists():
-                    return apiVC.error_json("You are not a DC member of the student!")
-                ppr.dc_member = dq[0]
-                if __ppr_exists(fd.get("student"), ppr.acad_session, 
-                    ppr.dc_member.id):
-                    return apiVC.error_json("DC member already submitted report "
-                                         f"for {ppr.acad_session}.")
-                
-                rc = apiVC.save_entity(ppr)
-            if rc != 1:
-                raise C.AcadStackException("Could not save the reports data.")
-        obj = apiVC.model_to_dict(ppr, recurse=False)
-        return apiVC.ok_json(obj)
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        logging.error(ex)
-        return apiVC.error_json("Error occurred when saving progress report.")
+    if not apiVC.has_permission("dc.manage_progress_report"):
+        msg = (f"Student {apiVC.current_login_id()} attempted to "
+                "submit progress report.")
+        send_access_violation_alert(msg)
+        return apiVC.error_json("You are not allowed to access this data.")
+    uid = apiVC.logged_in_user().id
+    fd = await request.get_json(force=True)
+    pprid = fd.get("id") or 0
+    ppr = DB.PhDProgressReport()
+    if not __is_dc_member_or_admin(uid, fd.get("student")):
+        raise C.AcadStackException("You must be a DC member!")
+    rc = 0
+    with DB.db.atomic() as txn:
+        if pprid > 0:
+            ppr = DB.PhDProgressReport.get_by_id(pprid)
+            __raise_on_invalid_ppr_status(ppr.status, fd.get("status"))
+            C.update_model_skip_unknown(ppr, fd)
+            if ppr.status == "APP" and not is_dc_chair(uid, ppr.student.id):
+                return apiVC.error_json("Only DC chair can approve the report!")
+            
+            rc = apiVC.update_entity(DB.PhDProgressReport, ppr)
+        else:
+            C.update_model_skip_unknown(ppr, fd)
+            ppr.status = "DRA"
+            dq = DB.DcMember.select().where(DB.DcMember.member==uid)
+            if not dq.exists():
+                return apiVC.error_json("You are not a DC member of the student!")
+            ppr.dc_member = dq[0]
+            if __ppr_exists(fd.get("student"), ppr.acad_session, 
+                ppr.dc_member.id):
+                return apiVC.error_json("DC member already submitted report "
+                                     f"for {ppr.acad_session}.")
+            
+            rc = apiVC.save_entity(ppr)
+        if rc != 1:
+            raise C.AcadStackException("Could not save the reports data.")
+    obj = apiVC.model_to_dict(ppr, recurse=False)
+    return apiVC.ok_json(obj)
 
 
 @C.rbac
 async def get_ppr(myid):
-    try:
-        uid = apiVC.logged_in_user().id
-        ppr = DB.PhDProgressReport.get_by_id(myid)
-        if ppr.student.id != uid and apiVC.is_user_in_role("STU"):
-            msg = (f"Student {apiVC.current_login_id()} attempted to access "
-                    "other's progress report.")
-            send_access_violation_alert(msg)
-            return apiVC.error_json("You are not allowed to access other's report.")
-        
-        if not __is_dc_member_or_admin(uid, ppr.student.id):
-            raise C.AcadStackException("You must be a DC member!")
-        obj = apiVC.model_to_dict(ppr, recurse=False)
-        return apiVC.ok_json(obj)
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        logging.error(ex)
-        return apiVC.error_json("Error occurred when fetching progress report.")
+    uid = apiVC.logged_in_user().id
+    ppr = DB.PhDProgressReport.get_by_id(myid)
+    if ppr.student.id != uid and apiVC.is_user_in_role("STU"):
+        msg = (f"Student {apiVC.current_login_id()} attempted to access "
+                "other's progress report.")
+        send_access_violation_alert(msg)
+        return apiVC.error_json("You are not allowed to access other's report.")
+    
+    if not __is_dc_member_or_admin(uid, ppr.student.id):
+        raise C.AcadStackException("You must be a DC member!")
+    obj = apiVC.model_to_dict(ppr, recurse=False)
+    return apiVC.ok_json(obj)
 
 
 @C.rbac
 async def get_pprs_for_student(myid):
-    try:
-        uid = apiVC.logged_in_user().id        
-        if myid != uid and apiVC.is_user_in_role("STU"):
-            msg = (f"Student {apiVC.current_login_id()} attempted to access "
-                    "other's progress reports.")
-            send_access_violation_alert(msg)
-            return apiVC.error_json("You are not allowed to access other's reports.")
+    uid = apiVC.logged_in_user().id        
+    if myid != uid and apiVC.is_user_in_role("STU"):
+        msg = (f"Student {apiVC.current_login_id()} attempted to access "
+                "other's progress reports.")
+        send_access_violation_alert(msg)
+        return apiVC.error_json("You are not allowed to access other's reports.")
 
-        if not __is_dc_member_or_admin(uid, myid):
-            raise C.AcadStackException("You must be a DC member!")
+    if not __is_dc_member_or_admin(uid, myid):
+        raise C.AcadStackException("You must be a DC member!")
 
-        q1 = DB.PhDProgressReport.select().join(DB.User).where(
-            DB.PhDProgressReport.student.id == myid)
+    q1 = DB.PhDProgressReport.select().join(DB.User).where(
+        DB.PhDProgressReport.student.id == myid)
 
-        res = []
-        for ppr in q1:
-            obj = apiVC.model_to_dict(ppr, recurse=False)
-            dm = ppr.dc_member
-            obj["member"] = f"{dm.member.get_full_name()} ({dm.role})"
-            res.append(obj)
-        return apiVC.ok_json(res)
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        logging.error(ex)
-        return apiVC.error_json("Error occurred when fetching progress reports.")
+    res = []
+    for ppr in q1:
+        obj = apiVC.model_to_dict(ppr, recurse=False)
+        dm = ppr.dc_member
+        obj["member"] = f"{dm.member.get_full_name()} ({dm.role})"
+        res.append(obj)
+    return apiVC.ok_json(res)
 
 
 @C.rbac
 async def is_dc_chair(uid, std_id):
-    try:
-        q1 = DB.DcMember.select().join(DB.DcForStudent)
-        q1 = q1.where(DB.DcMember.member==uid)
-        q1 = q1.where(DB.DcMember.role=="CP")
-        q1 = q1.where(DB.DcForStudent.student==std_id)
-        return apiVC.ok_json(q1.exists())
-    except Exception as ex:
-        msg = "Error occurred when checking DC chair."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    q1 = DB.DcMember.select().join(DB.DcForStudent)
+    q1 = q1.where(DB.DcMember.member==uid)
+    q1 = q1.where(DB.DcMember.role=="CP")
+    q1 = q1.where(DB.DcForStudent.student==std_id)
+    return apiVC.ok_json(q1.exists())
 
 
 @C.rbac
 async def get_daywise_attendance(co_id):
-    try:
-        if not VAL.validate_course_instructor(co_id, 
-                                ["SUP", "ACA", "DEA", "HOD"], False):
-            return apiVC.error_json("You cannot access this attendance data!")
-        sql = C.sql_by_id("daywise_attendance")
-        cursor = DB.db.execute_sql(sql, [co_id])
-        rs = apiVC.result_set_from_cursor(cursor)
-        if not rs:
-            return apiVC.error_json("No attendance records found for the course.")
-        else:
-            return apiVC.ok_json(rs)
-    except Exception as ex:
-        msg = "Error occurred when fetching daywise attendance for course."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    if not VAL.validate_course_instructor(co_id, 
+                            ["SUP", "ACA", "DEA", "HOD"], False):
+        return apiVC.error_json("You cannot access this attendance data!")
+    sql = C.sql_by_id("daywise_attendance")
+    cursor = DB.db.execute_sql(sql, [co_id])
+    rs = apiVC.result_set_from_cursor(cursor)
+    if not rs:
+        return apiVC.error_json("No attendance records found for the course.")
+    else:
+        return apiVC.ok_json(rs)
 
 
 @C.rbac
 async def get_course_attd_on_date(co_id, att_dt):
-    try:
-        aq = DB.StudentAttendance.select().join(DB.CourseEnrollment)
-        aq = aq.join(DB.User).join(DB.Person)
-        aq = aq.where(DB.StudentAttendance.attend_dt == att_dt)
-        aq = aq.where(DB.CourseEnrollment.course_offering == co_id)
-        if aq.exists():
-            data = [{"attend": x.attend, \
-                    "ce_id": x.enrollment.id,
-                    "name": x.enrollment.student.get_full_name(), \
-                    "roll_no": x.enrollment.student.person.org_id \
-                    } for x in aq]
-            return apiVC.ok_json(data)
-        else:
-            return apiVC.error_json("No attendance record found!")
-    except Exception as ex:
-        msg = "Error occurred when fetching attendance for given date."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    aq = DB.StudentAttendance.select().join(DB.CourseEnrollment)
+    aq = aq.join(DB.User).join(DB.Person)
+    aq = aq.where(DB.StudentAttendance.attend_dt == att_dt)
+    aq = aq.where(DB.CourseEnrollment.course_offering == co_id)
+    if aq.exists():
+        data = [{"attend": x.attend, \
+                "ce_id": x.enrollment.id,
+                "name": x.enrollment.student.get_full_name(), \
+                "roll_no": x.enrollment.student.person.org_id \
+                } for x in aq]
+        return apiVC.ok_json(data)
+    else:
+        return apiVC.error_json("No attendance record found!")

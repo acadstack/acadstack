@@ -21,97 +21,72 @@ def init_routes(bp: Blueprint):
 
 @C.rbac
 async def course_view(my_id):
-    try:
-        cour = DB.Course.get_by_id(my_id)
-        if cour:
-            obj = apiVC.model_to_dict(cour, exclude=[DB.Course.author.password_hashed])
-            return apiVC.ok_json(obj)
-        else:
-            return apiVC.error_json(f"Record not found for the course# {my_id}")
-    except Exception as ex:
-        msg = "Error when fetching course details."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    cour = DB.Course.get_by_id(my_id)
+    if cour:
+        obj = apiVC.model_to_dict(cour, exclude=[DB.Course.author.password_hashed])
+        return apiVC.ok_json(obj)
+    else:
+        return apiVC.error_json(f"Record not found for the course# {my_id}")
 
 
 @C.rbac(permissions=["course.save"])
 async def course_save():
-    try:
-        fd = await request.get_json(force=True)
-        logging.debug("Saving course details: {}".format(fd))
-        crs = CRS.save_course(apiVC.current_actor(), fd,
-                              C.update_model_skip_unknown)
-        return apiVC.ok_json(apiVC.model_to_dict(crs, exclude=[DB.Course.author.password_hashed]))
-
-    except AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when saving course details."
-        logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+    fd = await request.get_json(force=True)
+    logging.debug("Saving course details: {}".format(fd))
+    crs = CRS.save_course(apiVC.current_actor(), fd,
+                          C.update_model_skip_unknown)
+    return apiVC.ok_json(apiVC.model_to_dict(crs, exclude=[DB.Course.author.password_hashed]))
 
 
 @C.rbac
 async def course_find():
-    try:
-        fd = await request.get_json(force=True)
-        status, code = fd.get("status"), fd.get("code")
-        ltp, title = fd.get("ltp"), fd.get("title")
-        author_id, dept = fd.get("author"), fd.get("dept")
-        if type(status) == str:
-            status = [status]
-        elif status is None:
-            status = []
-        pg_no = int(fd.get('pg_no', 1))
-        query = DB.Course.select(DB.Course.id, DB.Course.status,
-                              DB.Course.code, DB.Course.title
-                              , DB.Course.ltp).join(DB.User).join(DB.Person)
-        if len(status) > 0:
-            query = query.where(DB.Course.status << status)
-        if code:
-            query = query.where(DB.Course.code.contains(code))
-        if ltp:
-            query = query.where(DB.Course.ltp.contains(ltp))
-        if title:
-            query = query.where(DB.Course.title.contains(title))
-        if author_id:
-            query = query.where(DB.Course.author_id == author_id)
-        if dept:
-            query = query.where(DB.Person.dept_name == dept)
+    fd = await request.get_json(force=True)
+    status, code = fd.get("status"), fd.get("code")
+    ltp, title = fd.get("ltp"), fd.get("title")
+    author_id, dept = fd.get("author"), fd.get("dept")
+    if type(status) == str:
+        status = [status]
+    elif status is None:
+        status = []
+    pg_no = int(fd.get('pg_no', 1))
+    query = DB.Course.select(DB.Course.id, DB.Course.status,
+                          DB.Course.code, DB.Course.title
+                          , DB.Course.ltp).join(DB.User).join(DB.Person)
+    if len(status) > 0:
+        query = query.where(DB.Course.status << status)
+    if code:
+        query = query.where(DB.Course.code.contains(code))
+    if ltp:
+        query = query.where(DB.Course.ltp.contains(ltp))
+    if title:
+        query = query.where(DB.Course.title.contains(title))
+    if author_id:
+        query = query.where(DB.Course.author_id == author_id)
+    if dept:
+        query = query.where(DB.Person.dept_name == dept)
 
-        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.page_size())
-        serialized = [apiVC.model_to_dict(r, exclude=[DB.Course.author]) for r in courses]
+    courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.page_size())
+    serialized = [apiVC.model_to_dict(r, exclude=[DB.Course.author]) for r in courses]
 
-        has_next = len(courses) >= apiVC.page_size()
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
-               "has_next": has_next}
-        return apiVC.ok_json(res)
-
-    except Exception as ex:
-        msg = "Error when finding courses."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    has_next = len(courses) >= apiVC.page_size()
+    res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.page_size(),
+           "has_next": has_next}
+    return apiVC.ok_json(res)
 
 
 @C.rbac
 async def course_lookup(query_str):
-    try:
-        query = DB.Course.select(DB.Course.id, DB.Course.code, 
-            DB.Course.title, DB.Course.ltp).where(
-            ((DB.Course.title.contains(query_str)) | 
-            (DB.Course.code.contains(query_str) )
-            ) & (DB.Course.status=="APP")
-        )
+    query = DB.Course.select(DB.Course.id, DB.Course.code, 
+        DB.Course.title, DB.Course.ltp).where(
+        ((DB.Course.title.contains(query_str)) | 
+        (DB.Course.code.contains(query_str) )
+        ) & (DB.Course.status=="APP")
+    )
 
-        courses = query.order_by(-DB.Course.id).limit(15)
-        serialized = [{"id": r.id, "title": r.title, "code": r.code, 
-                        "ltp": r.ltp} for r in courses]
-        return apiVC.ok_json(serialized)
-
-    except Exception as ex:
-        msg = "Error in course lookup."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    courses = query.order_by(-DB.Course.id).limit(15)
+    serialized = [{"id": r.id, "title": r.title, "code": r.code, 
+                    "ltp": r.ltp} for r in courses]
+    return apiVC.ok_json(serialized)
 
 
 def __do_courses_exist(file_path):
@@ -127,47 +102,41 @@ def __do_courses_exist(file_path):
 
 @C.rbac(permissions=["course.bulk_create"])
 async def bulk_add_courses():
-    try:
-        courses_file = (await request.files)['courses_file']
-        if courses_file.filename == '':
-            return apiVC.error_json("Please supply a .csv containing the "
-            "course information!")
-        local_file_nm = C.get_rand_str(4) + "_" + \
-            secure_filename(courses_file.filename)
-        file_path = os.path.join(apiVC.get_upload_folder_for_user(), 
-                                local_file_nm)
-        courses_file.save(file_path)
+    courses_file = (await request.files)['courses_file']
+    if courses_file.filename == '':
+        return apiVC.error_json("Please supply a .csv containing the "
+        "course information!")
+    local_file_nm = C.get_rand_str(4) + "_" + \
+        secure_filename(courses_file.filename)
+    file_path = os.path.join(apiVC.get_upload_folder_for_user(), 
+                            local_file_nm)
+    courses_file.save(file_path)
 
-        existing = __do_courses_exist(file_path)
-        if existing:
-            return apiVC.error_json("There are courses that already exist \
-                in the system. Please remove them from the .csv file \
-                that you are uploading.\
-                Following courses already exists: " + str(existing))
+    existing = __do_courses_exist(file_path)
+    if existing:
+        return apiVC.error_json("There are courses that already exist \
+            in the system. Please remove them from the .csv file \
+            that you are uploading.\
+            Following courses already exists: " + str(existing))
 
-        with open(file_path, newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            with DB.db.atomic() as txn:
-                for row in reader:
-                    computed = C.compute_course_ltp(row["ltp"])
-                    if not computed:
-                        raise AcadStackException(
-                            f"Course {row['code']}: could not parse L-T-P "
-                            f"from ltp {row['ltp']!r}.")
-                    ltpsc, s, c = computed
-                    cou = DB.Course(code=row["code"], title=row["title"],
-                                 ltp=ltpsc, s_hours=s, credits=c, status="APP",
-                                 author=apiVC.logged_in_user())
-                    cou.save()
-                txn.commit()
+    with open(file_path, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        with DB.db.atomic() as txn:
+            for row in reader:
+                computed = C.compute_course_ltp(row["ltp"])
+                if not computed:
+                    raise AcadStackException(
+                        f"Course {row['code']}: could not parse L-T-P "
+                        f"from ltp {row['ltp']!r}.")
+                ltpsc, s, c = computed
+                cou = DB.Course(code=row["code"], title=row["title"],
+                             ltp=ltpsc, s_hours=s, credits=c, status="APP",
+                             author=apiVC.logged_in_user())
+                cou.save()
+            txn.commit()
 
-        os.remove(file_path)  # Cleanup
-        return apiVC.ok_json("Created new courses successfully!")
-
-    except Exception as ex:
-        msg = "Error when handling bulk course creation."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    os.remove(file_path)  # Cleanup
+    return apiVC.ok_json("Created new courses successfully!")
 
 
 @C.rbac(permissions=["course.manage_slot_timings"])
@@ -186,9 +155,5 @@ async def save_course_slot_timings():
         logging.error(iex)
         return apiVC.error_json("Cannot save duplicate record. "
         "Please make sure the slot data is unique.")
-    except Exception as ex:
-        logging.error(ex)
-        return apiVC.error_json("Error occurred when saving "
-        "course slot timings.")
 
 

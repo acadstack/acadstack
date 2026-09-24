@@ -58,179 +58,117 @@ async def wfnote_save():
         [quart.Response]: quart.Response object containing the 
         JSONified data result of this operation.
     """
-    try:
-        if not apiVC.has_permission("workflow_notes.manage"):
-            return apiVC.error_json("Students not allowed to add workflow notes!")
-        fd = await request.get_json(force=True)
-        logging.debug(f"Saving workflow note details: {fd}")
-        wfn = M.WorkflowNote()
-        C.update_model_skip_unknown(wfn, fd)
-        if wfn.entity_name and wfn.entity_key and wfn.note:
-            apiVC.save_entity(wfn)
-            logging.debug(f"Inserted workflow notes: {wfn}")
-            return apiVC.ok_json(PS.model_to_dict(wfn))
-        else:
-            return apiVC.error_json("Please supply the required data!")
-
-    except Exception as ex:
-        msg = "Error when saving workflow note details."
-        logging.exception(msg)
-        return apiVC.error_json("{0}: {1}".format(msg, ex))
+    if not apiVC.has_permission("workflow_notes.manage"):
+        return apiVC.error_json("Students not allowed to add workflow notes!")
+    fd = await request.get_json(force=True)
+    logging.debug(f"Saving workflow note details: {fd}")
+    wfn = M.WorkflowNote()
+    C.update_model_skip_unknown(wfn, fd)
+    if wfn.entity_name and wfn.entity_key and wfn.note:
+        apiVC.save_entity(wfn)
+        logging.debug(f"Inserted workflow notes: {wfn}")
+        return apiVC.ok_json(PS.model_to_dict(wfn))
+    else:
+        return apiVC.error_json("Please supply the required data!")
 
 
 @C.rbac
 async def wfnote_find(entity_name, entity_key):
-    try:
-        logging.info(f"Loading workflow note details for {entity_name}, "
-                     f"Key: {entity_key}")
-        query = M.WorkflowNote.select().where(
-            (M.WorkflowNote.entity_name == entity_name) &
-            (M.WorkflowNote.entity_key == entity_key)
-        )
-        res = query.order_by(-M.WorkflowNote.ins_ts).execute()
-        return apiVC.ok_json([PS.model_to_dict(r) for r in res])
-
-    except Exception as ex:
-        msg = "Error when finding workflow note details."
-        logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+    logging.info(f"Loading workflow note details for {entity_name}, "
+                 f"Key: {entity_key}")
+    query = M.WorkflowNote.select().where(
+        (M.WorkflowNote.entity_name == entity_name) &
+        (M.WorkflowNote.entity_key == entity_key)
+    )
+    res = query.order_by(-M.WorkflowNote.ins_ts).execute()
+    return apiVC.ok_json([PS.model_to_dict(r) for r in res])
 
 
 @C.rbac
 async def wfnote_delete(my_id):
-    try:
-        if not apiVC.has_permission("workflow_notes.manage"):
-            return apiVC.error_json("Students not allowed to delete workflow notes!")
-        note = M.WorkflowNote.get_or_none(int(my_id))
-        if note and note.txn_login_id != apiVC.logged_in_user().login_id:
-            return apiVC.error_json("Cannot delete notes of others!")
+    if not apiVC.has_permission("workflow_notes.manage"):
+        return apiVC.error_json("Students not allowed to delete workflow notes!")
+    note = M.WorkflowNote.get_or_none(int(my_id))
+    if note and note.txn_login_id != apiVC.logged_in_user().login_id:
+        return apiVC.error_json("Cannot delete notes of others!")
 
-        rc = M.WorkflowNote.delete().where(M.WorkflowNote.id == my_id).execute()
-        return apiVC.ok_json(f"Deleted {rc} records.")
-    except Exception as ex:
-        msg = "Error occurred when deleting Workflow Note."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    rc = M.WorkflowNote.delete().where(M.WorkflowNote.id == my_id).execute()
+    return apiVC.ok_json(f"Deleted {rc} records.")
 
 
 @C.rbac(permissions=["academic_calendar.manage_dates"])
 async def dates_save():
-    try:
-        fd = await request.get_json(force=True)
-        logging.info(f"Saving academic dates : {fd}")
-        session = fd.get("session")
-        eventdates = fd.get("eventDates")
-        valid_codes = ST.vocab_codes("acad_event_codes")
-        unknown = sorted(x for x in eventdates if x not in valid_codes)
-        if unknown:
-            return apiVC.error_json(
-                f"Unknown academic calendar event code(s): "
-                f"{', '.join(unknown)}.")
-        ac = M.AcademicCalendar()
-        for x in eventdates:
-            (ac.insert(acad_session=session, event_code=x, \
-                       event_value=eventdates[x]) \
-            .on_conflict(
-                conflict_target=[M.AcademicCalendar.acad_session, M.AcademicCalendar.event_code],
-                update={M.AcademicCalendar.event_value: eventdates[x]}
-            ).execute())
-            logging.debug(f"Inserted AcademicCalendar: {ac}")
-        return apiVC.ok_json("inserted successfully")
-
-    except Exception as ex:
-        msg = "Error when saving academic dates."
-        logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+    fd = await request.get_json(force=True)
+    logging.info(f"Saving academic dates : {fd}")
+    session = fd.get("session")
+    eventdates = fd.get("eventDates")
+    valid_codes = ST.vocab_codes("acad_event_codes")
+    unknown = sorted(x for x in eventdates if x not in valid_codes)
+    if unknown:
+        return apiVC.error_json(
+            f"Unknown academic calendar event code(s): "
+            f"{', '.join(unknown)}.")
+    ac = M.AcademicCalendar()
+    for x in eventdates:
+        (ac.insert(acad_session=session, event_code=x, \
+                   event_value=eventdates[x]) \
+        .on_conflict(
+            conflict_target=[M.AcademicCalendar.acad_session, M.AcademicCalendar.event_code],
+            update={M.AcademicCalendar.event_value: eventdates[x]}
+        ).execute())
+        logging.debug(f"Inserted AcademicCalendar: {ac}")
+    return apiVC.ok_json("inserted successfully")
 
 
 @C.rbac
 async def dates_search():
-    try:
-        fd = await request.get_json(force=True)
-        res = M.AcademicCalendar.select().where(M.AcademicCalendar.acad_session
-                                                == fd.get("session")).execute()
-        if res:
-            obj = {"eventDates": {}}
-            for r in res:
-                obj["eventDates"][r.event_code] = r.event_value
-            obj["session"] = res[0].acad_session
-            return apiVC.ok_json(obj)
-        else:
-            return apiVC.error_json(f"No data for {fd.get("session")} session.")
-
-    except Exception as ex:
-        msg = "Error when saving academic dates."
-        logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+    fd = await request.get_json(force=True)
+    res = M.AcademicCalendar.select().where(M.AcademicCalendar.acad_session
+                                            == fd.get("session")).execute()
+    if res:
+        obj = {"eventDates": {}}
+        for r in res:
+            obj["eventDates"][r.event_code] = r.event_value
+        obj["session"] = res[0].acad_session
+        return apiVC.ok_json(obj)
+    else:
+        return apiVC.error_json(f"No data for {fd.get("session")} session.")
 
 
 @C.rbac
 async def workflow_actions(name, record_id):
     """The approval actions the current user may take on a record, which
     the frontend renders as its action buttons."""
-    try:
-        if name not in _ACTIONS:
-            return apiVC.error_json(f"Unknown workflow: {name}")
-        return apiVC.ok_json(_ACTIONS[name](apiVC.current_actor(), record_id))
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when loading workflow actions."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    if name not in _ACTIONS:
+        return apiVC.error_json(f"Unknown workflow: {name}")
+    return apiVC.ok_json(_ACTIONS[name](apiVC.current_actor(), record_id))
 
 
 @C.rbac(permissions=["system.manage_workflows"])
 async def workflow_view(name):
     """A workflow's transition table, plus the guard/check/effect names a
     row may refer to."""
-    try:
-        return apiVC.ok_json({"workflow": WF.load(name).to_json(),
-                              "registered": WF.registered_steps()})
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when loading the workflow."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    return apiVC.ok_json({"workflow": WF.load(name).to_json(),
+                          "registered": WF.registered_steps()})
 
 
 @C.rbac(permissions=["system.manage_workflows"])
 async def workflow_save():
     """Replaces a workflow's transition table (the whole definition, as
     returned by workflow_view's "workflow")."""
-    try:
-        fd = await request.get_json(force=True)
-        wf = WF.save_workflow(apiVC.current_actor(), fd)
-        return apiVC.ok_json(wf.to_json())
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when saving the workflow."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fd = await request.get_json(force=True)
+    wf = WF.save_workflow(apiVC.current_actor(), fd)
+    return apiVC.ok_json(wf.to_json())
 
 
 @C.rbac
 async def milestones_view():
-    try:
-        return apiVC.ok_json(MS.definitions())
-    except Exception as ex:
-        msg = "Error when loading academic milestones."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    return apiVC.ok_json(MS.definitions())
 
 
 @C.rbac(permissions=["system.manage_workflows"])
 async def milestones_save():
     """Replaces the academic milestone sequence."""
-    try:
-        fd = await request.get_json(force=True)
-        return apiVC.ok_json(
-            MS.save_definitions(apiVC.current_actor(), fd.get("milestones") or []))
-    except C.AcadStackException as ae:
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when saving academic milestones."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+    fd = await request.get_json(force=True)
+    return apiVC.ok_json(
+        MS.save_definitions(apiVC.current_actor(), fd.get("milestones") or []))
