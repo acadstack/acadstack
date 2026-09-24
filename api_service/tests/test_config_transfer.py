@@ -15,6 +15,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import create_user  # noqa: E402
+
 import config_transfer as CT  # noqa: E402
 import models as DB  # noqa: E402
 import permissions as PERM  # noqa: E402
@@ -224,6 +226,22 @@ def test_import_applies_some_versions_and_skips_others_in_one_group(db, demo_gro
     statuses = {e["effective_from_session"]: e["status"]
                 for e in report["policy"][demo_group]}
     assert statuses == {"2020-I": "skipped", "2024-I": "applied"}
+
+
+# ===================== import_config: referential integrity =====================
+
+def test_import_blocks_a_vocab_change_that_orphans_a_referenced_code(db):
+    items = ST.vocab("degrees") + [{"code": "ZDEG", "label": "Z Degree"}]
+    ST.save_settings({"vocab.degrees": items})
+    create_user("STU", "stu1", degree="ZDEG")
+
+    without_it = [it for it in items if it["code"] != "ZDEG"]
+    doc = {"acadstack_config_version": CT.DOCUMENT_VERSION,
+           "settings": {"vocab": {"degrees": without_it}}}
+    with pytest.raises(CT.ConfigImportError) as ei:
+        CT.import_config(doc)
+    assert "ZDEG" in str(ei.value)
+    assert "ZDEG" in ST.vocab_codes("degrees")
 
 
 def test_export_then_import_replays_policy_history_into_a_fresh_group(db, policy):

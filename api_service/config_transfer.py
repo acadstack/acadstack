@@ -46,6 +46,7 @@ __status__ = "Development"
 import logging
 from typing import Optional
 
+import config_integrity as CI
 import models as M
 import permissions as PERM
 import policy_store as PS
@@ -275,6 +276,11 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
             ST.validate_values(other_values)
         except ST.SettingValidationError as ex:
             errors.extend(ex.errors)
+        # A vocab.* key that drops a code some other row/setting still
+        # relies on must fail the whole import here, not partway through
+        # writing it -- see config_integrity.py.
+        for key, new_items in other_values.items():
+            errors.extend(CI.removal_errors_for(key, new_items))
     if permission_values and actor is not None:
         try:
             ST.validate_values(permission_values)
@@ -289,7 +295,7 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
 
     applied_settings = set()
     if other_values:
-        applied_settings.update(ST.save_settings(
+        applied_settings.update(CI.guarded_save_settings(
             other_values, login_id=login_id))
     if permission_values:
         applied_settings.update(PERM.save_permission_mapping(
