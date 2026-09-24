@@ -304,5 +304,11 @@
         "href": "#/admin.policy",
         "menu": "Administration",
         "permission": "system.manage_academic_policy"
+    },
+    {
+        "label": "Configuration Export / Import",
+        "href": "#/admin.config_transfer",
+        "menu": "Administration",
+        "permission": "system.export_config"
     }
 ]

@@ -61,6 +61,7 @@ import KnownFaceUpload from "../components/KnownFaceUpload.vue";
 import CourseAttendance from "../components/CourseAttendance.vue"
 import SystemSettingsAdmin from "../components/SystemSettingsAdmin.vue"
 import AcademicPolicyAdmin from "../components/AcademicPolicyAdmin.vue"
+import ConfigTransfer from "../components/ConfigTransfer.vue"
 
 // 2. Define routes
 const appRoutes = [{
@@ -370,6 +371,11 @@ const appRoutes = [{
   name: 'admin.policy',
   path: '/admin.policy',
   component: AcademicPolicyAdmin
+},
+{
+  name: 'admin.config_transfer',
+  path: '/admin.config_transfer',
+  component: ConfigTransfer
 }
 ]
 
