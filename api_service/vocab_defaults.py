@@ -310,13 +310,13 @@ ALL = {
     "minor_conc_specializations": MINOR_CONC_SPECIALIZATIONS,
 }
 
-# Maps each vocabulary to the key it used to have in the hand-maintained
-# static_data.json, and whether that group used to carry a leading
+# Maps each vocabulary to the key it had in the old hand-maintained
+# static_data.json, and whether that group carries a leading
 # {"id": "", "value": "-Select-"} placeholder entry for dropdowns. Both
-# are preserved exactly so api_common.static_data_dict() keeps returning
+# are preserved exactly so api_common.static_data_dict() returns
 # byte-for-byte the same shape the frontend (webapp/src/main.js's `SD`
-# mixin) already expects -- this refactor changes where the data comes
-# from, not what it looks like on the wire.
+# mixin) expects -- only where the data comes from changed, not what it
+# looks like on the wire.
 STATIC_DATA_KEYS = {
     "course_statuses": ("CourseStatuses", True),
     "course_types": ("CourseTypes", True),

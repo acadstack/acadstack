@@ -1,16 +1,9 @@
-"""Tests for the Phase 4 credit-formula consolidation: the institution's
-S = 2L - T + 0.5P, C = L + 0.5P formula used to be evaluated in three
-places (Python at course-CSV-import time, SQL at several report/query
-sites, and the Vue course-edit form) and, worse, several SQL sites didn't
-even apply it consistently -- two of them extracted the wrong ltp field
-by string position entirely (see the credits_earned_report and
-download_filtered_categorized_credits_enrolled fixes below).
-
-The fix: common.compute_course_ltp() is now the ONLY place the formula
-runs. Course.s_hours/credits (models.py) store the result, computed
-server-side whenever a course is created or edited (api_course.py
-course_save/bulk_add_courses, demo_data.py), and every SQL site reads
-those columns instead of re-deriving them from ltp.
+"""Tests for the institution's credit formula (S = 2L - T + 0.5P,
+C = L + 0.5P): common.compute_course_ltp() is the ONLY place it runs.
+Course.s_hours/credits (models.py) store the result, computed server-side
+whenever a course is created or edited (api_course.py course_save/
+bulk_add_courses, demo_data.py), and every SQL site reads those columns
+instead of re-deriving them from ltp.
 """
 import sys
 from pathlib import Path

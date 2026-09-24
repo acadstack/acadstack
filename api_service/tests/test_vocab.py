@@ -1,4 +1,4 @@
-"""Tests for the Phase 3 single-sourced controlled vocabularies:
+"""Tests for the single-sourced controlled vocabularies:
 vocab_defaults.py (the bootstrap source), the "vocab" settings group it
 declares in settings_store.py, models.py's choices= derivation, and
 api_common.static_data_dict()/GET /acadstack/get_static_data (the

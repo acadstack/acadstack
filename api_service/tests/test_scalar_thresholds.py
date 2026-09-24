@@ -1,14 +1,12 @@
-"""Tests for the Phase 4 scalar-threshold migration: hard-coded policy
-literals (max credits per session, face-recognition tolerance,
-password-reset lockout, active-user window, page size,
-disable_fees_check, hide_stats_from) moved onto the settings_store
-accessor built in Phase 2.
+"""Tests for the scalar thresholds backed by the settings_store accessor
+(max credits per session, face-recognition tolerance, password-reset
+lockout, active-user window, page size, disable_fees_check,
+hide_stats_from).
 
-Every test below checks both ends of the migration: the DECLARED DEFAULT
-reproduces the old hard-coded literal exactly (so nothing changes for an
-institution that never touches the admin GUI), and saving a new value
-through settings_store actually changes the call site's behavior without
-a restart.
+Every test below checks both ends: the DECLARED DEFAULT matches the
+documented default (so nothing changes for an institution that never
+touches the admin GUI), and saving a new value through settings_store
+actually changes the call site's behavior without a restart.
 """
 import sys
 from datetime import datetime, timedelta

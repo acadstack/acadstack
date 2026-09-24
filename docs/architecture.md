@@ -142,7 +142,7 @@ DB-backed (the `"permission"` `settings_store` group, so it is admin-editable an
 cached/versioned the same way every other setting is) and seeded from
 `permissions.py`'s declared defaults by `default_seed_data.py`. Adding, renaming or
 regranting a role means editing that one mapping, not auditing every decorator and
-inline check in the codebase (Phase 8; see `docs/refactor-plan.md`).
+inline check in the codebase.
 
 RBAC at the HTTP boundary is implemented via the decorator `rbac()` defined in
 `common.py`. Example usage of the decorator is:
@@ -309,14 +309,14 @@ runtime config, which is a separate and harder problem):
 (`student_cgpa`'s parameterized `NOT IN (%s, %s, %s, %s, %s, %s)` was also checked — it
 has no caller anywhere in the codebase, so it carries no live duplication.) Also
 unchanged: status/DC-role literals inside `webapp/src/main.js`'s role-identity computed
-properties (`isStudent`, `isFaculty`, ... -- these express who the user *is*, which
-Phase 8 deliberately left alone; see the RBAC section above for the permission-backed
-`hasPermission()` it added alongside them), `webapp/src/components/UserDetails.vue`,
+properties (`isStudent`, `isFaculty`, ... -- these express who the user *is*, which is
+deliberately left alone; see the RBAC section above for the permission-backed
+`hasPermission()` alongside them), `webapp/src/components/UserDetails.vue`,
 `GradesUpload.vue` (a duplicate grade list used for client-side validation) and
 `DcSearch.vue` — these read session values against hardcoded string literals rather
 than the `SD` vocab data, so they still work today but would need a matching manual
 edit if a code set changes. Migrating these three components' literals onto
-`hasPermission()` remains a follow-up, not done as part of Phase 8.
+`hasPermission()` remains an open follow-up.
 
 
 ## Versioned academic policy (effective-dated)
@@ -418,7 +418,7 @@ import path (below) both go through this guard rather than calling
 `config_transfer.py` serializes an institution's full configuration — every declared
 settings/vocab/permission group, plus every recorded policy version — into one JSON
 document (`export_config()`), and applies such a document back (`import_config()`).
-It is the Phase 1 seeder (`default_seed_data.py`) run in reverse: where the seeder
+It is `default_seed_data.py`'s seeder run in reverse: where the seeder
 inserts `vocab_defaults.py`'s lists as rows, export walks the same stores and
 serializes whatever is actually recorded; import feeds a document back through the
 same validated write paths the admin GUI uses (`save_settings`, `supersede`,
@@ -454,8 +454,8 @@ displayed (`StudentAcademics.vue`, `EnrolledStudents.vue`) shade the number and 
 tooltip when it falls below the threshold. Nothing is blocked by it — no grade entry,
 no registration. It stays a `settings_store` value rather than versioned policy for
 exactly that reason: per the versioned-policy test above ("must an already-issued
-document change too?"), a display-only threshold doesn't qualify. If a later phase
-makes it gate an actual decision, evaluated per session, that is the point at which it
+document change too?"), a display-only threshold doesn't qualify. If it later starts
+gating an actual decision, evaluated per session, that is the point at which it
 belongs in `policy_store` instead.
 
 ## Frontend implementation

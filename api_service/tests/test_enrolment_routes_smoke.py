@@ -1,12 +1,11 @@
 """Smoke coverage for the course-enrolment endpoints.
 
-Phase 5 rewrote every handler in api_course_enrolment.py into a thin
-adapter over domain.enrolment / domain.transcript. Only
-/change_enroll_status had tests before (test_enrolment_state_machine.py),
-so these exercise the remaining routes end to end -- request in,
-envelope out -- to catch anything the rewrite got wrong. They assert the
-contract the frontend depends on (status, and the shape of the body),
-not the full behaviour of the logic underneath.
+Every handler in api_course_enrolment.py is a thin adapter over
+domain.enrolment / domain.transcript. Only /change_enroll_status has
+deeper coverage (test_enrolment_state_machine.py), so these exercise the
+remaining routes end to end -- request in, envelope out. They assert the
+contract the frontend depends on (status, and the shape of the body), not
+the full behaviour of the logic underneath.
 """
 import sys
 from datetime import date, timedelta

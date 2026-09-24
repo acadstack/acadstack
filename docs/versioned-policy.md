@@ -1,8 +1,7 @@
 # Effective-dated academic policy
 
-How AcadStack stores academic rules that change over time, why that is a
-different thing from a system setting, and what still has to happen
-before the live rules move onto it.
+How AcadStack stores academic rules that change over time, and why that is a
+different thing from a system setting.
 
 Code: `api_service/acad_session.py`, `api_service/policy_store.py`,
 the grading group declared in `api_service/domain/policy.py`, the `PolicyVersion` /
@@ -11,39 +10,42 @@ the grading group declared in `api_service/domain/policy.py`, the `PolicyVersion
 
 ---
 
-## 1. The problem
+## 1. Why policy is not a setting
 
-`compute_cgpa_sgpa_ec` (`domain/transcript.py`) holds a grade-to-point
-map, three different earned-credit grade sets, and this:
+An institution amends its academic regulations; it does not retroactively rewrite
+them. A 2019 transcript has to keep computing under the 2019 rules forever, even
+after the grade-point map or the earned-credit grade set changes for later
+sessions. Policy is therefore not a value you overwrite — it is a series of
+versions, each owning a range of academic sessions, and any of it may need such a
+range: grade-to-point maps, earned-credit grade sets, pass marks, credit
+requirements.
+
+A flat, overwritable setting cannot express this. Reaching for one forces the
+rule itself to encode the range, typically as a branch on the academic year:
 
 ```python
-# Adjustment for PhD passing grades introduced in 2021
 if academic_session_year > 2021:
-    phd_ec_grades = "A,A-,B,B-,C,C-"
+    ec_grades = {"A", "A-", "B", "B-", "C", "C-"}
 elif academic_session_year < 2021:
-    phd_ec_pass_grades = "A,A-,B,B-,C"
-else:  # Year 2021
+    ec_grades = {"A", "A-", "B", "B-", "C"}
+else:
     ...
 ```
 
-That branch is the whole argument. Policy cannot simply be *replaced*,
-because a 2019 transcript has to keep computing under the 2019 rules
-forever. An institution amends its regulations; it does not retroactively
-rewrite them. So policy is not a value you overwrite — it is a series of
-versions, each owning a range of academic sessions.
+which pushes every subsequent amendment into the same function as one more
+branch, and gives an admin no way to record a change without a code deploy.
 
-The failure mode this design exists to prevent is specific and quiet: an
-admin opens a future settings screen, corrects the grade point map, saves,
-and every historical transcript in the system silently changes. Nothing
-errors. Nobody notices until a student queries a degree certificate issued
-four years ago.
+The failure mode this design exists to prevent is specific and quiet: an admin
+opens a settings screen, corrects the grade point map, saves, and every
+historical transcript in the system silently changes. Nothing errors. Nobody
+notices until a student queries a degree certificate issued four years ago.
 
 ---
 
 ## 2. Two stores, not one overloaded one
 
-Phase 2 introduced `SystemSetting` and `settings_store.py`: a flat,
-mutable `group.name -> value` store. The obvious question is whether
+`SystemSetting` and `settings_store.py` are a flat, mutable
+`group.name -> value` store. The obvious question is whether
 versioned policy should be an extension of it — add `effective_from` and
 `effective_to` columns, make the unique index conditional, and be done.
 
@@ -139,8 +141,9 @@ self-contained and independently interpretable years later.
 grading ruleset are only meaningful together — a grade-point map and the
 grade sets that reference it have to move as a unit — so they version as a
 unit. `domain/policy.py` declares what the grading group's payload must
-contain and turns it into the `GradingPolicy` the computation already takes; a payload that will not build is
-rejected at write time, not discovered mid-transcript.
+contain and turns it into the `GradingPolicy` the computation takes; a
+payload that will not build is rejected at write time, not discovered
+mid-transcript.
 
 ---
 
@@ -170,12 +173,13 @@ The table is **append-only**. Adding a calendar or a suffix is safe;
 repointing a suffix already in use would silently move every policy
 boundary around it and reinterpret stored rows.
 
-**This replaced an earlier scheme** that ranked every suffix on one
-arbitrary within-year order (`T1 < T2 < T3 < T4 < I < II < S`,
-`ordinal = year * 10 + rank`). That order was a fiction as soon as two
-calendars were in play, and it is what made the 2021 PhD rule look as
-though it oscillated between tracks (see §7). Migration
-`0004_session_type_month_ordinals.sql` renumbers the stored ordinals.
+Sessions are deliberately **not** ranked on one arbitrary within-year order
+such as `T1 < T2 < T3 < T4 < I < II < S`. That ordering is a fiction as soon
+as two calendars run concurrently: two sessions beginning in the same
+calendar month must resolve to the same ruleset, and a rank-based order
+cannot express that — it would place them an arbitrary number of ranks
+apart instead of tying them. Migration `0004_session_type_month_ordinals.sql`
+computes the month-offset ordinal for every stored session record.
 
 **A session is governed by the policy in force at its start.** Because
 sessions span several months while the timeline is monthly, a policy change
@@ -187,9 +191,9 @@ began under and semester II picks the new ones up. That is also the right
 academic answer: you do not restate the rules a student is already being
 graded under.
 
-Chronology has exactly one definition. `domain/transcript.py` used to keep
-its own `suffixes` list and sort a student's sessions by its index; it now
-calls `acad_session.sorted_sessions()`, and
+Chronology has exactly one definition: `acad_session.sorted_sessions()`.
+`domain/transcript.py` calls it to order a student's sessions rather than
+keeping a private copy of the suffix order, and
 `tests/test_acad_session.py::test_transcript_code_keeps_no_private_session_chronology`
 fails if a second copy reappears — because if the two ever disagreed a
 transcript would accumulate in one order while policy resolved in another,
@@ -292,128 +296,75 @@ however many courses a transcript touches.
 
 ---
 
-## 7. Findings from building this
+## 7. Scope: a version governs an instant, not a cohort
 
-Three things surfaced that are worth acting on separately.
+A policy version is in force for an *instant* on the shared monthly
+timeline (§4), so every session beginning in that month — across every
+calendar an institution runs — resolves to the same version. This is a
+hard boundary on what effective-dating alone can express: a rule that
+needs to answer differently for two sessions naming the same instant (for
+example, a semester programme's `2021-I` and a quarter programme's
+`2021-T1`, both starting July) cannot be represented as one effective-dated
+series, because the store is answering "what ruleset governs this point in
+time," not "what ruleset governs this specific calendar."
 
-**1. The 2021 PhD rule cannot be stored as one effective-dated series.**
-Not "is awkward to store" — cannot. A policy version is in force for an
-*instant*, so every session beginning in that month resolves to it. The
-2021 rule branches on the session *suffix*, and two suffixes from
-different calendars can name the same instant, at which point the rule
-demands two different answers for one point in time:
+```
+Jul 2021  ──►  one instant  ──►  one ruleset, shared by 2021-I and 2021-T1
+```
 
-| instant | sessions | earned-credit set | CGPA set |
-| --- | --- | --- | --- |
-| Jul 2021 | `2021-I` | widened | **widened** |
-| Jul 2021 | `2021-T1` | widened | **default** |
-| Jan 2022 | `2021-II` | **widened** | default |
-| Jan 2022 | `2021-T3` | **default** | default |
-
-Read per calendar the rule makes much more sense, and matches its origin:
-the pandemic years, when semester- and quarter-based programmes ran side
-by side. The quarter track widens the earned-credit set for `T1`/`T2` and
-then reverts for `T3`/`T4` — but only because `T3`/`T4` fall through to the
-`else` branch that logs "Unknown academic semester", i.e. they were never
-handled at all. The semester track is monotonic in the earned-credit set,
-but its CGPA set takes the widened value at `2021-I` and at no other
-session in either calendar, ever.
-
-So this was not an amendment that took effect on a date; it was
-per-calendar improvisation, and no arrangement of rows could reproduce it.
-
-**Resolved by retiring it.** The product has never been deployed, so there
-are no transcripts computed under those branches to preserve. Rather than
-carry the contradiction forward — either as a per-calendar in-code table or
-as rows someone would have to defend — the PhD rules are now simply the
-PhD rules, seeded as one baseline version, and any future change is an
-ordinary new version. The characterization test that pinned all eight
-branches (`test_phd_grade_c_minus_policy_matrix`) was deleted deliberately;
-the note where it stood in `tests/test_gpa_computation.py` records why.
-
-What survives is the property the episode taught us — **one instant, one
-ruleset** — pinned as `test_the_store_cannot_hold_two_rulesets_for_one_instant`,
-with `test_a_single_instant_amendment_resolves_across_both_calendars`
-showing what a well-formed amendment looks like instead. Had this product
-been live, the outcome would have been the opposite: the rule would have
-had to be recorded faithfully, which is precisely the situation Phase C's
-cohort-scoped policy is designed for.
-
-**2. Grade sets used to be matched by substring — now resolved, except in
-one place.** The old rules held grade sets as comma-separated strings and
-tested membership with `in`, which is substring matching, not set
-membership. Every one of those sets was checked against the full 16-grade
-vocabulary in `vocab_defaults.py` before the change, and for every
-recognised grade substring and membership agree — including `"C-"` against
-`"A,A-,B,B-,C"`, where `C` is last and nothing follows it. So the
-conversion to `frozenset` is behaviour-preserving, and the grade sets are
-real collections now.
-
-The one exception is **enrolment types**. `enrol_type in "C,CM,CC"` treats
-a stray one-character code like `"M"` as a credit enrolment, because `"M"`
-appears inside `"CM"`. None of the four real enrolment types (A, C, CM,
-CC) is affected, so the quirk is only reachable with invalid data — but
-`tests/test_gpa_computation.py` characterises it, so it is preserved
-deliberately, as a named and *versioned* field:
-`credit_enrol_type_match`, either `"substring"` (the default, today's
-behaviour) or `"exact"` (correct). Because it is versioned, an institution
-can adopt `"exact"` effective from an open session without altering a
-single historical transcript — which is a better outcome than either
-silently "fixing" it or leaving it undocumented.
-
-**3. The migration runner did not support SQL containing a literal `%`.**
-`schema_migrations.py` ran each script through peewee's `execute_sql()`,
-which always passes a parameter sequence to psycopg2, even an empty one —
-so psycopg2 treated every `%` in the script as a placeholder introducer.
-That ruled out a `LIKE` pattern, a `to_char()` format, or the plpgsql
-`RAISE ... %` substitutions migration `0003` needs. Fixed by running
-migration scripts through a plain cursor with no parameter argument
-(`schema_migrations._execute_script`), which skips client-side
-interpolation entirely. Regression test:
-`test_migration_containing_a_percent_sign_is_applied_verbatim`.
+A rule that genuinely needs to vary by calendar, or by cohort, belongs to a
+different axis of variation than effective-dating: it is a scoping
+question ("whose rules are these"), not a timing question ("when did they
+start"). §10's proposed cohort-scoped session modes are the mechanism for
+that axis — a policy dimension orthogonal to, and layered on top of, the
+effective-dating described here.
 
 ---
 
-## 8. What this phase deliberately did not do
+## 8. The grading policy payload
 
-`domain/policy.py` declares the `grading` group and builds a stored
-payload into the `GradingPolicy` the computation takes.
-`load_grading_policy(acad_session)` resolves the ruleset in force for a
-session, preferring a stored version and falling back to the in-code
+`domain/policy.py` declares the `grading` group's payload shape and turns a
+stored (or baseline) version into the `GradingPolicy` the computation
+takes. `load_grading_policy(acad_session)` resolves the ruleset in force
+for a session, preferring a stored version and falling back to the in-code
 baseline; `resolve_grading_policy(acad_session)` is the stored-only
-counterpart, for when you need to know what is actually recorded.
+counterpart, for when the caller needs to know what is actually recorded
+rather than what's authoritative for a transcript.
 
-`compute_cgpa_sgpa_ec` now carries no policy of its own, and
-`tests/test_gpa_computation.py` — which characterises its behaviour to the
-digit — passes unchanged, byte for byte. What changed:
+`compute_cgpa_sgpa_ec` (`domain/transcript.py`) carries no policy of its
+own — every rule that can vary by degree or by session lives in the
+payload:
 
-- **`apply_phd_amendment` and the `phd_amendment_*` fields are gone**, along
-  with every `if degree == "BTE"` / `elif degree == "PHD"`. A ruleset maps
-  degree code -> programme class (`degree_classes`, with
-  `default_degree_class` for anything unlisted) and holds one
-  `programme_rules` block per class. Class names are arbitrary, and a block
-  may carry its own `grade_points` — which is what "the grade definitions
-  changed for the PhD programme" is, as one complete version.
-- **Grade sets are `frozenset`s** end to end; see §7.2 for why that is
-  behaviour-preserving, and for the one field that keeps an explicit match
-  mode.
+- **Degree classification is data.** A ruleset maps degree code ->
+  programme class (`degree_classes`, with `default_degree_class` for
+  anything unlisted) and holds one `programme_rules` block per class. Class
+  names are arbitrary, and a block may carry its own `grade_points` —
+  which is how a grade-definition change scoped to one programme class
+  becomes one complete version.
+- **Grade sets are `frozenset`s**, matched by real set membership rather
+  than string containment, with one exception: `credit_enrol_type_match`
+  (`"substring"`, the default, or `"exact"`) governs whether enrolment-type
+  membership (`credit_enrol_types`, e.g. `"C,CM,CC"`) is matched by
+  substring or by exact membership. Because it is a versioned field, an
+  institution can adopt `"exact"` matching effective from an open session
+  without altering how any historical transcript was computed.
 - **The LTP format is policy** (`separator`, `field_count`,
   `credits_index`, `required_indices`, `format_label`) rather than a
   hardcoded five-part `L-T-P-S-C` assumption.
 - **The SGPA/CGPA denominators stay in code**, as `sgpa_denominator()` and
   `cgpa_denominator()`. They are structural: every term is an accumulator
   the computation defines, and what each one *means* is already
-  configurable. Making the formula itself configurable would take an
-  expression language evaluated against grade data, or a row of booleans
-  enumerating the combinations someone happened to imagine; changing this
-  arithmetic changes what SGPA *means*, which deserves a review and a test
-  rather than an admin screen. They are functions so the one definition is
-  shared — the CGPA formula used to be restated in `courses_perf_filtered`.
-  Only the rounding is configurable (`gpa_decimal_places`).
-- **`passed_course_grades` has one home.** The list of grades that count as
-  a pass was typed into the `get_passed_courses` HTTP handler as well as
-  the computation, with the two differing by `"S"`. They are both off the
-  ruleset now, and still two fields, deliberately: `"S"` is a pass but
+  configurable through the grade sets above. Making the formula itself
+  configurable would take an expression language evaluated against grade
+  data, or a row of booleans enumerating every combination someone might
+  imagine; changing this arithmetic changes what SGPA *means*, which
+  deserves a review and a test rather than an admin screen. They are
+  functions with one definition, shared by every caller including
+  `courses_perf_filtered`. Only the rounding is configurable
+  (`gpa_decimal_places`).
+- **`passed_course_grades` has one home**, shared by the computation and
+  the `get_passed_courses` HTTP handler. It is deliberately a separate
+  field from `cgpa_grades` rather than derived from it: `"S"` is a pass but
   cannot be a CGPA grade, and `cgpa_grades` is per programme class while
   the passed-courses listing is not — deriving one from the other would
   silently stop a PhD student's `"D"` counting as a pass.
@@ -432,7 +383,7 @@ no database at all. That fallback is a convenience, not a second source of
 truth: there is exactly one shipped ruleset and the seeder stores that same
 object.
 
-Two known gaps, both intentional:
+### Known limitations
 
 - **No way to withdraw a not-yet-effective version through the public
   API.** `supersede` is the only write operation, as specified. The model
@@ -446,101 +397,94 @@ Two known gaps, both intentional:
 
 ---
 
-## 9. Recommendation: `StudentCredits` and frozen results
-
-> *Should `StudentCredits` become the frozen authoritative record once a
-> session closes?*
-
-**Yes to freezing, no to "authoritative" — and start by noticing that the
-table is currently write-only.**
-
-### What is actually there today
+## 9. Open extension: recording what was published
 
 `StudentCredits` (`models.py`) stores `cgpa`, `sgpa`, `cred_earned`,
-`cred_registered`, `cred_earned_total` per `(student, acad_session)`. It is
-written by exactly one place — `__process_credits_gen_request` in
+`cred_registered`, `cred_earned_total` per `(student, acad_session)`. Today
+it is written by exactly one place — `__process_credits_gen_request` in
 `api_reports.py`, a background job an ACA/DEA triggers by hand — and that
-writer **upserts**: re-running it overwrites the previous figures in place.
+writer **upserts**: re-running it overwrites the previous figures in
+place. Nothing reads it back; every transcript recomputes from raw
+enrolments each time. So the table is not currently authoritative for
+anything, and correspondingly there is no existing read path that a
+redesign would need to migrate.
 
-Nothing reads it. Not Python, not `sql_statements.toml`, not the webapp.
-Transcripts recompute from raw enrolments every time. So it is not
-currently authoritative for anything; it is a stale by-product of a job
-someone may or may not have run. Any plan should start from that rather
-than from the assumption that it holds trustworthy history.
+That recomputation should stay the source of truth for "what do the rules
+say, given the enrolment data as it stands" — versioned policy is what
+makes that reproducible, since the ruleset is pinned to the session rather
+than to whatever the code says today. But it cannot answer "what did we
+tell the student in 2021," a fact about the past that no recomputation can
+recover once anything upstream changes (a re-evaluation, a late withdrawal,
+a corrected grade entry). Both questions are legitimate and distinct;
+`StudentCredits` is where the second one's answer would be recorded.
 
-That is also good news: there is no read path to migrate, so the table can
-be reshaped freely.
+The design this section proposes, only meaningful once the rules an
+institution actually runs are stored as policy versions rather than
+implied by code:
 
-### The recommendation
-
-**Keep recomputation as the source of truth. Add a frozen record of what
-was *published*, and reconcile the two.**
-
-The distinction is the whole point:
-
-- *"What do the rules say, given the enrolment data as it stands?"* —
-  computed, and as of this phase reproducible, because the ruleset is
-  pinned to the session rather than to whatever is in the code today.
-- *"What did we tell the student in 2021?"* — a fact about the past that
-  no recomputation can recover once anything upstream changes.
-
-Both are needed, and conflating them is what creates the problem. Making
-the snapshot authoritative for computation sounds safer but is worse: a
-legitimate correction — a re-evaluation, a late withdrawal approved by the
-DEA, a grade entry fixed — would then have no honest path except mutating
-the frozen record, which reintroduces exactly what this design removes.
-
-Concretely, and **only after the grading rules are actually on the policy
-store** (recording a policy version id is meaningless while the rules are
-still hardcoded):
-
-1. **Repurpose `StudentCredits`** rather than adding a third table. It has
-   no readers, so there is nothing to break, and a second table covering
-   the same ground would be the "one overloaded concept" problem in
-   reverse.
-
-2. **Add provenance.** A frozen figure is only worth having if you can say
-   what produced it: the resolved `PolicyVersion` id per policy group, and
-   a digest of the inputs (enrolment ids, grades, enrol types, credits).
-   Without provenance a mismatch later is unattributable, which makes the
-   snapshot near-useless for the validation this is for.
-
-3. **Make it append-only, sealed by the same mechanism.** Change the
+1. **Repurpose `StudentCredits`** rather than add a third table — it has
+   no readers today, so there is nothing to break, and a second table
+   covering the same ground would be the "one overloaded concept" problem
+   this whole design (§2) exists to avoid, in reverse.
+2. **Record provenance alongside the figures**: the resolved
+   `PolicyVersion` id per policy group, and a digest of the inputs
+   (enrolment ids, grades, enrol types, credits) that produced them.
+   Without provenance, a later mismatch is unattributable.
+3. **Make it append-only, sealed the same way policy is.** Change the
    unique key from `(student, acad_session)` to
    `(student, acad_session, revision)`, change the writer from upsert to
-   append, and reuse `ClosedAcademicSession` as the seal — the same
-   trigger pattern as `PolicyVersion`. A correction becomes a new revision
-   with a reason, never an `UPDATE`. The transcript shows the latest
-   revision; an audit shows the chain.
+   append, and reuse `ClosedAcademicSession` as the seal. A correction
+   becomes a new revision with a reason, never an `UPDATE`; the transcript
+   shows the latest revision, an audit shows the chain.
+4. **Reconcile, and make a mismatch loud.** Recompute and compare against
+   the frozen figures for a closed session on a schedule (and after any
+   policy supersede touching a closed session's group); report
+   differences rather than silently overwriting either side. This is what
+   catches a rule change whose effect on already-published results wasn't
+   fully understood.
+5. **Derive the cumulative figure rather than freezing it**, since
+   `cred_earned_total` is cumulative across sessions and a correction to
+   an early session would otherwise invalidate every later snapshot. If
+   the cumulative figure genuinely has to be frozen because it appears on
+   an issued document, a correction implies re-issuing later revisions
+   too — worth making explicit rather than letting the numbers quietly
+   disagree.
 
-4. **Add a reconciliation check, and make a mismatch loud.** Recompute and
-   compare against the frozen figures for a closed session; report
-   differences, never silently overwrite. This is the snapshot-to-validate-
-   against you asked for, and it catches precisely the class of bug this
-   whole effort is about — someone changing a rule and not realising what
-   it touched. Run it as a background job after any policy supersede that
-   affects a closed session's group, and on demand.
+This is sequenced after cohort-scoped session modes (§10): what a result
+must record as provenance includes which calendar the cohort was on, so
+freezing results is not worth building before that lands.
 
-5. **Watch `cred_earned_total`.** It is cumulative across sessions, so a
-   correction to an early session invalidates the cumulative figure in
-   every later snapshot. Freeze the per-session figures and derive the
-   cumulative at render time; or, if the cumulative genuinely has to be
-   frozen (it appears on an issued document), accept that a correction
-   requires re-issuing later revisions too, and make that explicit rather
-   than letting the numbers quietly disagree.
+## 10. Open extension: cohort-scoped session modes
 
-### Sequencing
+Session mode (semester / trimester / quarter) is, today, an institution-wide
+choice expressed by which suffixes `acad_session.SESSION_TYPES` declares.
+Some institutions need a single cohort — one degree, department and entry
+year — to run on a different mode for a bounded period (a batch moved to a
+trimester-like schedule for one term, then back), while the rest of the
+institution stays on its usual calendar. That is a cohort-scoped
+assignment, layered on top of the timeline in §4 rather than a change to
+it: **which** calendar a cohort follows over a period is a different
+question from **when** a policy version takes effect, and the two need to
+compose (§7).
 
-```
-policy storage + resolution                                    [done]
-session timeline: per-calendar month ordinals                  [done]
-grading rules onto the store, seeded, 2021 rule retired        [done]
-cohort-scoped session modes (Phase C)                          [next]
-freeze results with provenance + reconciliation                [after]
-```
+Sketch of the shape this would take:
 
-Phase C is what lets a single batch move between session modes for a
-bounded period, which is the situation the 2021 rule was a botched attempt
-at handling. Freezing results is not worth starting before it lands: what a
-result must record as its provenance includes which calendar the cohort was
-on.
+- **A mode registry with globally unique suffixes.** A new mode's suffixes
+  must not collide with an existing one's (adding trimester `T1`/`T2`/`T3`
+  would collide with the existing quarter `T1..T4`), so the ordinal stays
+  unambiguous. No existing session string is ever rewritten, which is what
+  keeps the immutable SQL ordinal function and its `CHECK` constraint
+  intact.
+- **Cohort calendar assignment as an append-only, effective-dated series**,
+  keyed on `(degree, dept, entry_year)`, with the end of each assignment
+  derived from the next row — the same mechanism `PolicyVersion` uses.
+- **A scope on policy versions**, resolved most-specific-first (e.g.
+  `BTE:2023` → `BTE` → institution-wide), since calendar assignment cannot
+  be folded into a payload: two cohorts of the same degree can need
+  different answers at the same instant.
+
+Validity rules a cohort's calendar assignment would need to enforce: a
+switch may only take effect at a boundary of the outgoing mode (a running
+term already has attendance, grades and fees attached to it); a cohort's
+assignments must tile its timeline with no gap or overlap; and an offering
+serving cohorts on different modes must be refused.

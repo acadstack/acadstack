@@ -1,5 +1,5 @@
-"""Tests for the Phase 1 migration runner (schema_migrations.py) and
-default-data seeder (default_seed_data.py).
+"""Tests for the migration runner (schema_migrations.py) and default-data
+seeder (default_seed_data.py).
 
 Both modules are pure DB-side tooling with no route/RBAC surface, so
 these tests drive them directly against the real test database (via the
@@ -61,10 +61,10 @@ def test_seed_defaults_empty_specs_is_a_noop(db):
 
 
 def test_seed_defaults_seeds_vocab_rows(db):
-    # Phase 3 populates SEED_SPECS with one SystemSetting row per
-    # controlled vocabulary (see vocab_defaults.ALL); Phase 8 adds one more
-    # per named permission (see permissions.py). A fresh DB should get all
-    # of them on first run, and none again on a second run.
+    # SEED_SPECS holds one SystemSetting row per controlled vocabulary
+    # (see vocab_defaults.ALL) and one more per named permission (see
+    # permissions.py). A fresh DB should get all of them on first run, and
+    # none again on a second run.
     import permissions as PERM
     import settings_store as ST
     import vocab_defaults as VD
