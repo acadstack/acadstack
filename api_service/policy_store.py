@@ -613,15 +613,18 @@ def validate_payload(group: str, payload) -> Mapping:
     frozen = _freeze(payload)
     errors = []
 
-    if spec.builder is not None:
+    # The validator goes first and lists every problem; the builder only
+    # runs on a payload the validator passed, so a builder is free to
+    # assume the shape and a problem is not reported twice.
+    if spec.validator is not None:
+        errors.extend(_run_validator(spec.validator, frozen, group))
+
+    if spec.builder is not None and not errors:
         try:
             spec.builder(frozen)
         except Exception as ex:
             errors.append(f"{group}: payload cannot be built into its typed "
                           f"form: {ex}")
-
-    if spec.validator is not None:
-        errors.extend(_run_validator(spec.validator, frozen, group))
 
     if errors:
         raise PolicyValidationError(errors)

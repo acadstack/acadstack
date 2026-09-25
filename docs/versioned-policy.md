@@ -343,8 +343,21 @@ counterpart, for when the caller needs to know what is actually recorded
 rather than what's authoritative for a transcript.
 
 `compute_cgpa_sgpa_ec` (`domain/transcript.py`) carries no policy of its
-own — every rule that can vary by degree or by session lives in the
-payload:
+own — every rule a Senate could amend lives in the payload, and nothing
+else does. The payload's keys are exactly `grade_points`,
+`degree_classes`, `default_degree_class`, `programme_rules`,
+`credit_enrol_types`, `excluded_grades` and `passed_course_grades`; one
+declarative field table in `domain/policy.py` drives building, storing and
+validating them, and a rejection lists every problem at once. Unknown keys
+are refused on write and ignored on read, so a version stored before a
+field was retired still builds.
+
+What is deliberately *not* in the payload: the `"ENRO"` status and `"S"`
+grade the computation relies on, and the two-decimal rounding, are
+constants in `domain/transcript.py`; a course's credit value is the stored
+`Course.credits`, computed from L/T/P by `common.compute_course_ltp` when
+the course is saved, so the transcript never re-parses the LTP string.
+
 
 - **Degree classification is data.** A ruleset maps degree code ->
   programme class (`degree_classes`, with `default_degree_class` for
@@ -352,16 +365,10 @@ payload:
   names are arbitrary, and a block may carry its own `grade_points` —
   which is how a grade-definition change scoped to one programme class
   becomes one complete version.
-- **Grade sets are `frozenset`s**, matched by real set membership rather
-  than string containment, with one exception: `credit_enrol_type_match`
-  (`"substring"`, the default, or `"exact"`) governs whether enrolment-type
-  membership (`credit_enrol_types`, e.g. `"C,CM,CC"`) is matched by
-  substring or by exact membership. Because it is a versioned field, an
-  institution can adopt `"exact"` matching effective from an open session
-  without altering how any historical transcript was computed.
-- **The LTP format is policy** (`separator`, `field_count`,
-  `credits_index`, `required_indices`, `format_label`) rather than a
-  hardcoded five-part `L-T-P-S-C` assumption.
+- **Grade sets and `credit_enrol_types` are `frozenset`s**, matched by
+  real set membership rather than string containment. (Enrolment types
+  used to be matched by substring against `"C,CM,CC"`, so a stray `"M"`
+  counted as credit; that is fixed, not kept as an option.)
 - **The SGPA/CGPA denominators stay in code**, as `sgpa_denominator()` and
   `cgpa_denominator()`. They are structural: every term is an accumulator
   the computation defines, and what each one *means* is already
@@ -371,8 +378,7 @@ payload:
   imagine; changing this arithmetic changes what SGPA *means*, which
   deserves a review and a test rather than an admin screen. They are
   functions with one definition, shared by every caller including
-  `courses_perf_filtered`. Only the rounding is configurable
-  (`gpa_decimal_places`).
+  `courses_perf_filtered`.
 - **`passed_course_grades` has one home**, shared by the computation and
   the `get_passed_courses` HTTP handler. It is deliberately a separate
   field from `cgpa_grades` rather than derived from it: `"S"` is a pass but

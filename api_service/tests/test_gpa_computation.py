@@ -1,10 +1,11 @@
 """Characterization tests for api_course_enrolment.__compute_cgpa_sgpa_ec.
 
-These tests pin down the function's CURRENT behavior exactly -- including
-several oddities that look like bugs (see the "documented oddities" tests
-at the bottom) -- so that a later refactor (moving this policy into
-DB-backed configuration) can be checked against them. None of these bugs
-are fixed here; only characterized.
+These tests pin down the function's behavior exactly, so that a refactor
+of the policy it reads can be checked against them. Two oddities they used
+to characterise have since been fixed deliberately, and the tests at the
+bottom now expect the corrected behaviour: enrolment types were matched by
+substring, and a malformed LTP string raised a raw IndexError (credits now
+come from the stored Course.credits instead).
 
 No app/DB fixtures are needed: __compute_cgpa_sgpa_ec is a pure function
 over plain dicts, with no I/O.
@@ -23,10 +24,11 @@ import api_course_enrolment as ace
 compute = getattr(ace, "__compute_cgpa_sgpa_ec")
 
 
-def course(acad_session="2022-I", ltp="3-1-0-5-3", enrol_type="C",
+def course(acad_session="2022-I", credits=3, enrol_type="C",
            enrol_status="ENRO", grade="A", code="CS101"):
-    return {"acad_session": acad_session, "ltp": ltp, "enrol_type": enrol_type,
-            "enrol_status": enrol_status, "grade": grade, "code": code}
+    return {"acad_session": acad_session, "credits": credits,
+            "enrol_type": enrol_type, "enrol_status": enrol_status,
+            "grade": grade, "code": code}
 
 
 # ===================== Basic UG (BTE) behavior =====================
@@ -94,9 +96,9 @@ def test_ug_satisfactory_grade_counts_as_earned_credit_but_zeroes_gpa():
 
 def test_multiple_courses_accumulate():
     courses = [
-        course(code="CS101", grade="A", ltp="3-1-0-5-3"),
-        course(code="CS102", grade="B", ltp="3-0-2-7-4"),
-        course(code="CS103", grade="F", ltp="3-1-0-5-3", enrol_status="AREJ"),  # skipped
+        course(code="CS101", grade="A", credits=3),
+        course(code="CS102", grade="B", credits=4),
+        course(code="CS103", grade="F", credits=3, enrol_status="AREJ"),  # skipped
     ]
     result = compute(courses, "BTE")
     # CS103 is skipped entirely (not ENRO).
@@ -146,38 +148,31 @@ def test_phd_grade_d_never_counts_for_cgpa_in_any_branch():
         assert result["sgpa"] == 4.0, acad_session  # gpm["D"] = 4
 
 
-# ===================== Documented oddities (bugs, not fixed) =====================
+# ===================== Enrolment type and credits =====================
 
-def test_oddity_enrol_type_is_substring_matched_not_list_matched():
-    # `is_credit_course = c["enrol_type"] in "C,CM,CC"` is a *substring*
-    # check on a literal string, not a membership check against a list of
-    # codes. It happens to give the right answer for the real domain of
-    # enrol_type values (A/C/CM/CC), but a stray single-letter value like
-    # "M" (not a real enrol_type in static_data.json) would incorrectly be
-    # treated as a credit course purely because "M" is a substring of
-    # "C,CM,CC". Locking this in so a refactor doesn't accidentally
-    # "fix" it and change real ec/sgpa/cgpa results for CM/CC courses.
+def test_enrol_type_is_matched_by_exact_membership():
+    # The rule used to be `enrol_type in "C,CM,CC"`, a substring test on a
+    # joined string, so a stray code like "M" counted as a credit course
+    # because "M" appears inside "CM". It is now exact membership: an
+    # unrecognised enrolment type earns nothing.
     result = compute([course(enrol_type="M", grade="A")], "BTE")
-    assert result["ec"] == 3          # treated as a credit course
-    assert result["cgpa"] == 10.0
+    assert result["ec"] == 0
+    assert result["cgpa"] == 0
+    assert result["creg"] == 3        # still registered, like an audit
+    for real in ("C", "CM", "CC"):
+        assert compute([course(enrol_type=real)], "BTE")["ec"] == 3, real
 
 
-def test_oddity_malformed_two_field_ltp_raises_indexerror_not_acadstackexception():
-    # The LTP validation `if len(ltp) < 2 or not (ltp[0] and ltp[2])` will
-    # index ltp[2] even when len(ltp) == 2, raising a raw IndexError
-    # instead of the intended AcadStackException. Any caller expecting to
-    # catch AcadStackException for bad data will not catch this.
-    with pytest.raises(IndexError):
-        compute([course(ltp="3-1")], "BTE")
+def test_credits_come_from_the_stored_course_value_not_the_ltp_string():
+    # Course.credits is computed from L/T/P when the course is saved; the
+    # transcript no longer re-parses the LTP string.
+    result = compute([course(credits=4.5)], "BTE")
+    assert result["creg"] == 4.5
+    assert result["ec"] == 4.5
 
 
-def test_ltp_with_missing_credits_field_raises_acadstackexception_missing():
+def test_a_course_with_no_stored_credits_raises_a_domain_error():
+    # A course whose LTP could not be parsed at save time has no credits.
     from common import AcadStackException
-    with pytest.raises(AcadStackException, match="LTP data missing"):
-        compute([course(ltp="3-1-")], "BTE")
-
-
-def test_ltp_with_wrong_field_count_raises_acadstackexception_format():
-    from common import AcadStackException
-    with pytest.raises(AcadStackException, match="not in L-T-P-S-C format"):
-        compute([course(ltp="3-1-0")], "BTE")
+    with pytest.raises(AcadStackException, match="Credits missing"):
+        compute([course(credits=None)], "BTE")
