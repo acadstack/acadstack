@@ -25,6 +25,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import models as DB  # noqa: E402
+import settings_store as ST  # noqa: E402
 from conftest import create_user, login_as  # noqa: E402
 from domain import course as CRS  # noqa: E402
 from domain import dc as DCD  # noqa: E402
@@ -418,6 +419,100 @@ def test_workflow_admin_endpoints(client, wfdb):
     assert res.json["status"] == "OK", res.json
     assert WF.load("dc") == DCD.BASELINE
 
+
+
+def _login_workflow_admin(client, login_id):
+    sup = create_user("SUP", login_id)
+    login_as(client, sup.login_id)
+
+
+def test_workflow_list_and_view_endpoints(client, wfdb):
+    _login_workflow_admin(client, "wf_admin2")
+    res = client.get("/acadstack/workflows")
+    assert res.json == {"status": "OK", "body": WF.names()}
+    assert {"course", "dc", "enrolment"} <= set(res.json["body"])
+
+    body = client.get("/acadstack/workflow/course").json["body"]
+    assert [s["code"] for s in body["statuses"]] == \
+        ST.vocab_codes(CRS.BASELINE.status_vocab)
+    assert body["special_statuses"] == {"any": WF.ANY, "new": WF.NEW,
+                                        "same": WF.SAME}
+    assert "course.submit" in body["permissions"]
+    assert body["registered"] == WF.registered_steps()
+
+
+def test_workflow_endpoints_need_manage_workflows(client, wfdb):
+    aca = create_user("ACA", "wf_aca1")
+    login_as(client, aca.login_id)
+    assert client.get("/acadstack/workflows").json["status"] == "ERROR"
+    assert client.get("/acadstack/workflow/dc").json["status"] == "ERROR"
+    res = client.post("/acadstack/workflow_save",
+                      json=DCD.BASELINE.to_json())
+    assert res.json["status"] == "ERROR"
+
+
+def test_workflow_view_of_an_unknown_workflow(client, wfdb):
+    _login_workflow_admin(client, "wf_admin3")
+    res = client.get("/acadstack/workflow/nope")
+    assert res.json["status"] == "ERROR"
+    assert "Unknown workflow" in res.json["body"]
+
+
+def test_workflow_save_reports_errors_against_their_rows(client, wfdb):
+    _login_workflow_admin(client, "wf_admin4")
+    d = CRS.BASELINE.to_json()
+    d["transitions"][2]["permission"] = "course.no_such"
+    d["transitions"][4]["guards"] = ["no.such.guard"]
+    d["checks"] = [{"name": "no.such.check"}]
+    res = client.post("/acadstack/workflow_save", json=d)
+    assert res.json["status"] == "ERROR"
+    body = res.json["body"]
+    assert body["stranded"] == {}
+    assert "Invalid workflow definition" in body["message"]
+    by_row = {(e["row"], e["message"].split(": ", 1)[-1])
+              for e in body["errors"]}
+    assert by_row == {(None, "no.such.check"),
+                      (2, "unknown permission 'course.no_such'."),
+                      (4, "unknown guard 'no.such.guard'.")}
+    assert WF.load("course") == CRS.BASELINE
+
+
+@pytest.mark.parametrize("change,drop,message", [
+    ({"priority": "abc"}, None, "Row 2: priority must be a whole number."),
+    ({"priority": ""}, None, "Row 2: priority must be a whole number."),
+    ({}, "permission", "Row 2: 'permission' is required."),
+])
+def test_workflow_save_reports_malformed_rows(client, wfdb, change, drop,
+                                              message):
+    # What a half-filled editor row sends: rejected against that row, not
+    # as an unexpected server error.
+    _login_workflow_admin(client, "wf_admin5")
+    d = CRS.BASELINE.to_json()
+    d["transitions"][1].update(change)
+    if drop:
+        del d["transitions"][1][drop]
+    res = client.post("/acadstack/workflow_save", json=d)
+    assert res.json["status"] == "ERROR", res.json
+    errors = res.json["body"]["errors"]
+    assert [e["row"] for e in errors] == [1]
+    assert errors[0]["message"].startswith("Row 2: ")
+    assert message in errors[0]["message"]
+
+
+def test_workflow_save_reports_stranded_statuses(client, wfdb):
+    fac = create_user("FAC", "crs_fac8")
+    course = _course_save(client, fac, code="CS707", title="T",
+                          ltp="3-0-0")["body"]
+    _course_step(client, fac, course, "HAP")
+
+    _login_workflow_admin(client, "wf_admin6")
+    res = client.post("/acadstack/workflow_save",
+                      json=_without_hod_review(CRS.BASELINE))
+    assert res.json["status"] == "ERROR"
+    body = res.json["body"]
+    assert body["stranded"] == {"HAP": 1}
+    assert [e["row"] for e in body["errors"]] == [None]
+    assert "HAP (1)" in body["errors"][0]["message"]
 
 # ===================== milestones =====================
 

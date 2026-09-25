@@ -88,3 +88,10 @@ def test_entry_with_a_permission_list_is_visible_to_holders_of_any(hrefs_for):
     assert "#/admin.policy" in hrefs_for("SUP")
     assert "#/admin.policy" in hrefs_for("DEA")
     assert "#/admin.policy" not in hrefs_for("ACA")
+
+
+def test_permission_and_workflow_admin_entries_follow_their_permissions(hrefs_for):
+    for href in ["#/admin.permissions", "#/admin.workflows"]:
+        assert href in hrefs_for("SUP")
+        for role in ["ACA", "DEA", "FAC", "HOD"]:
+            assert href not in hrefs_for(role)

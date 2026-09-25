@@ -36,6 +36,10 @@ def init_routes(bp: Blueprint):
                      methods=['POST'])
     bp.add_url_rule('/settings_delete', view_func=settings_delete,
                      methods=['POST'])
+    bp.add_url_rule('/permissions_describe', view_func=permissions_describe,
+                     methods=['GET'])
+    bp.add_url_rule('/permissions_save', view_func=permissions_save,
+                     methods=['POST'])
 
 
 @rbac(permissions=[_PERM])
@@ -75,3 +79,28 @@ async def settings_delete():
             "be reset here.")
     CI.guarded_delete_setting(key, login_id=apiVC.current_login_id())
     return apiVC.ok_json(_visible(ST.describe_settings()))
+
+
+# ===================== permission->role mapping =====================
+# The "permission" group excluded above, on its own screen and behind its
+# own permission, written only through save_permission_mapping() so the
+# self-lockout guard always applies.
+
+@rbac(permissions=[PERM.MANAGE_PERMISSIONS])
+async def permissions_describe():
+    """Every declared permission with its doc, default and current roles,
+    plus the role vocabulary -- see permissions.describe_mapping()."""
+    return apiVC.ok_json(PERM.describe_mapping(apiVC.current_actor()))
+
+
+@rbac(permissions=[PERM.MANAGE_PERMISSIONS])
+async def permissions_save():
+    """Saves {"values": {permission_name: [role_code, ...]}} for the
+    permissions being changed; answers with the updated mapping."""
+    fd = await request.get_json(force=True)
+    values = fd.get("values") or {}
+    if not values:
+        return apiVC.error_json("Nothing supplied to save.")
+    actor = apiVC.current_actor()
+    PERM.save_permission_mapping(values, actor)
+    return apiVC.ok_json(PERM.describe_mapping(actor))

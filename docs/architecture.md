@@ -130,7 +130,7 @@ The enrolment, doctoral committee and course approval chains are
 database-backed transition tables (`WorkflowDefinition` / `WorkflowTransition`),
 resolved by `domain/workflow.py`. An institution adds or removes an approval step
 by editing rows (`POST /workflow_save`, permission `system.manage_workflows`), not
-code. The frontend's action buttons come from `GET /workflow_actions/<name>/<id>`.
+code; the **Approval Workflows** admin screen (see Admin GUI below) is the GUI for it. The frontend's action buttons come from `GET /workflow_actions/<name>/<id>`.
 The PhD milestone sequence is data as well (`MilestoneDefinition`). See
 [workflows.md](workflows.md).
 
@@ -184,7 +184,8 @@ When removing or editing an existing role, update every permission in
 `permissions.py` that grants it. `system.manage_permissions` (seeded to `SUP`) gates
 editing the mapping itself, and `permissions.save_permission_mapping()` refuses a
 save that would remove the acting admin's own role from it, so an admin can never
-lock themselves out.
+lock themselves out. The mapping is edited on the **Permissions** admin screen (see
+Admin GUI under System settings).
 
 ### Using permissions in the frontend
 Permissions also control the visibility/state of UI components. `api_service/nav.json`
@@ -394,7 +395,28 @@ the generic Settings screen: `api_settings.py`'s `_EXCLUDED_GROUPS` blocks it, b
 it has its own write path, `permissions.save_permission_mapping()`, with a
 self-lockout guard (refuses to save a change that would drop the acting admin's own
 role from `system.manage_permissions`) and its own permission
-(`system.manage_permissions`).
+(`system.manage_permissions`). It has its own screen instead:
+
+- **Permissions** (`#/admin.permissions`, `system.manage_permissions`,
+  `api_settings.py` + `PermissionsAdmin.vue`) — a permissions × roles checkbox matrix,
+  grouped by permission prefix (`course.`, `grades.`, …, with the menu-only `nav.`
+  group last), each row showing the permission's doc and whether it differs from its
+  declared default. `permissions_describe` returns `permissions.describe_mapping()`;
+  `permissions_save` takes `{"values": {name: [role, ...]}}` for the changed
+  permissions only and goes through `save_permission_mapping()`. The one cell the
+  lockout guard would refuse to clear (the admin's own role on
+  `system.manage_permissions`) is disabled on screen as well. A user's menu is built
+  from their permissions at login, so it reflects a change only after they next log in.
+- **Approval Workflows** (`#/admin.workflows`, `system.manage_workflows`,
+  `api_wflow.py` + `WorkflowAdmin.vue`) — pick a workflow (`GET /workflows`), edit its
+  transition table as rows (`GET /workflow/<name>` also returns the registered
+  guard/check/effect names, the workflow's statuses and the declared permissions for
+  the dropdowns), and save the whole definition (`POST /workflow_save`). A refused
+  save answers with a structured ERROR body, `{"message", "errors": [{"row", "message"}],
+  "stranded": {status: count}}`, where `row` is the index into the submitted
+  `transitions` (null for the workflow as a whole; from `domain/workflow.problems()`),
+  so the screen shows each problem against its row. `status_vocab` and `match_on` are
+  shown read-only: changing either means rewriting every row, which is not a table edit.
 
 ### Referential integrity on configuration changes
 
@@ -429,7 +451,9 @@ inserts `vocab_defaults.py`'s lists as rows, export walks the same stores and
 serializes whatever is actually recorded; import feeds a document back through the
 same validated write paths the admin GUI uses (`save_settings`, `supersede`,
 `save_permission_mapping` for the `"permission"` group, so its lockout guard still
-applies).
+applies). That guard (`permissions.check_no_self_lockout()`) is also run in the
+validation pass, so a document that would lock the importer out fails before anything
+is written.
 
 Settings/vocab/permission groups are a full-overwrite snapshot: importing replaces
 this install's effective values for every group the document names, atomically (all

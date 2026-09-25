@@ -62,6 +62,8 @@ import CourseAttendance from "../components/CourseAttendance.vue"
 import SystemSettingsAdmin from "../components/SystemSettingsAdmin.vue"
 import AcademicPolicyAdmin from "../components/AcademicPolicyAdmin.vue"
 import ConfigTransfer from "../components/ConfigTransfer.vue"
+import PermissionsAdmin from "../components/PermissionsAdmin.vue"
+import WorkflowAdmin from "../components/WorkflowAdmin.vue"
 
 // 2. Define routes
 const appRoutes = [{
@@ -376,6 +378,16 @@ const appRoutes = [{
   name: 'admin.config_transfer',
   path: '/admin.config_transfer',
   component: ConfigTransfer
+},
+{
+  name: 'admin.permissions',
+  path: '/admin.permissions',
+  component: PermissionsAdmin
+},
+{
+  name: 'admin.workflows',
+  path: '/admin.workflows',
+  component: WorkflowAdmin
 }
 ]
 

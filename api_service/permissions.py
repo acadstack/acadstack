@@ -60,27 +60,72 @@ def permissions_for_role(role_code: str) -> list:
     )
 
 
-def save_permission_mapping(values: dict, actor) -> dict:
-    """Saves permission->role mapping changes, guarded against lockout.
-
-    ``values`` is ``{permission_name: [role_code, ...]}`` for the
-    permissions being changed (settings_store keys, i.e. without the
-    "permission." prefix are also accepted and normalized here).
-    Refuses a save that would drop the acting user's own role from
-    MANAGE_PERMISSIONS -- an admin must always be able to get back in.
-    """
-    normalized = {
+def _normalized(values: dict) -> dict:
+    """``values`` keyed by full settings_store key ("permission.<name>"),
+    whether or not the caller included the prefix."""
+    return {
         (k if k.startswith(f"{GROUP}.") else f"{GROUP}.{k}"): v
         for k, v in values.items()
     }
+
+
+def check_no_self_lockout(values: dict, actor) -> None:
+    """The guard save_permission_mapping() applies, on its own.
+
+    Raises AcadStackException if ``values`` (as accepted by
+    save_permission_mapping()) would drop ``actor``'s own role from
+    MANAGE_PERMISSIONS -- an admin must always be able to get back in.
+    Exposed so a caller that writes other things alongside the mapping
+    (config_transfer.import_config()) can fail up front, before any of
+    its writes, rather than have save_permission_mapping() raise midway.
+    """
     manage_key = f"{GROUP}.{MANAGE_PERMISSIONS}"
-    if manage_key in normalized and actor.role not in normalized[manage_key]:
+    normalized = _normalized(values)
+    if manage_key in normalized and \
+            actor.role not in (normalized[manage_key] or []):
         raise AcadStackException(
             "You cannot remove your own role from "
             f"'{MANAGE_PERMISSIONS}' -- this would lock every "
             "administrator out of managing permissions. Have another "
             "administrator make this change instead.")
-    return ST.save_settings(normalized, login_id=actor.login_id)
+
+
+def save_permission_mapping(values: dict, actor) -> dict:
+    """Saves permission->role mapping changes, guarded against lockout.
+
+    ``values`` is ``{permission_name: [role_code, ...]}`` for the
+    permissions being changed (settings_store keys, i.e. with the
+    "permission." prefix, are also accepted and normalized here).
+    Refuses a save that would drop the acting user's own role from
+    MANAGE_PERMISSIONS (see check_no_self_lockout()).
+    """
+    check_no_self_lockout(values, actor)
+    return ST.save_settings(_normalized(values), login_id=actor.login_id)
+
+
+def describe_mapping(actor) -> dict:
+    """The permission->role mapping as the admin screen renders it: every
+    declared permission with its doc, default and current roles, plus the
+    role vocabulary for the matrix columns. ``actor_role`` lets the screen
+    show up front which cell the lockout guard will refuse to clear."""
+    group = ST.declared_groups()[GROUP]
+    return {
+        "roles": [{"code": r["code"], "label": r["label"]}
+                  for r in ST.vocab("roles")],
+        "permissions": [
+            {
+                "name": name,
+                "prefix": name.split(".", 1)[0],
+                "doc": spec.doc,
+                "default": list(spec.default),
+                "roles": list(roles_for_permission(name) or []),
+            }
+            for name, spec in sorted(group.specs.items())
+        ],
+        "group_doc": group.doc,
+        "manage_permission": MANAGE_PERMISSIONS,
+        "actor_role": actor.role,
+    }
 
 
 #: Every role code except STU -- the shape of "any staff member, not a

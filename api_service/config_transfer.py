@@ -255,21 +255,14 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
             f"permission->role mapping); importing it requires the "
             f"acting user, so the self-lockout guard can be applied.")
     elif permission_values and actor is not None:
-        # Mirrors permissions.save_permission_mapping()'s own guard,
-        # checked here too so a lockout-violating document is rejected in
-        # the validation pass -- before other_values below have been
-        # written -- rather than raising mid-write after settings were
-        # already applied. save_permission_mapping() still re-checks this
-        # at write time; this is not a replacement for that guard, just an
-        # earlier chance to fail the whole import atomically.
-        manage_key = f"{PERM.GROUP}.{PERM.MANAGE_PERMISSIONS}"
-        if manage_key in permission_values and \
-                actor.role not in permission_values[manage_key]:
-            errors.append(
-                f"Cannot import '{manage_key}': it would remove the "
-                f"importing user's own role from it, locking every "
-                f"administrator out of managing permissions. Have another "
-                f"administrator import this document instead.")
+        # save_permission_mapping()'s own guard, run here in the
+        # validation pass too, so a lockout-violating document fails the
+        # whole import before other_values below have been written rather
+        # than midway through.
+        try:
+            PERM.check_no_self_lockout(permission_values, actor)
+        except AcadStackException as ex:
+            errors.append(str(ex))
 
     if other_values:
         try:
