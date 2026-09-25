@@ -303,6 +303,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.cfg_file_path, "r") as cfg_file:
         cfg = json.load(cfg_file)
+        cfg["db_name"], cfg["db_args"] = C.db_config_from_env(cfg)
         if "demo_data" in cfg and cfg["demo_data"]:
             setup_db_with_demo_data(cfg)
         else:

@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging, re, random, string, threading, toml
+import logging, os, re, random, string, threading, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -23,6 +23,39 @@ from json import JSONEncoder
 
 from models import db
 from email_client import Emailer
+
+
+def db_config_from_env(config=None):
+    """DB connection config, preferring the POSTGRES_*/DB_HOST/DB_PORT env
+    vars (the same ones the running server reads -- see
+    acadstack_app.py's _load_config_from_env()) over a config.json file's
+    db_name/db_args.
+
+    config.json and the env vars are two separate config surfaces (see
+    README.md) that must otherwise be hand-kept in sync; a stale db_args
+    in a locally-edited config.json (e.g. "host": "localhost" instead of
+    the Docker service name "db") is a recurring source of connection
+    errors in demo_data.py/migrate.py. Env vars winning here means those
+    scripts connect the same way the server does whenever the env is
+    sourced (docker-compose's env_file, or `source app_env_vars.env`),
+    with config.json's db_name/db_args only used as a fallback for
+    whichever of these aren't set.
+
+    Returns:
+        (db_name, db_args) tuple, matching the shape of
+        config["db_name"]/config["db_args"].
+    """
+    config = config or {}
+    db_args = dict(config.get("db_args", {}))
+    db_args["user"] = os.environ.get("POSTGRES_USER", db_args.get("user"))
+    db_args["password"] = os.environ.get("POSTGRES_PASSWORD",
+                                         db_args.get("password"))
+    db_args["host"] = os.environ.get("DB_HOST", db_args.get("host",
+                                                            "localhost"))
+    db_args["port"] = os.environ.get("DB_PORT", db_args.get("port", 5432))
+    db_name = os.environ.get("POSTGRES_DB", config.get("db_name"))
+    return db_name, db_args
+
 
 class JSONEncoderWithDate(JSONEncoder):
     def default(self, obj):
