@@ -66,15 +66,38 @@ The `docker buildx inspect` command will confirm that the builder is ready and s
 1. Follow the same steps to build and push the image for acadstack-frec-service:
 `docker buildx build --platform linux/amd64 -t sodhix/acadstack-frec-service:v.01 --file frec_service/Dockerfile --load .`
 
+### Running the stack locally with docker-compose-local.yml
+
+`docker-compose-local.yml` builds the images from source (as opposed to `docker-compose.yml`,
+which pulls the prebuilt `sodhix/acadstack-*` images) and is meant for day-to-day local
+development. `source app_env_vars_debug.env && docker compose -f docker-compose-local.yml up -d`
+starts Postgres, the backend and the face-recognition service.
+
+The backend container in this compose file runs `api_service/docker-entrypoint-dev.sh`
+instead of the Dockerfile's default `python main.py`. With `AUTO_DEMO_DATA=true` (the default
+in `app_env_vars_debug.env`), it checks whether the schema already exists and, only the first
+time (an empty `./pgdata` volume), runs `python demo_data.py config.json` for you before
+starting the server -- so `docker compose up` on a fresh checkout comes up with demo data
+already loaded. It never re-runs against a schema that's already there, so restarting the
+containers afterwards doesn't wipe your local data. Set `AUTO_DEMO_DATA=false` (or remove it)
+to skip this and start with an empty database instead. This is dev-only: `docker-compose.yml`'s
+prebuilt images still use the Dockerfile's default CMD and are unaffected.
+
 ## Running the application
 
 After setting up the workspace as per the steps listed above you can deploy and run the application for development. Following are the steps:
 
-**Note:** `config.json` and `app_env_vars.env` are two separate config surfaces, and both
-need matching database credentials. `config.json` is read only by the one-off bootstrap
-scripts (`demo_data.py`, `migrate.py`); the running server (`main.py`) reads its
-configuration entirely from environment variables (`app_env_vars.env`), never from
-`config.json`. If you change the DB password in one, change it in the other too.
+**Note:** `config.json` and `app_env_vars.env` are two separate config surfaces.
+`config.json` is read only by the one-off bootstrap scripts (`demo_data.py`,
+`migrate.py`); the running server (`main.py`) reads its configuration entirely from
+environment variables (`app_env_vars.env`), never from `config.json`. The bootstrap
+scripts' database connection (`db_name`/`db_args`) prefers the same env vars
+(`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DB_HOST`, `DB_PORT`) whenever
+they're set in the current environment, falling back to `config.json`'s values only for
+whichever aren't -- so as long as you've sourced `app_env_vars.env` first, the two
+surfaces don't need to be hand-kept in sync for the DB connection. `config.json` still
+supplies its own `email`/`upload_folder`/`demo_data` settings, which have no env
+equivalent.
 
 1. `cd ./webapp`
 1. Compile the VueJS app: `npm run build`
@@ -125,10 +148,9 @@ root@2f1cd5e70109:/app#
 ```
 1. In the above container shell, run the following to create the demo data:
 `python demo_data.py config.json`. `config.json` here is the copy baked into the image at
-build time (it is not mounted from the host), so it already has DB credentials matching
-`app_env_vars.env`; if you changed the DB password in `app_env_vars.env` you must edit
-`config.json` inside this same container shell to match before running the command. You
-should see something like the following:
+build time (it is not mounted from the host); its DB connection settings are overridden by
+the container's own environment (from `app_env_vars.env`), so there's nothing to edit even
+if you changed the DB password there. You should see something like the following:
 ```bash
 $ docker exec -it acadstack_backend /bin/bash
 root@2f1cd5e70109:/app# python demo_data.py config.json 

@@ -53,17 +53,13 @@ logging.basicConfig(level=logging.DEBUG, handlers=[rfh_info, rfh_error],
 TS_FORMAT = "%Y%m%d_%H%M%S"
 
 def _load_config_from_env():
+    db_name, db_args = C.db_config_from_env()
     return {
         "host": os.environ.get('APP_HOST', "localhost"),
         "port": os.environ.get('APP_PORT'),
         "frec_port": os.environ.get('FREC_PORT'),
-        "db_name": os.environ.get('POSTGRES_DB'),
-        "db_args": {
-            "user": os.environ.get('POSTGRES_USER'),
-            "password": os.environ.get('POSTGRES_PASSWORD'),
-            "host": os.environ.get('DB_HOST', "localhost"),
-            "port": os.environ.get('DB_PORT', 5432),
-        },
+        "db_name": db_name,
+        "db_args": db_args,
         "email": {
             "user": os.environ.get('EMAIL_USER'),
             "password": os.environ.get('EMAIL_PASSWORD'),
