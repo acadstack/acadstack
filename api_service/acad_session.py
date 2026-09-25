@@ -4,14 +4,10 @@ An academic session is written ``YYYY-S``, where ``S`` is a suffix
 belonging to one of the declared session types below. This module turns
 that string into a position on a shared timeline, so that "which policy
 was in force for session X" is a comparison rather than a special case
-per suffix.
-
-Why this is a module of its own, with no imports
-------------------------------------------------
-It is used from the bottom of the import graph upward (``policy_store``,
-``api_common``, domain code), and the policy tables' SQL twin of
-:func:`ordinal` in migrations/0001_baseline.sql must agree with it, so it
-is deliberately dependency-free: pure string/int work, no DB, no config.
+per suffix. It is deliberately dependency-free (no DB, no config): it
+sits at the bottom of the import graph (``policy_store``, ``api_common``
+and domain code all use it), and its :func:`ordinal` must agree with the
+SQL twin in migrations/0001_baseline.sql.
 
 Session types run in parallel, not in sequence
 ----------------------------------------------
@@ -26,11 +22,6 @@ declared per session type in :data:`SESSION_TYPES`, and its ordinal is
 **equal ordinals**, which is the correct answer to "which ruleset was in
 force" -- policy in force in that month governs both.
 
-A rank-based order (``T1 < T2 < T3 < T4 < I < II < S``) would be a
-fiction: it would place ``2021-T1`` four ranks before ``2021-I`` though
-they start together, making a policy change landing partway through the
-year look like it oscillated between tracks.
-
 A session is governed by the policy in force at its START
 --------------------------------------------------------
 Because sessions span several months while the timeline is monthly, a
@@ -43,16 +34,14 @@ which began at month 3 and is already under way. That is also the right
 academic answer: you do not restate the rules under which a student is
 already being graded.
 
-Why the order is derived from the session CODE, not from the calendar
----------------------------------------------------------------------
-``AcademicCalendar`` already records a start date per session, and
-ordering by that date would be the more "real" chronology. It is
-nevertheless the wrong basis for effective-dated policy: an admin
-correcting a calendar date years later would silently move the boundary
-between two policy versions, and so change transcripts that have already
-been issued. Deriving the order from the session code plus the fixed
-table below makes the ordering a property of the session itself, which is
-what immutability needs. See ``policy_store.py``.
+The order comes from the session code, not the calendar
+---------------------------------------------------------
+``AcademicCalendar`` records a start date per session, but ordering by
+that date would let an admin's later correction to a calendar date
+silently move the boundary between two policy versions and change
+transcripts already issued. Deriving the order from the session code plus
+the fixed table below makes ordering a property of the session itself,
+which is what immutability needs. See ``policy_store.py``.
 
 :data:`SESSION_TYPES` is APPEND-ONLY
 ------------------------------------

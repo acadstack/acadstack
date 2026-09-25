@@ -231,6 +231,41 @@ is shown in Fig. 2 below.
 `sql_by_id()` reads from that cache. Use `common.reload_sql_statements()` after editing
 the file in a running dev server.
 
+### Async view functions and blocking work
+
+Every `api_*.py` route handler is `async def` (137 of them across the module), but
+peewee has no async driver: every ORM call and every `db.execute_sql()` runs
+synchronously against `psycopg2` regardless of the `async def` on the handler. That is
+the framework's baseline, not a bug — for the ordinary indexed queries most handlers
+issue (single-row lookups, bounded result sets for CSV/Excel exports), the block is on
+the order of milliseconds, no worse than the blocking any other synchronous web
+framework does per request.
+
+`api_grades.py`'s three single-record PDF downloads
+(`download_consolidated_grade_sheet`, `download_sem_grade`,
+`download_degree_certifcate`) were the exception: each called `pdfkit.from_string`
+directly inline, which shells out to an external renderer process rather than making a
+DB call, so nothing bounds its duration the way an index bounds a query's (page count,
+embedded images under `assets-degree`, whatever I/O the renderer itself does).
+Unlike `_bulk_download_sem_grade` and `__process_credits_gen_request` — the actually
+heavy per-student loops in `api_grades.py`/`api_reports.py` — which already run off
+the event loop via `tasks_helper.create_task`'s `loop.run_in_executor`, these three ran
+on every other request's critical path: while one student's PDF rendered, that worker
+served nothing else. They are now wrapped with `quart.utils.run_sync`, the same
+executor-offload `run_in_executor` performs, applied at the one blocking call rather
+than to the handler as a whole (each still does `await send_file(...)` afterwards, so
+it can't become a plain sync view).
+
+Wall-clock measurement of `pdfkit.from_string` itself wasn't possible in this
+environment — `wkhtmltopdf`'s Homebrew formula is gone, the upstream project having
+been archived — so the decision rests on the structural difference above rather than a
+timed number: a call to an external process, reachable from an ordinary user-facing
+request, is worth offloading regardless of its actual duration. The raw-SQL export
+handlers in `api_reports.py` are deliberately left as they are, consistent with every
+other DB-touching `async def` handler in the codebase; revisit one only if it is shown
+to be slow in practice (a large unindexed scan, not the general pattern). Converting
+every peewee-backed handler wholesale would need an async DB driver or `run_sync` on
+every DB call — a framework-level change, out of scope here.
 
 ## System settings (database-backed configuration)
 Institution-configurable settings live in the `SystemSetting` table, not in
@@ -311,24 +346,23 @@ runtime config, which is a separate and harder problem):
 
 (`student_cgpa`'s parameterized `NOT IN (%s, %s, %s, %s, %s, %s)` was also checked — it
 has no caller anywhere in the codebase, so it carries no live duplication.) Also
-unchanged: status/DC-role literals inside `webapp/src/main.js`'s role-identity computed
-properties (`isStudent`, `isFaculty`, ... -- these express who the user *is*, which is
-deliberately left alone; see the RBAC section above for the permission-backed
-`hasPermission()` alongside them), and the several `user.role`/`m.role` comparisons in
-`webapp/src/components/UserDetails.vue` and `DcSearch.vue` that pick which fields or
-data to show for the record being viewed rather than deciding what the viewer may do --
-the frontend counterpart of the `DB.User.role == "STU"` data-filter queries the backend
-RBAC section above excludes for the same reason. The three components' actual
-authorisation-type/duplicate-list literals have been converted:
-`UserDetails.vue`'s `canSave` (previously `isSuperuser || isAcad || isDean`, which had
-drifted from the backend's actual `user.edit_any` check and silently omitted the
-self-edit case) now reads `hasPermission("user.edit_any")` plus an explicit self-edit
-check, matching `api_auth.user_save()`; `GradesUpload.vue`'s `is_valid_grade()` now
-reads its grade list from `SD.CourseGrades` instead of a hand-typed duplicate; and
-`DcSearch.vue`'s member-role badge coloring, which used the same buggy comma-string
-substring form `enrolment.override` was fixed of (`'SU,CO'.includes(m.role)`), now does
-a real array membership check. It still hardcodes the DC_ROLES code-to-color mapping
-itself, since the `SD` vocab carries labels, not colors.
+unchanged, deliberately: status/DC-role literals inside `webapp/src/main.js`'s
+role-identity computed properties (`isStudent`, `isFaculty`, ...), and the
+`user.role`/`m.role` comparisons in `webapp/src/components/UserDetails.vue` and
+`DcSearch.vue` that pick which fields or data to show for the record being viewed.
+These express who the user *is*, or which record they're looking at, rather than an
+authorization decision, so they stay outside the permission system — see the RBAC
+section above for `hasPermission()` alongside them.
+
+**Follow-up work: the "-Select-" placeholder is still injected server-side.** The
+`with_blank` flag in `STATIC_DATA_KEYS` above has `api_common.static_data_dict()`
+prepend `{"id": "", "value": "-Select-"}` to each flagged vocabulary before it reaches
+the frontend. Moving that into the frontend would be the more conventional place for a
+UI-only concern, but every `SD`-backed `<select>` (15+ components, e.g. `StudentSearch.vue`)
+relies on the placeholder already being row 0 of the array rather than rendering its
+own — dropping the server-side injection would silently remove the blank option from
+all of them at once unless a shared helper replaced it everywhere in the same change.
+That is not a small, contained change, so it stays server-side for now.
 
 
 ## Versioned academic policy (effective-dated)

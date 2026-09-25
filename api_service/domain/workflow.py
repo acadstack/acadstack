@@ -1,12 +1,11 @@
 """Declarative approval workflows: transitions as data, logic by name.
 
-An approval workflow (enrolment, doctoral committee, course) used to be
-an if/elif chain in code. It is now a table: each row says *from* which
-status a record may move *to* which status, which named permission that
-takes, which guards must hold for the row to apply, which checks must
-pass before the move is made, and what happens afterwards. An
-institution adds or removes an approval step by editing rows (see
-:func:`save_workflow`), not code.
+An approval workflow (enrolment, doctoral committee, course) is a table:
+each row says *from* which status a record may move *to* which status,
+which named permission that takes, which guards must hold for the row to
+apply, which checks must pass before the move is made, and what happens
+afterwards. An institution adds or removes an approval step by editing
+rows (see :func:`save_workflow`), not code.
 
 What stays in code, referenced from the rows by name:
 

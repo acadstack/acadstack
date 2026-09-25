@@ -1,15 +1,11 @@
 """Effective-dated academic policy: versioned rulesets keyed on session.
 
-The problem this exists for
----------------------------
-``compute_cgpa_sgpa_ec`` (domain/transcript.py) carries a grade ->
-point map, three earned-credit grade sets, and a policy amendment
-implemented as a hardcoded branch on the year ("Adjustment for PhD
-passing grades introduced in 2021"). That branch is the proof that
-academic policy cannot simply be *replaced*: a 2019 transcript must keep
-computing under the 2019 rules forever. Policy is therefore not a
-setting you overwrite, it is a series of versions each of which owns a
-range of academic sessions.
+Why versioned, not overwritten
+-------------------------------
+A 2019 transcript must keep computing under the 2019 rules forever, so
+academic policy cannot simply be replaced in place. Policy is therefore
+not a setting you overwrite, it is a series of versions each of which
+owns a range of academic sessions.
 
 The model
 ---------

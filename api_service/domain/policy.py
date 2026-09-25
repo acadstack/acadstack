@@ -18,22 +18,18 @@ under the 2019 rules forever. So the grade->point map, the earned-credit
 and CGPA grade sets, the credit-bearing enrolment types, the excluded and
 passing grades and the degree classification all live in ``policy_store``
 as complete rulesets keyed on the session they take effect from.
-:func:`load_grading_policy` resolves the one in force for a session.
-
-Nothing here branches on a year. The "PhD passing grades introduced in
-2021" rule used to be an ``if year > 2021 / elif year < 2021 / else`` on
-the academic session inside the computation loop; it is now
-:data:`BASELINE_GRADING_VERSIONS`, an ordinary effective-dated table.
+:func:`load_grading_policy` resolves the one in force for a session, and
+nothing here branches on a year -- policy amendments such as the PhD
+passing-grade change are just another entry in
+:data:`BASELINE_GRADING_VERSIONS`.
 
 Programme classes, not a UG/PG/PhD enum
 ---------------------------------------
-The computation used to ask ``if degree == "BTE"`` for the UG rules and
-``elif degree == "PHD"`` for the PhD rules, with every other degree code
-falling through to PG. Institutions use different codes, and a programme
-can need its own rules for reasons that have nothing to do with degree
-level, so a ruleset maps **degree code -> programme class** and then
-holds one rule block per class. Class names are arbitrary; unmapped
-degrees take :attr:`GradingPolicy.default_degree_class`.
+Institutions use different degree codes, and a programme can need its own
+rules for reasons that have nothing to do with degree level, so a ruleset
+maps **degree code -> programme class** and then holds one rule block per
+class. Class names are arbitrary; unmapped degrees take
+:attr:`GradingPolicy.default_degree_class`.
 
 __author__ = "Balwinder Sodhi"
 __copyright__ = "Copyright 2025"
