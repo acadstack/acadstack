@@ -314,12 +314,21 @@ has no caller anywhere in the codebase, so it carries no live duplication.) Also
 unchanged: status/DC-role literals inside `webapp/src/main.js`'s role-identity computed
 properties (`isStudent`, `isFaculty`, ... -- these express who the user *is*, which is
 deliberately left alone; see the RBAC section above for the permission-backed
-`hasPermission()` alongside them), `webapp/src/components/UserDetails.vue`,
-`GradesUpload.vue` (a duplicate grade list used for client-side validation) and
-`DcSearch.vue` — these read session values against hardcoded string literals rather
-than the `SD` vocab data, so they still work today but would need a matching manual
-edit if a code set changes. Migrating these three components' literals onto
-`hasPermission()` remains an open follow-up.
+`hasPermission()` alongside them), and the several `user.role`/`m.role` comparisons in
+`webapp/src/components/UserDetails.vue` and `DcSearch.vue` that pick which fields or
+data to show for the record being viewed rather than deciding what the viewer may do --
+the frontend counterpart of the `DB.User.role == "STU"` data-filter queries the backend
+RBAC section above excludes for the same reason. The three components' actual
+authorisation-type/duplicate-list literals have been converted:
+`UserDetails.vue`'s `canSave` (previously `isSuperuser || isAcad || isDean`, which had
+drifted from the backend's actual `user.edit_any` check and silently omitted the
+self-edit case) now reads `hasPermission("user.edit_any")` plus an explicit self-edit
+check, matching `api_auth.user_save()`; `GradesUpload.vue`'s `is_valid_grade()` now
+reads its grade list from `SD.CourseGrades` instead of a hand-typed duplicate; and
+`DcSearch.vue`'s member-role badge coloring, which used the same buggy comma-string
+substring form `enrolment.override` was fixed of (`'SU,CO'.includes(m.role)`), now does
+a real array membership check. It still hardcodes the DC_ROLES code-to-color mapping
+itself, since the `SD` vocab carries labels, not colors.
 
 
 ## Versioned academic policy (effective-dated)

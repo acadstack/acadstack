@@ -290,7 +290,8 @@ export default {
       return this.$route.params.id > 0;
     },
     canSave() {
-      return this.isSuperuser || this.isAcad || this.isDean;
+      return this.hasPermission("user.edit_any") ||
+        this.user.id === this.currentUser.id;
     },
     isBatchAdvisor() {
       return this.user.batch !== undefined;

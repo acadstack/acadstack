@@ -62,6 +62,22 @@ def test_every_declared_permission_choice_is_a_real_role():
                 f"permission '{name}' grants unknown role {code!r}"
 
 
+@pytest.mark.parametrize("name,default", [
+    # The six permissions that replace the validate_course_instructor()
+    # allowed_role=[...] bypasses and raw is_user_in_role() checks this
+    # phase converted -- see each Spec's doc in permissions.py.
+    ("course_offering.edit_any", ["ACA", "DEA", "HOD"]),
+    ("course_offering.view_all_running", ["ACA", "DEA", "SUP"]),
+    ("grades.upload_any", ["ACA", "DEA"]),
+    ("dc.mark_attendance_any", ["ACA", "DEA"]),
+    ("dc.view_daywise_attendance", ["SUP", "ACA", "DEA", "HOD"]),
+    ("enrolment.view_grades_export", ["ACA", "DEA", "HOD"]),
+])
+def test_role_check_conversion_permissions_have_the_expected_default(
+        name, default):
+    assert PERM.roles_for_permission(name) == default
+
+
 # ===================== Actor.can() =====================
 
 def test_actor_can_reflects_the_permission_mapping():

@@ -129,9 +129,6 @@ def describe_mapping(actor) -> dict:
 #: student" that recurs across the inline checks this phase converts.
 ALL_BUT_STU = [r for r in VD.codes("roles") if r != "STU"]
 
-#: Every role code except STU and PLA -- nav.json's "-STU,-PLA" shape.
-ALL_BUT_STU_PLA = [r for r in VD.codes("roles") if r not in ("STU", "PLA")]
-
 #: Every role code except PLA -- nav.json's "-PLA,*" shape.
 ALL_BUT_PLA = [r for r in VD.codes("roles") if r != "PLA"]
 
@@ -255,10 +252,28 @@ ST.declare_group(
               "Create/edit a course offering."),
         _spec("course_offering.edit_after_close", ["ACA", "DEA"],
               "Edit a course offering that has finished/been cancelled."),
+        _spec("course_offering.edit_any", ["ACA", "DEA", "HOD"],
+              "Edit a course offering without being its coordinating "
+              "instructor. Replaces api_course_offering.py's "
+              "course_offering_save() inline "
+              "validate_course_instructor(cid, ['ACA', 'DEA', 'HOD']) "
+              "bypass."),
+        _spec("course_offering.view_all_running", ["ACA", "DEA", "SUP"],
+              "See every running course offering rather than only the "
+              "ones the actor instructs. Replaces "
+              "api_course_offering.py's get_running_courses() inline "
+              "is_user_in_role(['ACA', 'DEA', 'SUP']) check."),
 
         # --- grades ---
         _spec("grades.upload", ["ACA", "FAC", "DEA"],
               "Upload grades for a course offering."),
+        _spec("grades.upload_any", ["ACA", "DEA"],
+              "Upload grades for a course offering without being its "
+              "coordinating instructor (narrower than grades.upload -- "
+              "no FAC, who must still be the coordinator). Replaces "
+              "api_course_offering.py's grades_upload() inline "
+              "validate_course_instructor(co_id, allowed_role=['ACA', "
+              "'DEA']) bypass."),
         _spec("grades.export", ["ACA", "DEA", "SUP"],
               "View/download grade reports and gradesheets. Collapses "
               "eight sites across api_grades.py and api_reports.py that "
@@ -300,6 +315,12 @@ ST.declare_group(
               "Enrolment approval workflow: approve/reject any enrolment "
               "pending advisor approval, with no ownership check. "
               "Replaces the has_role('HOD') branch of the old chain."),
+        _spec("enrolment.view_grades_export", ["ACA", "DEA", "HOD"],
+              "Include grades in a course offering's enrolment export "
+              "without being its coordinating instructor. Replaces "
+              "domain/enrolment.py's enrolment_export_rows() inline "
+              "validate_course_instructor(co_id, allowed_role=['ACA', "
+              "'DEA', 'HOD'], coordinator_only=False) bypass."),
 
         # --- feedback ---
         _spec("feedback.manage_form", ["ACA", "DEA"],
@@ -328,10 +349,25 @@ ST.declare_group(
 
         # --- doctoral committee / PhD ---
         _spec("dc.mark_attendance", ["ACA", "FAC"], "Mark attendance."),
+        _spec("dc.mark_attendance_any", ["ACA", "DEA"],
+              "Mark attendance for a course offering without being its "
+              "coordinating instructor. Replaces api_dc.py's "
+              "mark_attendance() inline validate_course_instructor(co, "
+              "allowed_role=['ACA', 'DEA']) bypass. DEA is preserved "
+              "from the old role list for parity, though it is "
+              "currently unreachable in practice: the endpoint's own "
+              "dc.mark_attendance permission excludes DEA, so this "
+              "bypass only ever fires for ACA -- a pre-existing gap, "
+              "not fixed here."),
         _spec("dc.view_instructor_academics", ["ACA", "FAC", "HOD", "DEA"],
               "View an instructor's academic workload."),
         _spec("dc.view_advisor_detail", ["FAC", "ACA", "DEA", "HOD"],
               "View a batch advisor's detail."),
+        _spec("dc.view_daywise_attendance", ["SUP", "ACA", "DEA", "HOD"],
+              "View a course offering's day-wise attendance without "
+              "being (one of) its instructors. Replaces api_dc.py's "
+              "get_daywise_attendance() inline validate_course_instructor"
+              "(co_id, ['SUP', 'ACA', 'DEA', 'HOD'], False) bypass."),
         _spec("dc.download_degree_wise_students", ["ACA", "DEA", "HOD"],
               "Download the degree-wise student list."),
         _spec("dc.save", ["ACA", "FAC", "DEA", "HOD"],

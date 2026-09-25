@@ -22,11 +22,8 @@ import settings_store as ST
 from domain import academic_calendar as CAL
 
 
-def validate_course_instructor(co_id, allowed_role="*", coordinator_only=True,
-                               actor=None):
+def validate_course_instructor(co_id, coordinator_only=True, actor=None):
     actor = apiVC.actor_or_current(actor)
-    if allowed_role != "*" and actor.has_role(allowed_role):
-        return True
     ci = DB.CourseInstructor.select().where(
         (DB.CourseInstructor.offering == co_id)
         & (DB.CourseInstructor.instructor == actor.user_id))

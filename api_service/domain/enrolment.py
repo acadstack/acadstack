@@ -617,9 +617,9 @@ def enrolment_export_rows(co_id, is_grades=False, actor: Actor = None) -> tuple:
     """
     sql_id = "enrolled_students"
     if is_grades:
-        if VAL.validate_course_instructor(co_id,
-                                          allowed_role=["ACA", "DEA", "HOD"],
-                                          coordinator_only=False, actor=actor):
+        if (actor is not None and actor.can("enrolment.view_grades_export")) \
+                or VAL.validate_course_instructor(co_id, coordinator_only=False,
+                                                  actor=actor):
             sql_id = "get_course_grades"
         else:
             sql_id = "enrolled_students_for_grades"

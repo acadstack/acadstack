@@ -107,7 +107,7 @@ Component for Doctoral committee
                 {{ m.first_name }} {{ m.last_name }},
                 {{ labelFor(SD.Departments, m.dept_name) }} 
                 <span class="badge rounded-pill" 
-                  :class="{'bg-warning':m.role=='ME','bg-success':'SU,CO'.includes(m.role), 'bg-primary':m.role=='CP'}">
+                  :class="{'bg-warning':m.role=='ME','bg-success':['SU','CO'].includes(m.role), 'bg-primary':m.role=='CP'}">
                   {{ labelFor(SD.DcRoles, m.role) }}</span>
                 </span>
               </li>

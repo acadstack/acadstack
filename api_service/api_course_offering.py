@@ -126,7 +126,8 @@ async def course_offering_save():
                 not VAL.is_hod_for_course_offering(cid, apiVC.logged_in_user().id):
             return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
 
-        if not VAL.validate_course_instructor(cid, ["ACA", "DEA", "HOD"]):
+        if not (apiVC.has_permission("course_offering.edit_any")
+                or VAL.validate_course_instructor(cid)):
             return apiVC.error_json("Only the course cordinator can make changes.")
 
     acad_session = (fd.get("acad_session") or "").upper()
@@ -191,8 +192,9 @@ async def grades_upload():
     if not VAL.is_today_between_events("GRADE_SUB_S", "GRADE_SUB_E",
             co_obj.acad_session):
         return apiVC.error_json("Grades upload is not open!")
-    # Only the course instructor OR dean may upload the course grades            
-    if not VAL.validate_course_instructor(co_id, allowed_role=["ACA", "DEA"]):
+    # Only the course instructor OR an academic-section/dean bypass may upload the course grades
+    if not (apiVC.has_permission("grades.upload_any")
+            or VAL.validate_course_instructor(co_id)):
         return apiVC.error_json("Only the course coordinator can upload grades for the course!")
 
     # Raises exception when change not allowed
@@ -403,7 +405,7 @@ async def offerings_of_course(my_id):
 @C.rbac
 async def fetch_stats(my_id):
     res = {"data_att": [], "Weeks": [], "grades": [], "data": []}
-    if apiVC.logged_in_user().role in ST.setting("course_offering.hide_stats_from"):
+    if apiVC.is_user_in_role(ST.setting("course_offering.hide_stats_from")):
         return apiVC.error_json("DB.Course stats are not visible for you!")
 
     cursor = DB.db.execute_sql(C.sql_by_id("course_grades"), [int(my_id)])
@@ -469,7 +471,7 @@ async def get_running_courses():
     cu = apiVC.logged_in_user()
     coq = DB.CourseOffering.select().join(DB.CourseInstructor)
     coq = coq.where(DB.CourseOffering.status=="R")
-    if not apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+    if not apiVC.has_permission("course_offering.view_all_running"):
         coq = coq.where(DB.CourseInstructor.instructor==cu.id)
     data = []
     for x in coq:
