@@ -5,8 +5,8 @@ Policy-group tests isolate policy_store's registry (mirroring
 test_policy_store.py's `policy` fixture) so they exercise a simple,
 builder-less group rather than the real "grading" group's complex
 payload shape -- export_config()/import_config() only need
-PS.declared_groups()/versions()/validate_payload()/supersede(), which
-behave identically for any declared group.
+PS.declared_groups()/versions()/supersede(), which behave identically for
+any declared group.
 """
 import sys
 from pathlib import Path
@@ -104,7 +104,7 @@ def test_import_rejects_undeclared_settings_group(db):
            "settings": {"nope_not_a_group": {"x": 1}}}
     with pytest.raises(CT.ConfigImportError) as ei:
         CT.import_config(doc)
-    assert "not declared" in str(ei.value)
+    assert "no such setting is declared" in str(ei.value)
 
 
 def test_import_is_all_or_nothing_across_settings_keys(db):
@@ -241,6 +241,25 @@ def test_import_blocks_a_vocab_change_that_orphans_a_referenced_code(db):
     with pytest.raises(CT.ConfigImportError) as ei:
         CT.import_config(doc)
     assert "ZDEG" in str(ei.value)
+    assert "ZDEG" in ST.vocab_codes("degrees")
+
+
+def test_a_failure_in_a_later_write_path_rolls_back_the_earlier_ones(db):
+    """The permission mapping is written before the vocab check fails; the
+    whole import must still leave nothing behind, including in this
+    worker's cache."""
+    items = ST.vocab("degrees") + [{"code": "ZDEG", "label": "Z Degree"}]
+    ST.save_settings({"vocab.degrees": items})
+    create_user("STU", "stu1", degree="ZDEG")
+
+    doc = {"acadstack_config_version": CT.DOCUMENT_VERSION,
+           "settings": {
+               PERM.GROUP: {"user.delete": ["SUP", "DEA"]},
+               "vocab": {"degrees": [it for it in items
+                                     if it["code"] != "ZDEG"]}}}
+    with pytest.raises(CT.ConfigImportError):
+        CT.import_config(doc, actor=SUP)
+    assert "DEA" not in PERM.roles_for_permission("user.delete")
     assert "ZDEG" in ST.vocab_codes("degrees")
 
 

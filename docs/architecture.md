@@ -252,13 +252,14 @@ if setting("enrolment.disable_fees_check", False):
     ...
 ```
 
-A key is `"<group>.<name>"`, matching the row's `group`/`name` columns. Values come
-back already typed. Precedence: stored row, then the caller's `default` argument, then
+A key is `"<group>.<name>"`, matching the row's `group`/`name` columns (unique
+together); the value is one JSONB `value` column and comes back already typed. Precedence: stored row, then the caller's `default` argument, then
 the declared default, then `None`.
 
 Every writable setting must first be declared with a `Spec` in the DECLARATIONS section
 at the bottom of `settings_store.py` (type, default, bounds/choices, optional
-validator, plus an optional cross-field validator per group). Saves go through
+validator). A validator rejects a value by raising `ValueError`, one message per
+argument; `policy_store`'s group validators follow the same convention. Saves go through
 `save_setting()`/`save_settings()`, which validate and reject bad values at write time
 — including any undeclared key — so reads can never fail on a bad value. Startup logs
 (but does not reject) any stored value that fails its declaration.
@@ -434,7 +435,9 @@ still used —
 2. in another setting drawn from the same vocabulary (any declared `Spec` whose
    `choices` matches it — this is what catches "a role that permission mappings
    depend on"); or
-3. in a `WorkflowTransition` under a workflow whose `status_vocab` names it —
+3. in a transition of a workflow whose `status_vocab` names it, as `workflow.load()`
+   resolves it (the definition saved through the workflow editor, else the shipped
+   baseline) —
 
 and raises before any write if so, naming what still depends on it.
 `api_settings.py`'s `settings_save`/`settings_delete` and `config_transfer.py`'s
@@ -449,16 +452,14 @@ document (`export_config()`), and applies such a document back (`import_config()
 It is `default_seed_data.py`'s seeder run in reverse: where the seeder
 inserts `vocab_defaults.py`'s lists as rows, export walks the same stores and
 serializes whatever is actually recorded; import feeds a document back through the
-same validated write paths the admin GUI uses (`save_settings`, `supersede`,
+same guarded write paths the admin GUI uses (`guarded_save_settings`, `supersede`,
 `save_permission_mapping` for the `"permission"` group, so its lockout guard still
-applies). That guard (`permissions.check_no_self_lockout()`) is also run in the
-validation pass, so a document that would lock the importer out fails before anything
-is written.
+applies), all inside one transaction: if any of them rejects part of the document,
+nothing is written.
 
 Settings/vocab/permission groups are a full-overwrite snapshot: importing replaces
-this install's effective values for every group the document names, atomically (all
-values are validated — including the referential-integrity check above — before
-anything is written). Policy groups are different in kind, because `policy_store` is
+this install's effective values for every group the document names, atomically.
+Policy groups are different in kind, because `policy_store` is
 insert-only: a document can only *add* versions, never replace what is already
 recorded. A version whose session already has policy, or that lands at or before the
 install's seal line, cannot be applied; `import_config()` reports that per version

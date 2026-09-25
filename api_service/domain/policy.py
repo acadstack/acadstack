@@ -370,9 +370,9 @@ def build_grading_policy(payload) -> GradingPolicy:
 
 
 def validate_grading_payload(payload):
-    """Every problem with a proposed ruleset, in one list -- the admin UI
-    shows them together, so an admin fixing a ruleset is not made to
-    discover them one at a time.
+    """Raises ValueError carrying every problem with a proposed ruleset, one
+    per argument -- the admin UI shows them together, so an admin fixing a
+    ruleset is not made to discover them one at a time.
 
     Deliberately does not police WHICH grades an institution recognises:
     that is exactly the kind of rule that legitimately changes between
@@ -408,7 +408,8 @@ def validate_grading_payload(payload):
         errors.append(f"default_degree_class {default!r} has no entry in "
                       f"programme_rules -- every degree code not listed in "
                       f"degree_classes would fail")
-    return errors
+    if errors:
+        raise ValueError(*errors)
 
 
 GRADING_GROUP = PS.declare_policy_group(

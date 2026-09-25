@@ -37,7 +37,7 @@ from domain import milestones as MS
 # they introduce DB-backed defaults that must reach existing installs.
 SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = [
     (M.SystemSetting, [
-        dict(group="vocab", name=name, is_json=True, value_json=items)
+        dict(group="vocab", name=name, value=items)
         for name, items in VD.ALL.items()
     ] + [
         # One row per named permission (permissions.py), each defaulted to
@@ -45,7 +45,7 @@ SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = [
         # the call site(s) it replaces. INSERT ... ON CONFLICT DO NOTHING
         # like every other seed row, so an institution that has since
         # edited a permission's role list through the admin GUI keeps it.
-        dict(group=PERM.GROUP, name=name, is_json=True, value_json=spec.default)
+        dict(group=PERM.GROUP, name=name, value=spec.default)
         for name, spec in ST.declared_groups()[PERM.GROUP].specs.items()
     ]),
     # The academic milestone sequence (domain/milestones.py). Keyed on

@@ -27,9 +27,10 @@ Three kinds of usage are checked, for a code being removed from
 2. Other settings whose value is drawn from the same vocabulary -- any
    declared Spec whose `choices` matches the vocabulary's codes, e.g. a
    permission's role list for "roles".
-3. WorkflowTransition rows belonging to a WorkflowDefinition whose
-   `status_vocab` names this vocabulary, via `from_status`/`to_status`
-   (skipping the "*"/"_new"/"=" sentinels, which are not codes).
+3. Transitions of a workflow whose `status_vocab` names this vocabulary,
+   via `from_status`/`to_status` (skipping the "*"/"_new"/"=" sentinels,
+   which are not codes) -- whether the workflow is stored (edited through
+   the workflow editor) or still its shipped baseline.
 
 __author__ = "Balwinder Sodhi"
 __copyright__ = "Copyright 2025"
@@ -42,6 +43,7 @@ from typing import Optional
 import models as M
 import settings_store as ST
 import vocab_defaults as VD
+from domain import workflow as WF
 
 VOCAB_GROUP = "vocab"
 
@@ -126,23 +128,24 @@ def settings_usages(vocab_name: str, code: str) -> list:
 
 
 def workflow_usages(vocab_name: str, code: str) -> list:
-    """WorkflowTransition rows, under a WorkflowDefinition whose
-    status_vocab names this vocabulary, still naming `code` as a
-    from_status/to_status."""
+    """Transitions of any workflow whose status_vocab names this
+    vocabulary that still name `code` as a from_status/to_status. Reads
+    each workflow as workflow.load() resolves it -- the stored definition
+    saved through the workflow editor, else the shipped baseline -- so a
+    code is protected whichever one is in force. Inactive transitions
+    count too, since re-activating one must not strand anything."""
     if code in _WORKFLOW_SENTINELS:
         return []
-    names = [w.name for w in M.WorkflowDefinition.select(M.WorkflowDefinition.name)
-             .where((M.WorkflowDefinition.status_vocab == vocab_name) &
-                    (M.WorkflowDefinition.is_deleted == False))]  # noqa: E712
-    if not names:
-        return []
-    count = (M.WorkflowTransition.select()
-             .where((M.WorkflowTransition.workflow.in_(names)) &
-                    (M.WorkflowTransition.is_deleted == False) &  # noqa: E712
-                    ((M.WorkflowTransition.from_status == code) |
-                     (M.WorkflowTransition.to_status == code)))
-             .count())
-    return [f"{count} WorkflowTransition row(s)"] if count else []
+    found = []
+    for name in WF.names():
+        wf = WF.load(name)
+        if wf.status_vocab != vocab_name:
+            continue
+        count = sum(1 for t in wf.transitions
+                    if code in (t.from_status, t.to_status))
+        if count:
+            found.append(f"{count} transition(s) of the '{name}' workflow")
+    return found
 
 
 def usages_of(vocab_name: str, code: str) -> list:
@@ -170,17 +173,14 @@ def _check_removed_codes(vocab_name: str, removed: set, action: str) -> list:
     return errors
 
 
-def removal_errors_for(key: str, new_value) -> list:
+def _removal_errors(key: str, new_value) -> list:
     """The referential-integrity errors (if any) from writing `new_value`
     to `key`. Empty for any key outside the "vocab" group, or for a vocab
-    write that doesn't drop a still-used code. Public so callers other
-    than this module's own guarded_save_settings() -- e.g.
-    config_transfer.py's import path -- can run the same check as part of
-    their own validate-before-write pass."""
+    write that doesn't drop a still-used code."""
     try:
         group, name = ST.split_key(key)
     except ValueError:
-        return []  # let the caller's own validation report the bad key
+        return []  # save_settings() reports the bad key
     if group != VOCAB_GROUP:
         return []
     removed = _removed_codes(name, new_value)
@@ -195,7 +195,7 @@ def guarded_save_settings(values: dict, login_id: Optional[str] = None) -> dict:
     outside the vocab group pass straight through, unchecked."""
     errors = []
     for key, new_items in values.items():
-        errors.extend(removal_errors_for(key, new_items))
+        errors.extend(_removal_errors(key, new_items))
     if errors:
         raise ST.SettingValidationError(errors)
     return ST.save_settings(values, login_id=login_id)

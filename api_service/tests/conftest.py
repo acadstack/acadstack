@@ -135,6 +135,12 @@ def db(_db_schema):
     ]
     quoted = ", ".join(f'"{m._meta.table_name}"' for m in models_to_truncate)
     _db_schema.execute_sql(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE;")
+    # Outside a request the settings version check is time-boxed, so a
+    # warm cache would otherwise serve the previous test's values.
+    import policy_store
+    import settings_store
+    settings_store.invalidate_cache()
+    policy_store.invalidate_cache()
     yield _db_schema
 
 

@@ -11,7 +11,7 @@ import logging
 from datetime import datetime as DT
 
 import peewee as ORM
-from playhouse.postgres_ext import JSONField
+from playhouse.postgres_ext import BinaryJSONField, JSONField
 from playhouse.pool import PooledPostgresqlExtDatabase
 
 import vocab_defaults as VD
@@ -637,16 +637,14 @@ class AttendancePhoto(BaseModel):
         )
 
 class SystemSetting(BaseModel):
+    """One setting's value (see settings_store.py for the declared types)."""
     group = ORM.CharField(max_length=60, index=True)
     name = ORM.CharField(max_length=200, index=True)
-    is_json = ORM.BooleanField(index=True)
-    value_text = ORM.TextField(null=True)
-    value_json = JSONField(default={}, null=True)
+    value = BinaryJSONField(null=True)
 
     class Meta:
         indexes = (
-            # Unique index
-            (('group', 'name', 'is_json'), True),
+            (('group', 'name'), True),
         )
 
 

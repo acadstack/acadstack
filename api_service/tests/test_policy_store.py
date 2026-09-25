@@ -88,28 +88,20 @@ def test_builder_failure_rejects_the_write(policy):
 
 
 def test_validator_errors_are_all_reported(policy):
-    policy.declare_policy_group(
-        "checked", validator=lambda p: ["first problem", "second problem"])
+    def two_problems(p):
+        raise ValueError("first problem", "second problem")
+
+    policy.declare_policy_group("checked", validator=two_problems)
     with pytest.raises(PS.PolicyValidationError) as ei:
         policy.supersede("checked", "2020-I", {"a": 1})
     assert ei.value.errors == ["checked: first problem",
                                "checked: second problem"]
 
 
-def test_validator_may_raise_or_return_a_string(policy):
-    def raiser(p):
-        raise ValueError("bad ruleset")
-
-    policy.declare_policy_group("r", validator=raiser)
-    policy.declare_policy_group("s", validator=lambda p: "also bad")
-
-    with pytest.raises(PS.PolicyValidationError) as e1:
-        policy.supersede("r", "2020-I", {})
-    assert "bad ruleset" in str(e1.value)
-
-    with pytest.raises(PS.PolicyValidationError) as e2:
-        policy.supersede("s", "2020-I", {})
-    assert "also bad" in str(e2.value)
+def test_a_validator_that_returns_normally_accepts_the_payload(policy):
+    policy.declare_policy_group("ok", validator=lambda p: None)
+    policy.supersede("ok", "2020-I", {"a": 1})
+    assert PS.resolve("ok", "2020-I").payload_dict() == {"a": 1}
 
 
 def test_malformed_effective_session_is_reported_as_a_policy_error(

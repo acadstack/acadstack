@@ -75,9 +75,6 @@ def check_no_self_lockout(values: dict, actor) -> None:
     Raises AcadStackException if ``values`` (as accepted by
     save_permission_mapping()) would drop ``actor``'s own role from
     MANAGE_PERMISSIONS -- an admin must always be able to get back in.
-    Exposed so a caller that writes other things alongside the mapping
-    (config_transfer.import_config()) can fail up front, before any of
-    its writes, rather than have save_permission_mapping() raise midway.
     """
     manage_key = f"{GROUP}.{MANAGE_PERMISSIONS}"
     normalized = _normalized(values)
@@ -150,7 +147,7 @@ ALL_ROLES = VD.codes("roles")
 # section for the overall design.
 
 def _spec(name, default, doc):
-    return ST.Spec(name, list, default=default, item_type=str,
+    return ST.Spec(name, list, default=default,
                     choices=VD.codes("roles"), doc=doc)
 
 
