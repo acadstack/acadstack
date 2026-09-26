@@ -68,6 +68,7 @@ export default {
         console.log(res);
         if (res.data.status == "OK") {
           vm.showKey = true;
+          vm.setStatusMessage(res.data.body);
         } else {
           vm.setStatusMessage(res.data.body);
         }

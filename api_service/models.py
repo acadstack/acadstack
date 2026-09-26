@@ -72,6 +72,10 @@ class BaseModel(ORM.Model):
 class PasswordResetKey(BaseModel):
     login_id = ORM.CharField(max_length=40)
     prk = ORM.CharField(max_length=40)
+    expires_at = ORM.DateTimeField()
+    # Wrong keys entered while this was the latest key; summed across a
+    # login's keys for the reset lockout.
+    failed_attempts = ORM.IntegerField(default=0)
 
 
 class WorkflowNote(BaseModel):

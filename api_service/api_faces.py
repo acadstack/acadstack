@@ -86,7 +86,7 @@ async def kface_bulk_add():
     return apiVC.ok_json("Submitted the photos for processing.")
 
 
-@C.rbac()
+@C.rbac(permissions=["faces.upload_own"])
 async def kface_add():
     ph_file = (await request.files)['photo_file']
     if ph_file.filename == '':

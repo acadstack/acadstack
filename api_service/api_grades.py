@@ -292,7 +292,8 @@ def _bulk_download_sem_grade(form_data, job_key):
 async def bulk_download_sem_grade():
     job_key = str(uuid.uuid4())
     form_data = await request.get_json(force=True)
-    job_key = TH.create_task(_bulk_download_sem_grade, form_data, job_key, task_id=job_key)
+    job_key = TH.create_task(_bulk_download_sem_grade, form_data, job_key,
+                             task_id=job_key, owner=apiVC.current_login_id())
     logging.info(f"Submitted background task (bulk grade download) with key {job_key}")
     return apiVC.ok_json({"job_key": job_key, "message": "Request successfully submitted."})
 

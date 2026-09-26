@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging, re, random, string, threading, toml
+import logging, os, re, secrets, string, threading, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -23,6 +23,39 @@ from json import JSONEncoder
 
 from models import db
 from email_client import Emailer
+
+
+def db_config_from_env(config=None):
+    """DB connection config, preferring the POSTGRES_*/DB_HOST/DB_PORT env
+    vars (the same ones the running server reads -- see
+    acadstack_app.py's _load_config_from_env()) over a config.json file's
+    db_name/db_args.
+
+    config.json and the env vars are two separate config surfaces (see
+    README.md) that must otherwise be hand-kept in sync; a stale db_args
+    in a locally-edited config.json (e.g. "host": "localhost" instead of
+    the Docker service name "db") is a recurring source of connection
+    errors in demo_data.py/migrate.py. Env vars winning here means those
+    scripts connect the same way the server does whenever the env is
+    sourced (docker-compose's env_file, or `source app_env_vars.env`),
+    with config.json's db_name/db_args only used as a fallback for
+    whichever of these aren't set.
+
+    Returns:
+        (db_name, db_args) tuple, matching the shape of
+        config["db_name"]/config["db_args"].
+    """
+    config = config or {}
+    db_args = dict(config.get("db_args", {}))
+    db_args["user"] = os.environ.get("POSTGRES_USER", db_args.get("user"))
+    db_args["password"] = os.environ.get("POSTGRES_PASSWORD",
+                                         db_args.get("password"))
+    db_args["host"] = os.environ.get("DB_HOST", db_args.get("host",
+                                                            "localhost"))
+    db_args["port"] = os.environ.get("DB_PORT", db_args.get("port", 5432))
+    db_name = os.environ.get("POSTGRES_DB", config.get("db_name"))
+    return db_name, db_args
+
 
 class JSONEncoderWithDate(JSONEncoder):
     def default(self, obj):
@@ -164,15 +197,21 @@ def jinja2_filter_datefmt(dt, fmt=None):
     return nat_dt.strftime(to_fmt)
 
 def parse_number(sval):
-    p = r"^[-+]?\d+[\./]?\d*$"
+    """Parses an integer, decimal or 'a/b' fraction string. Returns an int
+    for integers, a float rounded to 2 places otherwise, or None if
+    ``sval`` is not one of those forms."""
     sval = sval.strip()
-    if re.search(p, sval):
-        n = eval(sval)
-        if isinstance(n, float):
-            return round(n, 2)
-        else:
-            return n
-    return None
+    if not re.fullmatch(r"[-+]?\d+[\./]?\d*", sval):
+        return None
+    try:
+        if "/" in sval:
+            num, den = sval.split("/")
+            return round(int(num) / int(den), 2)
+        if "." in sval:
+            return round(float(sval), 2)
+        return int(sval)
+    except (ValueError, ZeroDivisionError):
+        return None
 
 def now_str():
     return DT.now().strftime(TS_FORMAT)
@@ -216,14 +255,16 @@ def apply_computed_course_credits(course):
         course.ltp, course.s_hours, course.credits = result
 
 def get_rand_str(size=10):
-    """Makes a random string from ASCII upper case letters and digits.
+    """Makes a cryptographically secure random string from ASCII upper case
+    letters and digits.
     Args:
         size (int, optional): Length desired. Defaults to 10.
 
     Returns:
         str: Random alphanumeric ASCII string.
     """
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=size))
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(size))
 
 
 def update_model_skip_unknown(mod, form_data):

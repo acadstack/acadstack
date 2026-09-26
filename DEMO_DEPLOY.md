@@ -17,7 +17,8 @@ for the instructions about how to install docker engine on your machine.
 1. Change directories into that folder: `cd $HOME/acadstack-docker`
 1. Copy the `docker-compose.yml` and `app_env_vars.env.example` to `$HOME/acadstack-docker` folder.
 1. Copy `app_env_vars.env.example` to `app_env_vars.env` and edit it if needed. For simple demo you can leave it unchanged (except for the port number 
-if it collides with something already running on your host).
+if it collides with something already running on your host). For anything beyond a throwaway demo, set
+`SECRET_KEY` (see the comment in the file): without it every restart logs all users out.
 1. Run `docker compose --env-file app_env_vars.env up -d` to launch the containers.
 1. Run `docker ps | grep acadstack` to verify that the containers are up. You may see something like the following:
 ```bash
@@ -33,10 +34,9 @@ root@2f1cd5e70109:/app#
 ```
 1. In the above container shell, run the following to create the demo data:
 `python demo_data.py config.json`. `config.json` here is the copy baked into the image at
-build time (it is not mounted from the host), so it already has DB credentials matching
-`app_env_vars.env`; if you changed the DB password in `app_env_vars.env` you must edit
-`config.json` inside this same container shell to match before running the command. You
-should see something like the following:
+build time (it is not mounted from the host); its DB connection settings are overridden by
+the container's own environment (from `app_env_vars.env`), so there's nothing to edit even
+if you changed the DB password there. You should see something like the following:
 ```bash
 $ docker exec -it acadstack_backend /bin/bash
 root@2f1cd5e70109:/app# python demo_data.py config.json 

@@ -214,7 +214,7 @@ Component for user details.
             </div>
           </div>
             <div class="row mb-2">
-              <div class="col" v-if="!viewOnly">
+              <div class="col" v-if="!viewOnly && canChangePhoto">
                 <FileUploader
                 v-on:fu-file-selected="photo_selected"/>
               </div>
@@ -292,6 +292,10 @@ export default {
     canSave() {
       return this.hasPermission("user.edit_any") ||
         this.user.id === this.currentUser.id;
+    },
+    canChangePhoto() {
+      return this.hasPermission("user.edit_any") ||
+        this.hasPermission("faces.upload_own");
     },
     isBatchAdvisor() {
       return this.user.batch !== undefined;

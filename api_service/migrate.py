@@ -18,6 +18,7 @@ __status__ = "Development"
 import argparse
 import json
 
+import common as C
 import models as M
 from default_seed_data import run_seed_defaults
 from schema_migrations import run_pending_migrations
@@ -50,4 +51,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.cfg_file_path, "r") as cfg_file:
         cfg = json.load(cfg_file)
+    cfg["db_name"], cfg["db_args"] = C.db_config_from_env(cfg)
     migrate(cfg)

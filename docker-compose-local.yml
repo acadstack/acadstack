@@ -27,6 +27,10 @@ services:
       - "${APP_PORT}:${APP_PORT}"
     depends_on:
       - db
+    # Dev-only: optionally seeds demo data on first run (AUTO_DEMO_DATA in
+    # app_env_vars_debug.env). docker-compose.yml's prebuilt images are
+    # unaffected -- they still use the Dockerfile's default CMD.
+    command: ["sh", "docker-entrypoint-dev.sh"]
 
   frec_service:
     env_file:

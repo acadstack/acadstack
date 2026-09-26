@@ -103,9 +103,9 @@ def two_photos(tmp_path):
 def test_is_person_in_photo_uses_configured_tolerance(db, two_photos, monkeypatch):
     captured = {}
 
-    def fake_post(url, files=None, data=None):
+    def fake_post(url, files=None, data=None, **kwargs):
         captured["tolerance"] = data["tolerance"]
-        return _FakeFaceResponse({"match": True})
+        return _FakeFaceResponse({"found": True})
 
     monkeypatch.setattr(fapi.requests, "post", fake_post)
     person, group = two_photos
@@ -125,10 +125,10 @@ def test_is_person_in_photo_uses_configured_tolerance(db, two_photos, monkeypatc
 def test_find_persons_in_photo_uses_configured_tolerance(db, two_photos, monkeypatch):
     captured = {}
 
-    def fake_post(url, files=None, data=None):
+    def fake_post(url, files=None, data=None, **kwargs):
         captured["tolerance"] = data["tolerance"]
-        return _FakeFaceResponse({"names_found": [], "names_missing": [],
-                                  "face_count": 0, "marked_image_b64": ""})
+        return _FakeFaceResponse({"found": [], "missing": [],
+                                  "total_faces": 0, "marked_image": ""})
 
     monkeypatch.setattr(fapi.requests, "post", fake_post)
     _, group = two_photos
@@ -144,9 +144,9 @@ def test_find_persons_in_photo_uses_configured_tolerance(db, two_photos, monkeyp
 def test_mark_person_in_photo_uses_configured_tolerance(db, two_photos, monkeypatch):
     captured = {}
 
-    def fake_post(url, files=None, data=None):
+    def fake_post(url, files=None, data=None, **kwargs):
         captured["tolerance"] = data["tolerance"]
-        return _FakeFaceResponse(content=b"marked-image-bytes")
+        return _FakeFaceResponse({"marked_image": None})
 
     monkeypatch.setattr(fapi.requests, "post", fake_post)
     person, group = two_photos
@@ -161,24 +161,27 @@ def test_mark_person_in_photo_uses_configured_tolerance(db, two_photos, monkeypa
 
 # ===================== auth.password_reset_lockout_attempts =====================
 
-def test_password_reset_lockout_threshold_is_configurable(client):
+def test_password_reset_lockout_threshold_is_configurable(client, monkeypatch):
+    import create_email as CM
+    monkeypatch.setattr(CM, "send_password_reset_code", lambda e, c: None)
     create_user("STU", "lockstu")
     email = "lockstu@example.com"
+    wrong_key = {"login_id": "lockstu", "email": email,
+                 "key_code": "WRONGKEY", "new_password": "x"}
 
     ST.save_setting("auth.password_reset_lockout_attempts", 2)
+    res = client.post("/acadstack/gen_prk",
+                      json={"login_id": "lockstu", "email": email})
+    assert res.json["status"] == "OK"
 
-    for _ in range(3):
-        # attempts == 0, 1, then 2: none yet OVER the (2) limit.
-        res = client.post("/acadstack/gen_prk",
-                          json={"login_id": "lockstu", "email": email})
-        assert res.json["status"] == "OK"
+    for _ in range(2):
+        # 1, then 2 wrong keys: none yet OVER the (2) limit.
+        res = client.post("/acadstack/reset_password", json=wrong_key)
+        assert res.json["status"] == "ERROR"
+    assert not DB.User.get(DB.User.login_id == "lockstu").is_locked
 
-    assert DB.PasswordResetKey.select().where(
-        DB.PasswordResetKey.login_id == "lockstu").count() == 3
-
-    # attempts == 3, which IS over the (2) limit -> locked.
-    res2 = client.post("/acadstack/gen_prk",
-                       json={"login_id": "lockstu", "email": email})
+    # 3 wrong keys IS over the (2) limit -> locked.
+    res2 = client.post("/acadstack/reset_password", json=wrong_key)
     assert res2.json["status"] == "ERROR"
     assert "more than 2" in res2.json["body"]
 

@@ -295,7 +295,7 @@
         "label": "Profile Photo",
         "href": "#/myphoto",
         "menu": "",
-        "permission": "nav.student_self_service"
+        "permission": "faces.upload_own"
     },
     {
         "label": "System Settings",

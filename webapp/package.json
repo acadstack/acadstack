@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build && node replace-html-vars.js",
     "preview": "vite preview --port 4173",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
+    "lint": "eslint . --fix"
   },
   "dependencies": {
     "@vuelidate/core": "^2.0.3",

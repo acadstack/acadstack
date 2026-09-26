@@ -8,6 +8,7 @@ __status__ = "Development"
 """
 
 import os
+import secrets
 from bg_tasks import BgTasks
 import logging
 from logging.handlers import RotatingFileHandler
@@ -52,17 +53,13 @@ logging.basicConfig(level=logging.DEBUG, handlers=[rfh_info, rfh_error],
 TS_FORMAT = "%Y%m%d_%H%M%S"
 
 def _load_config_from_env():
+    db_name, db_args = C.db_config_from_env()
     return {
         "host": os.environ.get('APP_HOST', "localhost"),
         "port": os.environ.get('APP_PORT'),
         "frec_port": os.environ.get('FREC_PORT'),
-        "db_name": os.environ.get('POSTGRES_DB'),
-        "db_args": {
-            "user": os.environ.get('POSTGRES_USER'),
-            "password": os.environ.get('POSTGRES_PASSWORD'),
-            "host": os.environ.get('DB_HOST', "localhost"),
-            "port": os.environ.get('DB_PORT', 5432),
-        },
+        "db_name": db_name,
+        "db_args": db_args,
         "email": {
             "user": os.environ.get('EMAIL_USER'),
             "password": os.environ.get('EMAIL_PASSWORD'),
@@ -72,8 +69,22 @@ def _load_config_from_env():
         },
         "oauth_client_id": os.environ.get('OAUTH_CLIENT_ID'),
         "oauth_domain": os.environ.get('OAUTH_DOMAIN'),
-        "upload_folder": os.environ.get('UPLOAD_FOLDER', "./acadstack_upload")
+        "upload_folder": os.environ.get('UPLOAD_FOLDER', "./acadstack_upload"),
+        "secret_key": os.environ.get('SECRET_KEY'),
     }
+
+
+def _session_secret_key(cfg):
+    """Returns the key that signs session cookies. Operators must set
+    SECRET_KEY in production: without it a random key is generated per
+    process, so every restart logs all users out and multiple workers
+    reject each other's sessions."""
+    key = cfg.get("secret_key")
+    if key:
+        return key
+    logging.warning("SECRET_KEY is not set; using a random session key for "
+                    "this process. Set SECRET_KEY in production.")
+    return secrets.token_urlsafe(32)
 
 
 def setup_app_state(app):
@@ -116,12 +127,12 @@ def run_startup_db_tasks(cfg):
 
 def create_app(is_testing=False):
     myapp = Quart(__name__, static_folder="./app", static_url_path="/acadstack/")
-    myapp.secret_key = C.get_rand_str(size=30)
     myapp.json_encoder = C.JSONEncoderWithDate
     myapp.active_users = {}
 
     cfg = _load_config_from_env()
     myapp.config.update(cfg)
+    myapp.secret_key = _session_secret_key(cfg)
 
     # Institution plugins, if any are installed, register extra workflow
     # guards/checks/effects. Safe to call when none are: it is a no-op.
@@ -185,7 +196,6 @@ def create_app(is_testing=False):
     apiCR.init_routes(apiVC.vbp)
     apiDC.init_routes(apiVC.vbp)
     apiRP.init_routes(apiVC.vbp)
-    apiVF.init_routes(apiVC.vbp)
     apiVG.init_routes(apiVC.vbp)
     apiWF.init_routes(apiVC.vbp)
     apiPL.init_routes(apiVC.vbp)

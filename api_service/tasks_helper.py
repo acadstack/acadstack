@@ -28,15 +28,18 @@ def get_task_info(task_id):
     """
     return current_app.extensions['tasks'].get(task_id)
 
-def pop_task_info_if_done(task_id):
+def pop_task_info_if_done(task_id, owner=None):
     """
     Returns the task info if found.
     If the task status is "done", removes it from the store.
     Otherwise, leaves it in place.
-    Returns None if task_id not found.
+    Returns None if task_id is not found, or if ``owner`` is given and
+    the task was submitted by someone else.
     """
-    task_info = current_app.extensions['tasks'].get(task_id)
+    task_info = current_app.extensions.get('tasks', {}).get(task_id)
     if not task_info:
+        return None
+    if owner is not None and task_info.get("owner") != owner:
         return None
 
     if task_info.get("status") == "done":
@@ -45,11 +48,12 @@ def pop_task_info_if_done(task_id):
     return task_info
 
 
-def create_task(func, *args, task_id=None, **kwargs):
+def create_task(func, *args, task_id=None, owner=None, **kwargs):
     """
     Schedule a sync or async function `func` with args in background.
     Returns a unique task_id.
     If `task_id` is provided, uses that instead of generating a new one.
+    `owner` (a login id) restricts who may read the task's status/result.
     """
     if task_id is None:
         task_id = str(uuid.uuid4())
@@ -58,6 +62,7 @@ def create_task(func, *args, task_id=None, **kwargs):
         current_app.extensions["tasks"] = {}
     
     current_app.extensions['tasks'][task_id] = {
+        "owner": owner,
         "status": "running",
         "result": None,
         "completed_at": None,

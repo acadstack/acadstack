@@ -3,7 +3,10 @@
 from quart import Quart, request, jsonify
 from app import service
 import base64
+import json
 import logging
+
+import numpy as np
 from app.logging_config import setup_logging
 setup_logging()  # <- call it before anything else
 
@@ -110,17 +113,23 @@ async def find_faces():
         form = await request.form
         files = await request.files
 
-        known_files = files.getlist("known_faces")
         group_photo = files.get("group_photo")
         tolerance = float(form.get("tolerance", 0.45))
 
-        known_faces = []
-        known_names = []
-
-        for file in known_files:
-            enc = service.get_face_encoding(file.read())
-            known_faces.append(enc)
-            known_names.append(file.filename)
+        if "known_faces" in form:
+            # Stored encodings sent as JSON, with matching opaque names.
+            known_faces = [np.array(e) for e in json.loads(form["known_faces"])]
+            known_names = json.loads(form.get("known_names", "[]"))
+            if len(known_names) != len(known_faces):
+                return jsonify({"error": "known_names must match known_faces "
+                                         "one-to-one."}), 400
+        else:
+            # One uploaded image per known face, named by its file name.
+            known_faces = []
+            known_names = []
+            for file in files.getlist("known_faces"):
+                known_faces.append(service.get_face_encoding(file.read()))
+                known_names.append(file.filename)
 
         group_photo_bytes = group_photo.read()
         result = service.find_persons_in_photo(

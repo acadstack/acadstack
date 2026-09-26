@@ -161,7 +161,7 @@ app.mixin({
         },
         isPGStudent() {
             return this.$root.user.role === 'STU' &&
-                !"PHD,BTE".includes(this.$root.user.degree)
+                !["PHD", "BTE"].includes(this.$root.user.degree)
         },
         acadSessionRegExp() {
             return new RegExp("^\\d{4}-([S]|I{0,2}|T[1-4])$", "i");
