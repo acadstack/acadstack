@@ -1,12 +1,11 @@
 """Declarative approval workflows: transitions as data, logic by name.
 
-An approval workflow (enrolment, doctoral committee, course) used to be
-an if/elif chain in code. It is now a table: each row says *from* which
-status a record may move *to* which status, which named permission that
-takes, which guards must hold for the row to apply, which checks must
-pass before the move is made, and what happens afterwards. An
-institution adds or removes an approval step by editing rows (see
-:func:`save_workflow`), not code.
+An approval workflow (enrolment, doctoral committee, course) is a table:
+each row says *from* which status a record may move *to* which status,
+which named permission that takes, which guards must hold for the row to
+apply, which checks must pass before the move is made, and what happens
+afterwards. An institution adds or removes an approval step by editing
+rows (see :func:`save_workflow`), not code.
 
 What stays in code, referenced from the rows by name:
 
@@ -401,52 +400,59 @@ def available(wf: Workflow, ctx: Context) -> List[dict]:
 
 def validate(wf: Workflow) -> List[str]:
     """Everything wrong with a workflow definition, as messages."""
+    return [message for _, message in problems(wf)]
+
+
+def problems(wf: Workflow) -> List[Tuple[Optional[int], str]]:
+    """:func:`validate`'s messages, each paired with the index into
+    ``wf.transitions`` of the row it is about (None for the workflow as a
+    whole), so an editor can show it against that row."""
     _ensure_registered()
     errors = []
     if wf.name not in _BASELINES:
-        errors.append(f"Unknown workflow: {wf.name}")
+        errors.append((None, f"Unknown workflow: {wf.name}"))
     if wf.match_on not in (MATCH_ON_ACTION, MATCH_ON_STATUS):
-        errors.append(f"match_on must be '{MATCH_ON_ACTION}' or "
-                      f"'{MATCH_ON_STATUS}', not {wf.match_on!r}.")
+        errors.append((None, f"match_on must be '{MATCH_ON_ACTION}' or "
+                             f"'{MATCH_ON_STATUS}', not {wf.match_on!r}."))
     codes = set(ST.vocab_codes(wf.status_vocab) or [])
     if not codes:
-        errors.append(f"Unknown status vocabulary: {wf.status_vocab}")
+        errors.append((None, f"Unknown status vocabulary: {wf.status_vocab}"))
     permissions = set(ST.declared_groups()[PERM.GROUP].specs)
 
     for step in wf.pre_checks + wf.checks:
         if step.name not in _CHECKS:
-            errors.append(f"Unknown check: {step.name}")
+            errors.append((None, f"Unknown check: {step.name}"))
 
     priorities = set()
-    for t in wf.transitions:
+    for i, t in enumerate(wf.transitions):
         where = f"Transition {t.priority} ({t.from_status}->{t.to_status})"
         if t.priority in priorities:
-            errors.append(f"{where}: duplicate priority.")
+            errors.append((i, f"{where}: duplicate priority."))
         priorities.add(t.priority)
         if t.from_status not in codes | {ANY, NEW}:
-            errors.append(f"{where}: unknown from_status.")
+            errors.append((i, f"{where}: unknown from_status."))
         if t.to_status not in codes | {SAME}:
-            errors.append(f"{where}: unknown to_status.")
+            errors.append((i, f"{where}: unknown to_status."))
         if t.to_status == SAME and t.from_status == NEW:
-            errors.append(f"{where}: a new record has no status to keep.")
+            errors.append((i, f"{where}: a new record has no status to keep."))
         if wf.match_on == MATCH_ON_ACTION and not t.action:
-            errors.append(f"{where}: an action is required.")
+            errors.append((i, f"{where}: an action is required."))
         if t.permission not in permissions:
-            errors.append(f"{where}: unknown permission {t.permission!r}.")
+            errors.append((i, f"{where}: unknown permission {t.permission!r}."))
         for g in t.guards:
             if g.lstrip("!") not in _GUARDS:
-                errors.append(f"{where}: unknown guard {g!r}.")
+                errors.append((i, f"{where}: unknown guard {g!r}."))
         for step in t.checks:
             if step.name not in _CHECKS:
-                errors.append(f"{where}: unknown check {step.name!r}.")
+                errors.append((i, f"{where}: unknown check {step.name!r}."))
         for step in t.effects:
             if step.name not in _EFFECTS:
-                errors.append(f"{where}: unknown effect {step.name!r}.")
+                errors.append((i, f"{where}: unknown effect {step.name!r}."))
             elif step.name == "milestone.record":
                 from domain import milestones as MS
                 code = step.params.get("code")
                 if code not in MS.codes():
-                    errors.append(f"{where}: unknown milestone {code!r}.")
+                    errors.append((i, f"{where}: unknown milestone {code!r}."))
     return errors
 
 
@@ -474,8 +480,15 @@ def stranded_statuses(old: Workflow, new: Workflow) -> Dict[str, int]:
 
 
 class InvalidWorkflow(DomainError):
-    def __init__(self, errors):
+    """``errors`` are the messages; ``problems`` the same, each with the
+    row it is about (see :func:`problems`); ``stranded`` the
+    ``{status: record count}`` a refused edit would have stranded."""
+
+    def __init__(self, errors, problems=None, stranded=None):
         self.errors = list(errors)
+        self.problems = list(problems) if problems is not None \
+            else [(None, e) for e in self.errors]
+        self.stranded = dict(stranded or {})
         super().__init__("Invalid workflow definition: " + "; ".join(errors))
 
 
@@ -499,23 +512,54 @@ def store(wf: Workflow, login_id: str = "SYSTEM") -> None:
                                         txn_login_id=login_id, **row)
 
 
+def _parse(definition: dict) -> Workflow:
+    """:meth:`Workflow.from_json`, raising :class:`InvalidWorkflow` naming
+    the row at fault (a missing field, a non-numeric priority) rather
+    than a bare KeyError/ValueError."""
+    found = []
+    for i, row in enumerate(definition.get("transitions") or ()):
+        if not isinstance(row, dict):
+            found.append((i, f"Row {i + 1}: expected an object."))
+            continue
+        try:
+            int(row.get("priority"))
+        except (TypeError, ValueError):
+            found.append((i, f"Row {i + 1}: priority must be a whole "
+                             f"number."))
+            continue
+        try:
+            Transition.from_json(row)
+        except KeyError as ex:
+            found.append((i, f"Row {i + 1}: '{ex.args[0]}' is required."))
+        except (TypeError, ValueError) as ex:
+            found.append((i, f"Row {i + 1}: {ex}"))
+    if not found:
+        try:
+            return Workflow.from_json(definition)
+        except KeyError as ex:
+            found.append((None, f"'{ex.args[0]}' is required."))
+        except (TypeError, ValueError) as ex:
+            found.append((None, str(ex)))
+    raise InvalidWorkflow([m for _, m in found], problems=found)
+
+
 def save_workflow(actor: Actor, definition: dict) -> Workflow:
     """Replaces a workflow's stored definition, after validating it and
     refusing any edit that would strand records in a status they could
     no longer leave."""
     if not actor.can("system.manage_workflows"):
         raise PermissionDenied("You are not allowed to edit workflows.")
-    wf = Workflow.from_json(definition)
-    errors = validate(wf)
-    if errors:
-        raise InvalidWorkflow(errors)
+    wf = _parse(definition)
+    found = problems(wf)
+    if found:
+        raise InvalidWorkflow([m for _, m in found], problems=found)
     stranded = stranded_statuses(load(wf.name), wf)
     if stranded:
         detail = ", ".join(f"{s} ({n})" for s, n in sorted(stranded.items()))
         raise InvalidWorkflow([
             f"Records would be left in a status they can no longer leave: "
             f"{detail}. Move them on first, or keep a transition out of "
-            f"that status."])
+            f"that status."], stranded=stranded)
     store(wf, login_id=actor.login_id)
     logging.info(f"Workflow '{wf.name}' updated by {actor.describe()}.")
     return load(wf.name)

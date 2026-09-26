@@ -125,6 +125,55 @@ def test_incomplete_ruleset_is_refused(policy):
     assert "cgpa_grades" in str(ei.value)
 
 
+def test_the_payload_holds_only_rules_a_senate_could_amend():
+    """Fixed codes, the rounding and the LTP format are not versioned."""
+    payload = POL.grading_payload_from(DEFAULT)
+    assert set(payload) == {
+        "grade_points", "degree_classes", "default_degree_class",
+        "programme_rules", "credit_enrol_types", "excluded_grades",
+        "passed_course_grades"}
+
+
+RETIRED = {"ltp": {"separator": "-", "field_count": 5},
+           "credit_enrol_type_match": "substring",
+           "counted_enrol_status": "ENRO", "satisfactory_grade": "S",
+           "gpa_decimal_places": 2}
+
+
+def test_retired_fields_are_refused_on_write(policy):
+    with pytest.raises(PS.PolicyValidationError) as ei:
+        policy.supersede(POL.GRADING, "2000-T1",
+                         POL.grading_payload_from(DEFAULT, **RETIRED))
+    for key in RETIRED:
+        assert f"grading: {key} is not a grading policy field" \
+            in ei.value.errors
+
+
+def test_a_version_stored_with_retired_fields_still_builds():
+    """A row written before the fields were retired is still readable."""
+    built = POL.build_grading_policy(
+        POL.grading_payload_from(DEFAULT, **RETIRED))
+    assert built == DEFAULT
+
+
+def test_every_problem_is_reported_in_one_rejection(policy):
+    """The admin UI lists them together."""
+    bad = POL.grading_payload_from(DEFAULT)
+    del bad["excluded_grades"]
+    bad["grade_points"]["A"] = "ten"
+    bad["passed_course_grades"] = ["A", "A"]
+    bad["programme_rules"]["PG"]["cgpa_grades"] = "A,B"
+    with pytest.raises(PS.PolicyValidationError) as ei:
+        policy.supersede(POL.GRADING, "2000-T1", bad)
+    assert ei.value.errors == [
+        "grading: grade_points['A'] must be a number, got 'ten'",
+        "grading: excluded_grades is required",
+        "grading: passed_course_grades contains duplicate entries",
+        "grading: programme_rules['PG'].cgpa_grades must be an array of "
+        "codes, not a str -- a comma-separated string is not accepted here",
+    ]
+
+
 def test_a_degree_mapped_to_an_undefined_class_is_refused_at_write_time(
         policy):
     """Caught when the ruleset is stored, not when a student of that degree

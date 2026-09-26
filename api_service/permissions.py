@@ -60,35 +60,74 @@ def permissions_for_role(role_code: str) -> list:
     )
 
 
-def save_permission_mapping(values: dict, actor) -> dict:
-    """Saves permission->role mapping changes, guarded against lockout.
-
-    ``values`` is ``{permission_name: [role_code, ...]}`` for the
-    permissions being changed (settings_store keys, i.e. without the
-    "permission." prefix are also accepted and normalized here).
-    Refuses a save that would drop the acting user's own role from
-    MANAGE_PERMISSIONS -- an admin must always be able to get back in.
-    """
-    normalized = {
+def _normalized(values: dict) -> dict:
+    """``values`` keyed by full settings_store key ("permission.<name>"),
+    whether or not the caller included the prefix."""
+    return {
         (k if k.startswith(f"{GROUP}.") else f"{GROUP}.{k}"): v
         for k, v in values.items()
     }
+
+
+def check_no_self_lockout(values: dict, actor) -> None:
+    """The guard save_permission_mapping() applies, on its own.
+
+    Raises AcadStackException if ``values`` (as accepted by
+    save_permission_mapping()) would drop ``actor``'s own role from
+    MANAGE_PERMISSIONS -- an admin must always be able to get back in.
+    """
     manage_key = f"{GROUP}.{MANAGE_PERMISSIONS}"
-    if manage_key in normalized and actor.role not in normalized[manage_key]:
+    normalized = _normalized(values)
+    if manage_key in normalized and \
+            actor.role not in (normalized[manage_key] or []):
         raise AcadStackException(
             "You cannot remove your own role from "
             f"'{MANAGE_PERMISSIONS}' -- this would lock every "
             "administrator out of managing permissions. Have another "
             "administrator make this change instead.")
-    return ST.save_settings(normalized, login_id=actor.login_id)
+
+
+def save_permission_mapping(values: dict, actor) -> dict:
+    """Saves permission->role mapping changes, guarded against lockout.
+
+    ``values`` is ``{permission_name: [role_code, ...]}`` for the
+    permissions being changed (settings_store keys, i.e. with the
+    "permission." prefix, are also accepted and normalized here).
+    Refuses a save that would drop the acting user's own role from
+    MANAGE_PERMISSIONS (see check_no_self_lockout()).
+    """
+    check_no_self_lockout(values, actor)
+    return ST.save_settings(_normalized(values), login_id=actor.login_id)
+
+
+def describe_mapping(actor) -> dict:
+    """The permission->role mapping as the admin screen renders it: every
+    declared permission with its doc, default and current roles, plus the
+    role vocabulary for the matrix columns. ``actor_role`` lets the screen
+    show up front which cell the lockout guard will refuse to clear."""
+    group = ST.declared_groups()[GROUP]
+    return {
+        "roles": [{"code": r["code"], "label": r["label"]}
+                  for r in ST.vocab("roles")],
+        "permissions": [
+            {
+                "name": name,
+                "prefix": name.split(".", 1)[0],
+                "doc": spec.doc,
+                "default": list(spec.default),
+                "roles": list(roles_for_permission(name) or []),
+            }
+            for name, spec in sorted(group.specs.items())
+        ],
+        "group_doc": group.doc,
+        "manage_permission": MANAGE_PERMISSIONS,
+        "actor_role": actor.role,
+    }
 
 
 #: Every role code except STU -- the shape of "any staff member, not a
 #: student" that recurs across the inline checks this phase converts.
 ALL_BUT_STU = [r for r in VD.codes("roles") if r != "STU"]
-
-#: Every role code except STU and PLA -- nav.json's "-STU,-PLA" shape.
-ALL_BUT_STU_PLA = [r for r in VD.codes("roles") if r not in ("STU", "PLA")]
 
 #: Every role code except PLA -- nav.json's "-PLA,*" shape.
 ALL_BUT_PLA = [r for r in VD.codes("roles") if r != "PLA"]
@@ -105,7 +144,7 @@ ALL_ROLES = VD.codes("roles")
 # section for the overall design.
 
 def _spec(name, default, doc):
-    return ST.Spec(name, list, default=default, item_type=str,
+    return ST.Spec(name, list, default=default,
                     choices=VD.codes("roles"), doc=doc)
 
 
@@ -213,10 +252,28 @@ ST.declare_group(
               "Create/edit a course offering."),
         _spec("course_offering.edit_after_close", ["ACA", "DEA"],
               "Edit a course offering that has finished/been cancelled."),
+        _spec("course_offering.edit_any", ["ACA", "DEA", "HOD"],
+              "Edit a course offering without being its coordinating "
+              "instructor. Replaces api_course_offering.py's "
+              "course_offering_save() inline "
+              "validate_course_instructor(cid, ['ACA', 'DEA', 'HOD']) "
+              "bypass."),
+        _spec("course_offering.view_all_running", ["ACA", "DEA", "SUP"],
+              "See every running course offering rather than only the "
+              "ones the actor instructs. Replaces "
+              "api_course_offering.py's get_running_courses() inline "
+              "is_user_in_role(['ACA', 'DEA', 'SUP']) check."),
 
         # --- grades ---
         _spec("grades.upload", ["ACA", "FAC", "DEA"],
               "Upload grades for a course offering."),
+        _spec("grades.upload_any", ["ACA", "DEA"],
+              "Upload grades for a course offering without being its "
+              "coordinating instructor (narrower than grades.upload -- "
+              "no FAC, who must still be the coordinator). Replaces "
+              "api_course_offering.py's grades_upload() inline "
+              "validate_course_instructor(co_id, allowed_role=['ACA', "
+              "'DEA']) bypass."),
         _spec("grades.export", ["ACA", "DEA", "SUP"],
               "View/download grade reports and gradesheets. Collapses "
               "eight sites across api_grades.py and api_reports.py that "
@@ -258,6 +315,12 @@ ST.declare_group(
               "Enrolment approval workflow: approve/reject any enrolment "
               "pending advisor approval, with no ownership check. "
               "Replaces the has_role('HOD') branch of the old chain."),
+        _spec("enrolment.view_grades_export", ["ACA", "DEA", "HOD"],
+              "Include grades in a course offering's enrolment export "
+              "without being its coordinating instructor. Replaces "
+              "domain/enrolment.py's enrolment_export_rows() inline "
+              "validate_course_instructor(co_id, allowed_role=['ACA', "
+              "'DEA', 'HOD'], coordinator_only=False) bypass."),
 
         # --- feedback ---
         _spec("feedback.manage_form", ["ACA", "DEA"],
@@ -286,10 +349,25 @@ ST.declare_group(
 
         # --- doctoral committee / PhD ---
         _spec("dc.mark_attendance", ["ACA", "FAC"], "Mark attendance."),
+        _spec("dc.mark_attendance_any", ["ACA", "DEA"],
+              "Mark attendance for a course offering without being its "
+              "coordinating instructor. Replaces api_dc.py's "
+              "mark_attendance() inline validate_course_instructor(co, "
+              "allowed_role=['ACA', 'DEA']) bypass. DEA is preserved "
+              "from the old role list for parity, though it is "
+              "currently unreachable in practice: the endpoint's own "
+              "dc.mark_attendance permission excludes DEA, so this "
+              "bypass only ever fires for ACA -- a pre-existing gap, "
+              "not fixed here."),
         _spec("dc.view_instructor_academics", ["ACA", "FAC", "HOD", "DEA"],
               "View an instructor's academic workload."),
         _spec("dc.view_advisor_detail", ["FAC", "ACA", "DEA", "HOD"],
               "View a batch advisor's detail."),
+        _spec("dc.view_daywise_attendance", ["SUP", "ACA", "DEA", "HOD"],
+              "View a course offering's day-wise attendance without "
+              "being (one of) its instructors. Replaces api_dc.py's "
+              "get_daywise_attendance() inline validate_course_instructor"
+              "(co_id, ['SUP', 'ACA', 'DEA', 'HOD'], False) bypass."),
         _spec("dc.download_degree_wise_students", ["ACA", "DEA", "HOD"],
               "Download the degree-wise student list."),
         _spec("dc.save", ["ACA", "FAC", "DEA", "HOD"],

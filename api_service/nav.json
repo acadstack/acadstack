@@ -315,5 +315,17 @@
         "href": "#/admin.config_transfer",
         "menu": "Administration",
         "permission": "system.export_config"
+    },
+    {
+        "label": "Permissions",
+        "href": "#/admin.permissions",
+        "menu": "Administration",
+        "permission": "system.manage_permissions"
+    },
+    {
+        "label": "Approval Workflows",
+        "href": "#/admin.workflows",
+        "menu": "Administration",
+        "permission": "system.manage_workflows"
     }
 ]

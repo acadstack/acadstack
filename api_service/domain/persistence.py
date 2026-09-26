@@ -20,10 +20,9 @@ from domain.context import Actor
 def save(obj: M.BaseModel, actor: Optional[Actor]):
     """Inserts (or saves) ``obj``, stamping audit columns.
 
-    ``actor=None`` reproduces what ``save_entity(outside_request=True)``
-    has always written: the literal string "None" in ``txn_login_id``.
+    ``actor=None`` (a write outside a request) leaves ``txn_login_id`` NULL.
     """
-    obj.txn_login_id = actor.login_id if actor else "None"
+    obj.txn_login_id = actor.login_id if actor else None
     obj.upd_ts = DT.now()
     obj.ins_ts = DT.now()
     return obj.save()
@@ -35,12 +34,12 @@ def update(entity: Type[M.BaseModel], obj: M.BaseModel,
 
     Returns the number of rows affected: 0 means another transaction
     updated the row first, and callers treat that as a failure.
-    ``actor=None`` writes "Out of request", as ``update_entity`` does.
+    ``actor=None`` (a write outside a request) leaves ``txn_login_id`` NULL.
     """
     txn_no = int(obj.txn_no)
     obj.txn_no = 1 + txn_no  # For optimistic locking
     obj.upd_ts = DT.now()
-    obj.txn_login_id = actor.login_id if actor else "Out of request"
+    obj.txn_login_id = actor.login_id if actor else None
     # Copied, not appended to: api_common.update_entity used to declare
     # `exclude=[]` and append to it, so the shared default list grew for
     # the life of the process and a caller's own list came back longer

@@ -52,7 +52,7 @@ here rather than rejected by the server.
                             class="form-control" :step="it.type == 'int' ? 1 : 'any'"
                             :min="it.min_value" :max="it.max_value" v-model.number="formValues[it.key]">
                         <!-- list of role/coded values -->
-                        <div v-else-if="it.type == 'list' && it.item_type == 'str' && it.choices"
+                        <div v-else-if="it.type == 'list' && it.choices"
                             class="d-flex flex-wrap gap-3">
                             <div class="form-check form-check-inline" v-for="c in it.choices" :key="c">
                                 <input class="form-check-input" type="checkbox" :value="c"
@@ -258,7 +258,7 @@ export default {
             const errs = [];
             const empty = v === null || v === undefined || v === "";
             if (empty) {
-                if (!it.nullable) errs.push("Value is required.");
+                errs.push("Value is required.");
                 return errs;
             }
             if (it.type == "int" || it.type == "float") {
@@ -284,7 +284,7 @@ export default {
                         errs.push(`Must have at least ${it.min_value} item(s).`);
                     if (it.max_value != null && v.length > it.max_value)
                         errs.push(`Must have at most ${it.max_value} item(s).`);
-                    if (it.item_type == "dict") {
+                    if (it.group == "vocab") {
                         const seen = new Set();
                         for (const row of v) {
                             if (!row.code || !row.code.trim()) errs.push("Every item needs a non-empty code.");

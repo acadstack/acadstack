@@ -1,8 +1,6 @@
 """Database-backed system settings: accessor, cache and write-time validation.
 
-This is the seam through which hard-coded academic policy moves into the
-SystemSetting table (models.py) and, later, into an admin GUI. Reading is
-deliberately trivial::
+Reading::
 
     from settings_store import setting
 
@@ -11,72 +9,40 @@ deliberately trivial::
 
 A key is ``"<group>.<name>"``, mapping onto the SystemSetting row's
 ``group``/``name`` columns (the group is everything before the FIRST dot,
-so names may themselves contain dots). Values are returned already typed:
-the stored ``value_text``/``value_json`` column is converted according to
-the setting's declared Spec (see DECLARATIONS at the bottom of this file).
+so names may themselves contain dots). The row's JSONB ``value`` comes
+back typed according to the setting's declared Spec (see DECLARATIONS at
+the bottom of this file).
 
 Precedence when resolving a key: stored DB row > the ``default`` argument
-passed by the caller > the declared Spec default > None. The caller's
-argument deliberately wins over the declared default, so a call site can
-be moved onto this accessor keeping its existing hard-coded fallback
-verbatim, before the corresponding Spec/seed row exists.
+passed by the caller > the declared Spec default > None.
 
 
 Caching
 -------
-Reads must not cost a query each -- a single request can touch dozens of
-settings -- yet we run hypercorn with several worker processes, so one
-worker's cache goes stale the moment an admin saves a setting through
-another worker. What is cached is therefore the whole settings table,
-keyed by a single monotonically increasing ``_sys.policy_version`` row
-that every write bumps *inside the writing transaction*. A request that
-reads any setting issues one small indexed query for that row; the full
-table is re-read only when the number changed.
+A request can touch dozens of settings, and hypercorn runs several worker
+processes, so one worker's cache goes stale the moment an admin saves
+through another. The whole table is cached, keyed by a single
+``_sys.policy_version`` counter that every write bumps inside the writing
+transaction: a reader that sees version N+1 also sees every value that
+transaction wrote. A request costs one indexed single-row read of the
+counter; the table is re-read only when the number moved. Within one
+request the snapshot is pinned on ``quart.g``, so multi-step work such as
+generating a transcript sees one consistent set of values. Outside a
+request (background jobs, scripts) the check is rate-limited to
+NON_REQUEST_RECHECK_SECS instead.
 
-The version row's bump being in the writer's transaction is what makes
-this correct across workers: a reader that can see version N+1 can, by
-definition, also see every value that transaction wrote, so a snapshot is
-never a mix of old and new policy. Within one request the snapshot is
-pinned on ``quart.g``, so all lookups in a request see one consistent set
-of values even if an admin saves midway through -- which matters for
-multi-step work like generating a transcript.
-
-Alternatives considered:
-
-* **Per-request full load** (no version row): simpler, equally correct,
-  but pays a full-table read on every request that touches any setting,
-  forever, growing with the number of settings and with JSON payload size
-  (grade maps, category rules). The version row turns that into one
-  single-row read that hits an index.
-* **Time-based TTL only**: cheapest, but admin edits appear at a random
-  time up to the TTL later and differ per worker, which is miserable to
-  support ("I saved it, it didn't take effect, I saved it again").
-  Retained only for code running outside a request (background jobs,
-  scripts), where there is no request boundary to hang a check on; see
-  NON_REQUEST_RECHECK_SECS.
-* **Postgres LISTEN/NOTIFY invalidation**: no per-request query at all,
-  but needs a dedicated long-lived connection per worker plus an async
-  listener loop, and a missed notification (reconnect, restart) leaves a
-  worker silently serving stale policy. Too much machinery, and too
-  quiet a failure mode, for a saving of one indexed single-row read.
-* **No cache**: a query per lookup, which is what the requirement rules
-  out.
-
-If reading settings fails (DB down, table missing pre-migration), the
-last good snapshot is served, or an empty one if there is none, so call
-sites fall back to their declared/passed defaults rather than raising.
+If reading settings fails (DB down, table missing), the last good
+snapshot is served, or an empty one, so call sites fall back to their
+defaults rather than raising.
 
 
 Validation
 ----------
-Every writable setting must be declared with a Spec, grouped by setting
-group, optionally with a group-level cross-field validator. Saves are
-validated and rejected at write time -- including a save of an undeclared
-key -- so a bad value cannot surface later, halfway through generating a
-student's transcript. Read-time conversion is total by construction: a
-value that somehow fails to convert (a hand-edited row, a restored dump)
-is logged and the declared default is used instead. ``setting()`` does
-not raise.
+Every writable setting is declared with a Spec. Saves are validated at
+write time -- a save of an undeclared key included -- and every problem is
+reported at once. A stored value that fails to convert on read (a
+hand-edited row) is logged and the declared default used; ``setting()``
+never raises.
 
 __author__ = "Balwinder Sodhi"
 __copyright__ = "Copyright 2025"
@@ -98,15 +64,12 @@ import models as M
 import vocab_defaults as VD
 from common import AcadStackException
 
-# The settings group reserved for this module's own bookkeeping. It is
-# hidden from the read/describe APIs and cannot be written through them.
+# Reserved for this module's own bookkeeping: hidden from the read/describe
+# APIs and not writable through them.
 SYS_GROUP = "_sys"
 POLICY_VERSION_NAME = "policy_version"
 
-# Outside a request context (background jobs, CLI scripts) there is no
-# request boundary on which to hang the version check, so the check is
-# rate-limited to this interval instead. Keep it short: it only bounds how
-# long a background job can act on stale policy.
+# Bounds how long a background job can act on stale settings.
 NON_REQUEST_RECHECK_SECS = 5.0
 
 _G_ATTR = "_acadstack_settings_snapshot"
@@ -126,10 +89,8 @@ _UNSET = _Unset()
 
 
 class SettingValidationError(AcadStackException):
-    """Raised by the save path when a value fails its declared Spec. Carries
-    every problem found, not just the first, so an admin GUI can show them
-    all at once. Subclasses AcadStackException, so existing route handlers
-    already surface its message to the client."""
+    """A save failed validation. Carries every problem found, so an admin
+    GUI can show them all at once."""
 
     def __init__(self, errors):
         self.errors = list(errors)
@@ -140,25 +101,20 @@ class SettingValidationError(AcadStackException):
 
 @dataclass(frozen=True)
 class Spec:
-    """Declares one setting: its type, default, and what counts as valid.
+    """Declares one setting.
 
     Args:
         name: the setting's name within its group (the part after the dot).
-        type: one of bool, int, float, str, list, dict. list/dict are
-            stored in value_json (is_json=True); the rest in value_text.
+        type: one of bool, int, float, str, list, dict.
         default: value used when no row is stored. Must itself be valid.
-        doc: human-readable description, for the admin GUI.
-        choices: allowed values. For a list-typed setting this constrains
-            every ITEM (e.g. a list of role codes), not the list itself.
-        min_value/max_value: numeric bounds for int/float; length bounds
-            for str/list/dict.
-        item_type: for list/dict settings, the required type of each
-            item/value.
-        nullable: whether None is an acceptable stored value.
-        validator: callable(value) for anything the fields above can't
-            express. Report a problem by raising ValueError or by
-            returning an error string (or list of strings); return None
-            for "valid".
+        doc: description, for the admin GUI.
+        choices: allowed values. For a list setting this constrains every
+            ITEM (e.g. a list of role codes).
+        min_value/max_value: bounds for int/float; length bounds for
+            str/list/dict.
+        validator: callable(value) for anything else. Raises ValueError to
+            reject; one message per argument (``ValueError(*messages)``)
+            to report several problems.
     """
 
     name: str
@@ -168,28 +124,19 @@ class Spec:
     choices: Optional[Sequence[Any]] = None
     min_value: Optional[float] = None
     max_value: Optional[float] = None
-    item_type: Optional[type] = None
-    nullable: bool = False
-    validator: Optional[Callable[[Any], Any]] = None
+    validator: Optional[Callable[[Any], None]] = None
 
     def __post_init__(self):
         if self.type not in SUPPORTED_TYPES:
             raise ValueError(
                 f"Spec '{self.name}': unsupported type {self.type!r}. "
                 f"Supported: {[t.__name__ for t in SUPPORTED_TYPES]}")
-        # split_key() only ever partitions on the FIRST '.' (the group is
-        # always supplied separately, never re-derived from `name`), so an
-        # interior dot in `name` is unambiguous -- only a leading/trailing/
-        # doubled dot would produce an empty segment. Permission names
-        # (the "permission" group) are hierarchical, e.g. "course.save".
+        # Names may contain interior dots (permission names such as
+        # "course.save"), but no empty segment.
         if self.name.startswith(".") or self.name.endswith(".") or ".." in self.name:
             raise ValueError(
                 f"Spec '{self.name}': setting names may not start/end with "
                 f"'.' or contain '..'")
-
-    @property
-    def is_json(self) -> bool:
-        return self.type in JSON_TYPES
 
 
 @dataclass(frozen=True)
@@ -197,27 +144,16 @@ class GroupSpec:
     name: str
     specs: dict = field(default_factory=dict)
     doc: str = ""
-    validator: Optional[Callable[[dict], Any]] = None
 
 
 _REGISTRY: dict[str, GroupSpec] = {}
-# Keys already warned about as undeclared, so a typo'd key in a hot code
-# path logs once rather than once per read.
+# Undeclared keys already warned about, so a typo logs once, not per read.
 _WARNED_UNDECLARED: set[str] = set()
 
 
-def declare_group(group: str, specs: Iterable[Spec], doc: str = "",
-                  validator: Optional[Callable[[dict], Any]] = None) -> GroupSpec:
-    """Registers the schema for one setting group.
-
-    Args:
-        group: group name, as used in the "<group>.<name>" key.
-        specs: the Specs belonging to the group.
-        doc: description of the group, for the admin GUI.
-        validator: optional cross-field check, called with the group's
-            full effective values dict after a save is applied. Same
-            reporting convention as Spec.validator.
-    """
+def declare_group(group: str, specs: Iterable[Spec], doc: str = "") -> GroupSpec:
+    """Registers the Specs of one setting group. Every declared default is
+    validated here, so an invalid one fails at import time."""
     if not group or "." in group or group == SYS_GROUP:
         raise ValueError(f"Invalid settings group name: {group!r}")
     by_name = {}
@@ -225,16 +161,10 @@ def declare_group(group: str, specs: Iterable[Spec], doc: str = "",
         if spec.name in by_name:
             raise ValueError(f"Duplicate Spec '{group}.{spec.name}'")
         by_name[spec.name] = spec
-    gs = GroupSpec(name=group, specs=by_name, doc=doc, validator=validator)
-    # A declared default that is itself invalid would silently become the
-    # value every call site sees, so catch it at import time -- before the
-    # group is registered, so a rejected declaration leaves nothing behind.
-    for spec in by_name.values():
-        if spec.default is None and not spec.nullable:
-            continue
-        errors = _validate_value(group, spec, spec.default)
+        _, errors = _check(f"{group}.{spec.name}", spec, spec.default)
         if errors:
             raise ValueError(f"Invalid declared default: {'; '.join(errors)}")
+    gs = GroupSpec(name=group, specs=by_name, doc=doc)
     _REGISTRY[group] = gs
     _WARNED_UNDECLARED.clear()
     return gs
@@ -256,40 +186,36 @@ def spec_for(key: str) -> Optional[Spec]:
 
 
 def declared_groups() -> dict:
-    """All declared groups, for the admin GUI and for startup validation."""
     return dict(_REGISTRY)
 
 
 def describe_settings() -> list:
-    """Machine-readable description of every declared setting, for the
+    """Every declared setting with its schema and current value, for the
     admin GUI to render an editing form from."""
+    snap = _current_snapshot()
     out = []
     for group in sorted(_REGISTRY):
         gs = _REGISTRY[group]
         for name in sorted(gs.specs):
             spec = gs.specs[name]
             key = f"{group}.{name}"
-            prov = provenance(key)
+            # (login_id, upd_ts) of the stored row; none while the setting
+            # still serves its declared default.
+            updated_by, updated_ts = snap.provenance.get(key, (None, None))
             out.append({
                 "key": key,
                 "group": group,
                 "group_doc": gs.doc,
                 "name": name,
                 "type": spec.type.__name__,
-                "is_json": spec.is_json,
                 "default": spec.default,
                 "doc": spec.doc,
                 "choices": list(spec.choices) if spec.choices else None,
                 "min_value": spec.min_value,
                 "max_value": spec.max_value,
-                "item_type": spec.item_type.__name__ if spec.item_type else None,
-                "nullable": spec.nullable,
                 "value": setting(key),
-                # BaseModel provenance of the stored row, or None for both
-                # when the setting has never been explicitly saved (still
-                # at its declared default, so there is no row to attribute).
-                "updated_by": prov["updated_by"] if prov else None,
-                "updated_ts": prov["updated_ts"] if prov else None,
+                "updated_by": updated_by,
+                "updated_ts": updated_ts,
             })
     return out
 
@@ -297,124 +223,58 @@ def describe_settings() -> list:
 # ===================== Validation =====================
 
 def _coerce(spec: Spec, value: Any) -> Any:
-    """Converts an incoming value to the declared type, accepting the
-    string forms an HTML form / JSON body realistically sends. Raises
-    ValueError if the value is not convertible."""
-    if value is None:
-        return None
+    """Converts a value to the declared type. A string for a non-str
+    setting (an HTML form field) is parsed as JSON, so "true", " 21 " and
+    '["STU"]' all work. Raises ValueError if not convertible."""
     t = spec.type
-    if t is bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, int):
-            if value in (0, 1):
-                return bool(value)
-        elif isinstance(value, str):
-            low = value.strip().lower()
-            if low in ("true", "1", "yes", "on"):
-                return True
-            if low in ("false", "0", "no", "off"):
-                return False
-        raise ValueError(f"expected a boolean, got {value!r}")
-    if t is int:
-        # bool is an int subclass; accepting it here would silently turn
-        # True into 1 for a numeric threshold.
-        if isinstance(value, bool):
-            raise ValueError(f"expected an integer, got {value!r}")
-        if isinstance(value, int):
-            return value
-        if isinstance(value, float) and value.is_integer():
-            return int(value)
-        if isinstance(value, str):
-            try:
-                return int(value.strip())
-            except ValueError:
-                pass
-        raise ValueError(f"expected an integer, got {value!r}")
-    if t is float:
-        if isinstance(value, bool):
-            raise ValueError(f"expected a number, got {value!r}")
-        if isinstance(value, (int, float)):
-            return float(value)
-        if isinstance(value, str):
-            try:
-                return float(value.strip())
-            except ValueError:
-                pass
-        raise ValueError(f"expected a number, got {value!r}")
-    if t is str:
-        if isinstance(value, str):
-            return value
-        raise ValueError(f"expected a string, got {value!r}")
-    # list / dict: accept the parsed value, or raw JSON text from a form.
-    if isinstance(value, t):
-        return value
-    if isinstance(value, str):
+    if value is None:
+        raise ValueError("value is required")
+    if isinstance(value, str) and t is not str:
         try:
-            parsed = json.loads(value)
+            value = json.loads(value.strip().lower() if t is bool else value)
         except ValueError:
-            raise ValueError(f"expected JSON {t.__name__}, got {value!r}")
-        if isinstance(parsed, t):
-            return parsed
-    raise ValueError(f"expected a JSON {t.__name__}, got {value!r}")
+            raise ValueError(f"expected {t.__name__}, got {value!r}")
+    # bool is an int subclass; never let True through as 1.
+    if isinstance(value, bool) and t is not bool:
+        raise ValueError(f"expected {t.__name__}, got {value!r}")
+    if t is float and isinstance(value, int):
+        return float(value)
+    if t is int and isinstance(value, float) and value.is_integer():
+        return int(value)
+    if not isinstance(value, t):
+        raise ValueError(f"expected {t.__name__}, got {value!r}")
+    return value
 
 
-def _run_user_validator(fn: Callable, value: Any, label: str) -> list:
-    """Applies the raise-or-return error reporting convention shared by
-    Spec.validator and the group validator."""
+def run_validator(fn: Callable, value: Any, label: str) -> list:
+    """Runs a validator under the shared convention (raise ValueError, one
+    message per argument), returning labelled error messages. Also used by
+    policy_store."""
     try:
-        result = fn(value)
+        fn(value)
     except ValueError as ex:
-        return [f"{label}: {ex}"]
-    if result is None or result is True:
-        return []
-    if result is False:
-        return [f"{label}: rejected by validator"]
-    if isinstance(result, str):
-        return [f"{label}: {result}"]
-    if isinstance(result, (list, tuple)):
-        return [f"{label}: {r}" for r in result]
+        return [f"{label}: {m}" for m in ex.args] or [f"{label}: invalid"]
     return []
 
 
-def _validate_value(group: str, spec: Spec, value: Any) -> list:
-    """Checks an ALREADY COERCED value against its Spec. Returns a list of
-    error messages (empty when valid)."""
-    label = f"{group}.{spec.name}"
-    if value is None:
-        if spec.nullable:
-            return []
-        return [f"{label}: value is required"]
-
-    if spec.type is int and isinstance(value, bool):
-        return [f"{label}: expected an integer, got {value!r}"]
-    if not isinstance(value, spec.type):
-        return [f"{label}: expected {spec.type.__name__}, got "
-                f"{type(value).__name__}"]
+def _check(label: str, spec: Spec, raw: Any) -> tuple:
+    """Coerces and validates one value. Returns (value, errors)."""
+    try:
+        value = _coerce(spec, raw)
+    except ValueError as ex:
+        return None, [f"{label}: {ex}"]
 
     errors = []
-    if spec.item_type is not None:
-        items = value.values() if spec.type is dict else value
-        for item in items:
-            if not isinstance(item, spec.item_type) or (
-                    spec.item_type is not bool and isinstance(item, bool)):
-                errors.append(f"{label}: every item must be "
-                              f"{spec.item_type.__name__}, got {item!r}")
-                break
-
     if spec.choices is not None:
         allowed = list(spec.choices)
-        # For a collection setting the choices constrain the items: a list
-        # of role codes is the common shape here.
-        bad = [v for v in value if v not in allowed] \
-            if spec.type in JSON_TYPES else \
-            ([] if value in allowed else [value])
-        for v in bad:
-            errors.append(f"{label}: {v!r} is not one of {allowed}")
+        items = value if spec.type in JSON_TYPES else [value]
+        errors += [f"{label}: {v!r} is not one of {allowed}"
+                   for v in items if v not in allowed]
 
     if spec.min_value is not None or spec.max_value is not None:
-        measure = value if spec.type in (int, float) else len(value)
-        what = "value" if spec.type in (int, float) else "length"
+        numeric = spec.type in (int, float)
+        measure = value if numeric else len(value)
+        what = "value" if numeric else "length"
         if spec.min_value is not None and measure < spec.min_value:
             errors.append(f"{label}: {what} {measure} is below the minimum "
                           f"{spec.min_value}")
@@ -422,85 +282,50 @@ def _validate_value(group: str, spec: Spec, value: Any) -> list:
             errors.append(f"{label}: {what} {measure} is above the maximum "
                           f"{spec.max_value}")
 
-    if spec.validator is not None:
-        errors.extend(_run_user_validator(spec.validator, value, label))
+    if spec.validator is not None and not errors:
+        errors += run_validator(spec.validator, value, label)
+    return value, errors
 
-    return errors
 
-
-def validate_values(values: dict) -> dict:
-    """Validates a {key: value} mapping destined for the DB, WITHOUT
-    writing anything. Returns the coerced values ready to store; raises
-    SettingValidationError listing every problem found.
-
-    Saving an undeclared key is an error: the declaration is what makes a
-    setting safe to read later, so there is no way to sneak a value past
-    it.
-    """
+def _validated(values: dict) -> dict:
+    """Coerces and validates a {key: value} mapping without writing.
+    Raises SettingValidationError listing every problem."""
     errors, coerced = [], {}
-    by_group = {}
-
     for key, raw in values.items():
         try:
-            group, name = split_key(key)
+            group, _ = split_key(key)
         except ValueError as ex:
             errors.append(str(ex))
             continue
         if group == SYS_GROUP:
-            errors.append(f"{key}: '{SYS_GROUP}' is reserved for internal "
-                          f"bookkeeping and cannot be written")
+            errors.append(f"{key}: '{SYS_GROUP}' is reserved and cannot be "
+                          f"written")
             continue
-        gs = _REGISTRY.get(group)
-        spec = gs.specs.get(name) if gs else None
+        spec = spec_for(key)
         if spec is None:
             errors.append(f"{key}: no such setting is declared (declare it "
                           f"with declare_group() before saving a value)")
             continue
-        try:
-            value = _coerce(spec, raw)
-        except ValueError as ex:
-            errors.append(f"{key}: {ex}")
-            continue
-        value_errors = _validate_value(group, spec, value)
-        if value_errors:
-            errors.extend(value_errors)
-            continue
-        coerced[key] = value
-        by_group.setdefault(group, {})[name] = value
-
-    # Cross-field checks run against the group as it would look AFTER the
-    # save, so a pair like min/max credits can be checked as a whole.
-    for group, changed in by_group.items():
-        gs = _REGISTRY[group]
-        if gs.validator is None:
-            continue
-        effective = settings_in_group(group)
-        effective.update(changed)
-        errors.extend(_run_user_validator(gs.validator, effective, group))
-
+        value, value_errors = _check(key, spec, raw)
+        errors += value_errors
+        if not value_errors:
+            coerced[key] = value
     if errors:
         raise SettingValidationError(errors)
     return coerced
 
 
 def validate_stored_settings() -> list:
-    """Checks everything currently in the table against the declarations.
-    Called at startup so a value that predates its Spec, or that was
-    hand-edited in the DB, is reported in the log at boot instead of
-    silently falling back to a default at read time. Returns the list of
-    problems found.
-
-    Values that cannot be converted to their declared type at all are
-    reported by the loader itself (see _value_from_row), since by the time
-    they reach here they have already become the declared default."""
+    """Checks everything stored against the declarations, logging each
+    problem. Called at startup, so a hand-edited or stale row is reported
+    at boot rather than silently replaced by a default at read time."""
     problems = []
-    snap = _current_snapshot()
-    for key, value in sorted(snap.values.items()):
+    for key, value in sorted(_current_snapshot().values.items()):
         spec = spec_for(key)
         if spec is None:
             problems.append(f"{key}: stored but not declared")
-            continue
-        problems.extend(_validate_value(split_key(key)[0], spec, value))
+        else:
+            problems += _check(key, spec, value)[1]
     for p in problems:
         logging.warning(f"Stored system setting is invalid: {p}")
     return problems
@@ -514,9 +339,8 @@ class _Snapshot:
     def __init__(self, version: int, values: dict, provenance: dict = None):
         self.version = version
         self.values = values
-        # key -> (txn_login_id, upd_ts) of the stored row, for the admin
-        # GUI's provenance display. Absent for a key with no stored row.
-        self.provenance = provenance if provenance is not None else {}
+        # key -> (txn_login_id, upd_ts) of the stored row.
+        self.provenance = provenance or {}
 
 
 _EMPTY_SNAPSHOT = _Snapshot(-1, {})
@@ -527,70 +351,31 @@ _last_check_ts = 0.0
 
 
 def _read_policy_version() -> int:
-    """One small indexed read of the single version row. Absent row (fresh
-    install, nothing ever saved) counts as version 0."""
+    """One indexed single-row read. No row yet counts as version 0."""
     cur = M.db.execute_sql(
-        'SELECT value_text FROM systemsetting '
-        'WHERE "group" = %s AND name = %s AND is_json = false '
-        'AND is_deleted = false LIMIT 1',
+        'SELECT value FROM systemsetting WHERE "group" = %s AND name = %s',
         (SYS_GROUP, POLICY_VERSION_NAME))
     row = cur.fetchone()
-    if not row or row[0] is None:
-        return 0
-    try:
-        return int(row[0])
-    except (TypeError, ValueError):
-        # Self-healed by the next write (see _bump_policy_version), which
-        # treats a non-numeric value as zero.
-        logging.error(f"Corrupt {SYS_GROUP}.{POLICY_VERSION_NAME} value "
-                      f"{row[0]!r}; reloading settings.")
-        return -2
-
-
-def _value_from_row(row) -> Any:
-    """Converts one stored row to its typed value, falling back to the
-    declared default if the stored text can't be converted. Read-time
-    conversion never raises -- that is the whole point of validating on
-    write."""
-    key = f"{row.group}.{row.name}"
-    spec = spec_for(key)
-    # Reading whichever column the ROW was written to, not the one the Spec
-    # expects: a row written before its Spec existed can sit in the other
-    # column, and coercion below decides whether it is still usable.
-    raw = row.value_json if row.is_json else row.value_text
-    if spec is None:
-        return raw
-    try:
-        return _coerce(spec, raw)
-    except ValueError as ex:
-        logging.error(f"Stored value for {key} is unusable ({ex}); using the "
-                      f"declared default {spec.default!r} instead.")
-        return spec.default
+    return int(row[0]) if row else 0
 
 
 def _load_values(version: int) -> _Snapshot:
-    values = {}
-    seen_json = {}
-    provenance = {}
+    values, provenance = {}, {}
     query = (M.SystemSetting.select()
              .where((M.SystemSetting.is_deleted == False) &  # noqa: E712
                     (M.SystemSetting.group != SYS_GROUP)))
     for row in query:
         key = f"{row.group}.{row.name}"
-        if key in values:
-            # The unique index is on (group, name, is_json), so the same
-            # key CAN exist twice with different is_json. Prefer the row
-            # whose storage matches the declaration; the save path deletes
-            # the other variant, so this only happens for rows written
-            # before a Spec existed.
-            spec = spec_for(key)
-            wanted = spec.is_json if spec else True
-            logging.warning(f"Setting {key} has both a text and a JSON row; "
-                            f"using the is_json={wanted} one.")
-            if seen_json[key] == wanted:
+        spec = spec_for(key)
+        value = row.value
+        if spec is not None:
+            try:
+                value = _coerce(spec, value)
+            except ValueError as ex:
+                logging.error(f"Stored value for {key} is unusable ({ex}); "
+                              f"using the declared default instead.")
                 continue
-        seen_json[key] = row.is_json
-        values[key] = _value_from_row(row)
+        values[key] = value
         provenance[key] = (row.txn_login_id, row.upd_ts)
     return _Snapshot(version, values, provenance)
 
@@ -600,67 +385,36 @@ def _refresh_snapshot() -> _Snapshot:
     global _cache, _last_check_ts
     try:
         version = _read_policy_version()
-    except Exception:
-        logging.exception("Could not read the settings policy version; "
-                          "serving the last known settings.")
         with _cache_lock:
-            return _cache or _EMPTY_SNAPSHOT
-
-    with _cache_lock:
-        cached = _cache
-    if cached is not None and cached.version == version:
-        with _cache_lock:
-            _last_check_ts = time.monotonic()
-        return cached
-
-    try:
-        # Deliberately loaded outside the lock: two threads racing here
-        # just do the same idempotent read twice.
-        snapshot = _load_values(version)
+            cached = _cache
+        if cached is not None and cached.version == version:
+            snapshot = cached
+        else:
+            snapshot = _load_values(version)
+            logging.info(f"Loaded {len(snapshot.values)} system setting(s) "
+                         f"at policy version {version}.")
     except Exception:
-        logging.exception("Could not load system settings; serving the last "
+        logging.exception("Could not read system settings; serving the last "
                           "known settings.")
         with _cache_lock:
             return _cache or _EMPTY_SNAPSHOT
-
     with _cache_lock:
         _cache = snapshot
         _last_check_ts = time.monotonic()
-    logging.info(f"Loaded {len(snapshot.values)} system setting(s) at policy "
-                 f"version {version}.")
     return snapshot
 
 
-def _pinned_snapshot() -> Optional[_Snapshot]:
-    """The snapshot pinned on `g` for the request in flight, if any.
-
-    `g` lives on the app context, so it is only reachable when BOTH
-    contexts are pushed; a caller in a stray context still gets a correct
-    (just unpinned) answer via the process cache rather than an error.
-    """
-    if not (has_request_context() and has_app_context()):
-        return None
-    try:
-        return getattr(g, _G_ATTR, None)
-    except RuntimeError:
-        return None
-
-
-def _pin_snapshot(snapshot: _Snapshot) -> None:
-    if not (has_request_context() and has_app_context()):
-        return
-    try:
-        setattr(g, _G_ATTR, snapshot)
-    except RuntimeError:
-        pass
+def _in_request() -> bool:
+    # `g` lives on the app context, so both contexts must be pushed.
+    return has_request_context() and has_app_context()
 
 
 def _current_snapshot() -> _Snapshot:
-    if has_request_context() and has_app_context():
-        snapshot = _pinned_snapshot()
+    if _in_request():
+        snapshot = getattr(g, _G_ATTR, None)
         if snapshot is None:
             snapshot = _refresh_snapshot()
-            _pin_snapshot(snapshot)
+            setattr(g, _G_ATTR, snapshot)
         return snapshot
 
     with _cache_lock:
@@ -671,17 +425,14 @@ def _current_snapshot() -> _Snapshot:
 
 
 def invalidate_cache() -> None:
-    """Drops this process's cached settings. Writes call this; other
-    workers pick the change up via the policy version."""
+    """Drops this process's cached settings (and the request's pinned
+    snapshot). Other workers pick a change up via the policy version."""
     global _cache, _last_check_ts
     with _cache_lock:
         _cache = None
         _last_check_ts = 0.0
-    if _pinned_snapshot() is not None:
-        try:
-            delattr(g, _G_ATTR)
-        except (AttributeError, RuntimeError):
-            pass
+    if _in_request():
+        g.pop(_G_ATTR, None)
 
 
 def policy_version() -> int:
@@ -697,13 +448,11 @@ def setting(key: str, default: Any = _UNSET) -> Any:
     Args:
         key: "<group>.<name>", e.g. "enrolment.disable_fees_check".
         default: value to use when nothing is stored. Overrides the
-            declared Spec default, so a call site can keep the fallback
-            it already had.
+            declared Spec default.
 
     Returns:
-        The stored value, converted to the declared type; otherwise the
-        default above; otherwise the Spec's default; otherwise None.
-        Never raises for a missing or unusable stored value.
+        The stored value; otherwise the default above; otherwise the
+        Spec's default; otherwise None. Never raises.
     """
     spec = spec_for(key)
     if spec is None and key not in _WARNED_UNDECLARED:
@@ -713,62 +462,34 @@ def setting(key: str, default: Any = _UNSET) -> Any:
 
     values = _current_snapshot().values
     if key in values:
-        value = values[key]
-        # Callers get their own copy: a cached list/dict is shared by
-        # every request this worker serves until the version changes.
-        return copy.deepcopy(value) if isinstance(value, JSON_TYPES) else value
-
+        # A copy: the cached list/dict is shared by every request this
+        # worker serves.
+        return copy.deepcopy(values[key])
     if not isinstance(default, _Unset):
         return default
     return copy.deepcopy(spec.default) if spec else None
-
-
-def provenance(key: str) -> Optional[dict]:
-    """Who last saved this setting's stored row and when (BaseModel's
-    txn_login_id/upd_ts), or None if it has never been explicitly saved --
-    i.e. it is still serving its declared default, so there is no row to
-    attribute a change to."""
-    row = _current_snapshot().provenance.get(key)
-    if row is None:
-        return None
-    login_id, upd_ts = row
-    return {"updated_by": login_id, "updated_ts": upd_ts}
 
 
 def settings_in_group(group: str) -> dict:
     """All effective values for one group as {name: value}: declared
     defaults overlaid with whatever is stored."""
     gs = _REGISTRY.get(group)
-    out = {name: copy.deepcopy(spec.default)
-           for name, spec in (gs.specs.items() if gs else [])}
+    out = {name: spec.default for name, spec in (gs.specs.items() if gs else [])}
     prefix = f"{group}."
     for key, value in _current_snapshot().values.items():
         if key.startswith(prefix):
-            out[key[len(prefix):]] = \
-                copy.deepcopy(value) if isinstance(value, JSON_TYPES) else value
-    return out
-
-
-def all_settings() -> dict:
-    """Every effective setting as {group: {name: value}}, for the admin GUI."""
-    groups = set(_REGISTRY)
-    groups.update(split_key(k)[0] for k in _current_snapshot().values)
-    return {group: settings_in_group(group) for group in sorted(groups)}
+            out[key[len(prefix):]] = value
+    return copy.deepcopy(out)
 
 
 # ===================== Vocabularies =====================
-#
-# Controlled vocabularies (degrees, roles, statuses, grades, ...) are
-# ordinary "vocab.<name>" settings: list-of-{code,label} values declared
-# below with vocab_defaults.py's lists as their Spec defaults. These
-# helpers are the read-side seam other modules use instead of reaching
-# into `setting("vocab....")` directly.
+# Controlled vocabularies are ordinary "vocab.<name>" settings: lists of
+# {code, label, ...} declared below with vocab_defaults.py's lists as
+# their defaults.
 
 def vocab(name: str) -> list:
-    """Effective items for one controlled vocabulary: a list of
-    {"code", "label", ...} dicts, DB-stored value if present, else the
-    vocab_defaults.py default. See vocab_defaults.ALL for the valid
-    names."""
+    """Effective items for one controlled vocabulary (vocab_defaults.ALL
+    names the valid ones)."""
     return setting(f"vocab.{name}")
 
 
@@ -778,20 +499,18 @@ def vocab_codes(name: str) -> list:
 
 
 def valid_grade_codes() -> list:
-    """All valid grade codes, DB-effective (replaces the old
-    common.VALID_GRADES list)."""
     return vocab_codes("grades")
 
 
 def valid_audit_grade_codes() -> list:
-    """Grade codes valid for an audited ('A') enrolment, DB-effective
-    (replaces the old common.VALID_AUDIT_GRADES list)."""
+    """Grade codes valid for an audited ('A') enrolment."""
     return [g["code"] for g in vocab("grades") if g.get("audit_ok")]
 
 
 # ===================== Write =====================
 
-def _current_login_id():
+def current_login_id() -> Optional[str]:
+    """The logged-in user's id when called during a request, else None."""
     try:
         if has_request_context() and "user" in session:
             return session["user"].get("login_id")
@@ -800,88 +519,51 @@ def _current_login_id():
     return None
 
 
-def _bump_policy_version() -> int:
-    """Increments the single version row, creating it if absent. MUST run
-    inside the same transaction as the value writes: a reader that sees
-    the new version must also see the new values."""
+def bump_policy_version() -> int:
+    """Increments the shared configuration version counter, creating it if
+    absent. MUST run inside the writing transaction, so a reader that sees
+    the new version also sees the new values. policy_store shares it."""
     cur = M.db.execute_sql(
-        'INSERT INTO systemsetting ("group", name, is_json, value_text, '
-        '  is_deleted, txn_no, ins_ts, upd_ts) '
-        'VALUES (%s, %s, false, %s, false, 1, now(), now()) '
-        'ON CONFLICT ("group", name, is_json) DO UPDATE SET '
-        # A non-numeric value (hand-edited row) restarts the count rather
-        # than failing the save, which would otherwise wedge every write.
-        '  value_text = ((CASE WHEN systemsetting.value_text ~ \'^[0-9]+$\' '
-        '                 THEN systemsetting.value_text::bigint ELSE 0 END) '
-        '                + 1)::text, '
+        'INSERT INTO systemsetting ("group", name, value, is_deleted, txn_no, '
+        '  ins_ts, upd_ts) '
+        "VALUES (%s, %s, '1'::jsonb, false, 1, now(), now()) "
+        'ON CONFLICT ("group", name) DO UPDATE SET '
+        '  value = to_jsonb(systemsetting.value::text::bigint + 1), '
         '  txn_no = systemsetting.txn_no + 1, upd_ts = now() '
-        'RETURNING value_text',
-        (SYS_GROUP, POLICY_VERSION_NAME, "1"))
+        'RETURNING value',
+        (SYS_GROUP, POLICY_VERSION_NAME))
     return int(cur.fetchone()[0])
 
 
-def bump_policy_version() -> int:
-    """Bumps the shared configuration version counter.
-
-    Public because ``policy_store`` (the effective-dated academic policy
-    store) is keyed on the same counter: one number answers "is my cached
-    configuration current?" for both stores, which is what makes a reader
-    that sees version N+1 guaranteed to see everything that transaction
-    wrote. Must be called inside the writing transaction.
-    """
-    return _bump_policy_version()
-
-
-def current_login_id() -> Optional[str]:
-    """The logged-in user's id when called during a request, else None.
-    Public for the same reason as bump_policy_version()."""
-    return _current_login_id()
-
-
 def save_settings(values: dict, login_id: Optional[str] = None) -> dict:
-    """Validates and stores several settings atomically.
-
-    Either every value is written and the policy version bumped once, or
-    nothing is (validation errors are raised before any write). Returns
+    """Validates and stores several settings atomically: either every value
+    is written and the policy version bumped once, or nothing is. Returns
     the coerced values as stored.
 
     Raises:
         SettingValidationError: if any value is invalid or undeclared.
     """
-    coerced = validate_values(values)
+    coerced = _validated(values)
     if not coerced:
         return {}
 
-    login_id = login_id or _current_login_id()
+    login_id = login_id or current_login_id()
+    now = M.DT.now()
     with M.db.atomic():
         for key, value in coerced.items():
             group, name = split_key(key)
-            spec = _REGISTRY[group].specs[name]
-            row = dict(group=group, name=name, is_json=spec.is_json,
-                       value_text=None if spec.is_json else
-                       (None if value is None else str(value)),
-                       value_json=value if spec.is_json else None,
-                       txn_login_id=login_id, is_deleted=False,
-                       upd_ts=M.DT.now())
-            (M.SystemSetting.insert(**row)
+            (M.SystemSetting
+             .insert(group=group, name=name, value=value,
+                     txn_login_id=login_id, upd_ts=now)
              .on_conflict(
-                 conflict_target=[M.SystemSetting.group, M.SystemSetting.name,
-                                  M.SystemSetting.is_json],
-                 update={M.SystemSetting.value_text: row["value_text"],
-                         M.SystemSetting.value_json: row["value_json"],
+                 conflict_target=[M.SystemSetting.group, M.SystemSetting.name],
+                 update={M.SystemSetting.value: value,
                          M.SystemSetting.is_deleted: False,
                          M.SystemSetting.txn_login_id: login_id,
                          M.SystemSetting.txn_no: M.SystemSetting.txn_no + 1,
-                         M.SystemSetting.upd_ts: row["upd_ts"]})
+                         M.SystemSetting.upd_ts: now})
              .execute())
-            # The unique index allows a second row for the same key with
-            # the other is_json flag (e.g. written before this Spec
-            # existed); drop it so reads can't pick the wrong one.
-            (M.SystemSetting.delete()
-             .where((M.SystemSetting.group == group) &
-                    (M.SystemSetting.name == name) &
-                    (M.SystemSetting.is_json != spec.is_json)).execute())
-        version = _bump_policy_version()
+        version = bump_policy_version()
 
     invalidate_cache()
     logging.info(f"Saved system setting(s) {sorted(coerced)} by "
@@ -906,9 +588,9 @@ def delete_setting(key: str, login_id: Optional[str] = None) -> bool:
                    .where((M.SystemSetting.group == group) &
                           (M.SystemSetting.name == name)).execute())
         if removed:
-            version = _bump_policy_version()
+            version = bump_policy_version()
             logging.info(f"Deleted system setting {key} by "
-                         f"{login_id or _current_login_id()}; policy version "
+                         f"{login_id or current_login_id()}; policy version "
                          f"now {version}.")
     if removed:
         invalidate_cache()
@@ -939,7 +621,7 @@ declare_group(
 declare_group(
     "course_offering",
     [
-        Spec("hide_stats_from", list, default=["STU"], item_type=str,
+        Spec("hide_stats_from", list, default=["STU"],
              choices=VD.codes("roles"),
              doc="Roles for which course offering stats are hidden."),
     ],
@@ -1018,29 +700,26 @@ declare_group(
 
 
 def _validate_vocab_items(items):
-    """Shared Spec.validator for every "vocab.*" setting: each item must
-    be a {"code": str, "label": str, ...} object, and codes must be
-    unique within the list. Anything beyond code/label (e.g. grades'
-    audit_ok) is the individual vocabulary's business, not checked here.
-    """
+    """Spec.validator for every "vocab.*" setting: each item is a
+    {"code": str, "label": str, ...} object, codes unique within the list.
+    Extra keys (e.g. grades' audit_ok) are the vocabulary's own business."""
     seen = set()
     for item in items:
         if not isinstance(item, dict):
-            return f"every item must be an object, got {item!r}"
+            raise ValueError(f"every item must be an object, got {item!r}")
         code, label = item.get("code"), item.get("label")
         if not isinstance(code, str) or not code:
-            return f"item {item!r}: 'code' must be a non-empty string"
+            raise ValueError(f"item {item!r}: 'code' must be a non-empty string")
         if not isinstance(label, str) or not label:
-            return f"item {item!r}: 'label' must be a non-empty string"
+            raise ValueError(f"item {item!r}: 'label' must be a non-empty string")
         if code in seen:
-            return f"duplicate code {code!r}"
+            raise ValueError(f"duplicate code {code!r}")
         seen.add(code)
-    return None
 
 
 declare_group(
     "vocab",
-    [Spec(name, list, default=items, item_type=dict,
+    [Spec(name, list, default=items,
           validator=_validate_vocab_items,
           doc=f"Controlled vocabulary: {name}.")
      for name, items in VD.ALL.items()],

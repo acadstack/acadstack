@@ -21,8 +21,8 @@ from schema_migrations import run_pending_migrations  # noqa: E402
 
 def test_seed_defaults_inserts_only_missing_rows(db):
     rows = [
-        {"group": "test_grp", "name": "k1", "is_json": False, "value_text": "v1"},
-        {"group": "test_grp", "name": "k2", "is_json": False, "value_text": "v2"},
+        {"group": "test_grp", "name": "k1", "value": "v1"},
+        {"group": "test_grp", "name": "k2", "value": "v2"},
     ]
 
     counts = run_seed_defaults([(DB.SystemSetting, rows)])
@@ -32,7 +32,7 @@ def test_seed_defaults_inserts_only_missing_rows(db):
 
     # Re-running with an extra new row: only the new one should insert.
     rows2 = rows + [
-        {"group": "test_grp", "name": "k3", "is_json": False, "value_text": "v3"},
+        {"group": "test_grp", "name": "k3", "value": "v3"},
     ]
     counts2 = run_seed_defaults([(DB.SystemSetting, rows2)])
     assert counts2 == {"SystemSetting": 1}
@@ -41,19 +41,18 @@ def test_seed_defaults_inserts_only_missing_rows(db):
 
 
 def test_seed_defaults_never_overwrites_a_customized_value(db):
-    DB.SystemSetting.create(group="test_grp", name="k1", is_json=False,
-                             value_text="customized_by_institution")
+    DB.SystemSetting.create(group="test_grp", name="k1",
+                             value="customized_by_institution")
 
     counts = run_seed_defaults([(DB.SystemSetting, [
-        {"group": "test_grp", "name": "k1", "is_json": False,
-         "value_text": "seeder_default"},
+        {"group": "test_grp", "name": "k1", "value": "seeder_default"},
     ])])
 
     # Already present -> zero rows inserted, and left untouched.
     assert counts == {"SystemSetting": 0}
     row = DB.SystemSetting.get(DB.SystemSetting.group == "test_grp",
                                 DB.SystemSetting.name == "k1")
-    assert row.value_text == "customized_by_institution"
+    assert row.value == "customized_by_institution"
 
 
 def test_seed_defaults_empty_specs_is_a_noop(db):
@@ -87,8 +86,7 @@ def test_seed_defaults_seeds_vocab_rows(db):
 
     row = DB.SystemSetting.get(DB.SystemSetting.group == "vocab",
                                 DB.SystemSetting.name == "degrees")
-    assert row.is_json is True
-    assert {d["code"] for d in row.value_json} == \
+    assert {d["code"] for d in row.value} == \
         {d["code"] for d in VD.DEGREES}
 
 

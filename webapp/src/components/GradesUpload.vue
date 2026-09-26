@@ -129,7 +129,7 @@ export default {
   },
   methods: {
     is_valid_grade(gr) {
-      let vg = ['A','A-','B','B-','C','C-','D','E','F','I','W','NP','NF','S','NA', 'U'];
+      let vg = this.SD.CourseGrades.map(g => g.id).filter(id => id);
       return !_.isEmpty(gr) && vg.includes(gr.toUpperCase().trim());
     },
     fileUploaded(resBody) {

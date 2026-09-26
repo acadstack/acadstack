@@ -1,15 +1,11 @@
 """Effective-dated academic policy: versioned rulesets keyed on session.
 
-The problem this exists for
----------------------------
-``compute_cgpa_sgpa_ec`` (domain/transcript.py) carries a grade ->
-point map, three earned-credit grade sets, and a policy amendment
-implemented as a hardcoded branch on the year ("Adjustment for PhD
-passing grades introduced in 2021"). That branch is the proof that
-academic policy cannot simply be *replaced*: a 2019 transcript must keep
-computing under the 2019 rules forever. Policy is therefore not a
-setting you overwrite, it is a series of versions each of which owns a
-range of academic sessions.
+Why versioned, not overwritten
+-------------------------------
+A 2019 transcript must keep computing under the 2019 rules forever, so
+academic policy cannot simply be replaced in place. Policy is therefore
+not a setting you overwrite, it is a series of versions each of which
+owns a range of academic sessions.
 
 The model
 ---------
@@ -149,10 +145,9 @@ class PolicyGroupSpec:
             (e.g. a frozen dataclass). Called with a deeply read-only
             view of the payload. Its success is part of write-time
             validation: a payload that cannot be built is not stored.
-        validator: ``callable(payload) -> errors`` for checks the builder
-            does not make. Report problems by raising ValueError or by
-            returning a string (or list of strings); return None for
-            "valid". Same convention as settings_store.Spec.validator.
+        validator: ``callable(payload)`` for checks the builder does not
+            make. Raises ValueError to reject, one message per argument --
+            the settings_store.Spec.validator convention.
     """
 
     name: str
@@ -578,20 +573,6 @@ def _session_ordinal_or_error(acad_session: str) -> int:
         raise PolicyValidationError([str(ex)]) from ex
 
 
-def _run_validator(fn, payload, label) -> list:
-    """Shared reporting convention with settings_store: a validator may
-    raise ValueError, or return a string / list of strings / None."""
-    try:
-        result = fn(payload)
-    except ValueError as ex:
-        return [f"{label}: {ex}"]
-    if result is None:
-        return []
-    if isinstance(result, str):
-        return [f"{label}: {result}"]
-    return [f"{label}: {r}" for r in result]
-
-
 def validate_payload(group: str, payload) -> Mapping:
     """Checks a proposed ruleset without storing it. Returns the frozen
     payload that would be stored.
@@ -613,15 +594,18 @@ def validate_payload(group: str, payload) -> Mapping:
     frozen = _freeze(payload)
     errors = []
 
-    if spec.builder is not None:
+    # The validator goes first and lists every problem; the builder only
+    # runs on a payload the validator passed, so a builder is free to
+    # assume the shape and a problem is not reported twice.
+    if spec.validator is not None:
+        errors.extend(SS.run_validator(spec.validator, frozen, group))
+
+    if spec.builder is not None and not errors:
         try:
             spec.builder(frozen)
         except Exception as ex:
             errors.append(f"{group}: payload cannot be built into its typed "
                           f"form: {ex}")
-
-    if spec.validator is not None:
-        errors.extend(_run_validator(spec.validator, frozen, group))
 
     if errors:
         raise PolicyValidationError(errors)

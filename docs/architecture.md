@@ -130,7 +130,7 @@ The enrolment, doctoral committee and course approval chains are
 database-backed transition tables (`WorkflowDefinition` / `WorkflowTransition`),
 resolved by `domain/workflow.py`. An institution adds or removes an approval step
 by editing rows (`POST /workflow_save`, permission `system.manage_workflows`), not
-code. The frontend's action buttons come from `GET /workflow_actions/<name>/<id>`.
+code; the **Approval Workflows** admin screen (see Admin GUI below) is the GUI for it. The frontend's action buttons come from `GET /workflow_actions/<name>/<id>`.
 The PhD milestone sequence is data as well (`MilestoneDefinition`). See
 [workflows.md](workflows.md).
 
@@ -184,7 +184,8 @@ When removing or editing an existing role, update every permission in
 `permissions.py` that grants it. `system.manage_permissions` (seeded to `SUP`) gates
 editing the mapping itself, and `permissions.save_permission_mapping()` refuses a
 save that would remove the acting admin's own role from it, so an admin can never
-lock themselves out.
+lock themselves out. The mapping is edited on the **Permissions** admin screen (see
+Admin GUI under System settings).
 
 ### Using permissions in the frontend
 Permissions also control the visibility/state of UI components. `api_service/nav.json`
@@ -230,6 +231,41 @@ is shown in Fig. 2 below.
 `sql_by_id()` reads from that cache. Use `common.reload_sql_statements()` after editing
 the file in a running dev server.
 
+### Async view functions and blocking work
+
+Every `api_*.py` route handler is `async def` (137 of them across the module), but
+peewee has no async driver: every ORM call and every `db.execute_sql()` runs
+synchronously against `psycopg2` regardless of the `async def` on the handler. That is
+the framework's baseline, not a bug — for the ordinary indexed queries most handlers
+issue (single-row lookups, bounded result sets for CSV/Excel exports), the block is on
+the order of milliseconds, no worse than the blocking any other synchronous web
+framework does per request.
+
+`api_grades.py`'s three single-record PDF downloads
+(`download_consolidated_grade_sheet`, `download_sem_grade`,
+`download_degree_certifcate`) were the exception: each called `pdfkit.from_string`
+directly inline, which shells out to an external renderer process rather than making a
+DB call, so nothing bounds its duration the way an index bounds a query's (page count,
+embedded images under `assets-degree`, whatever I/O the renderer itself does).
+Unlike `_bulk_download_sem_grade` and `__process_credits_gen_request` — the actually
+heavy per-student loops in `api_grades.py`/`api_reports.py` — which already run off
+the event loop via `tasks_helper.create_task`'s `loop.run_in_executor`, these three ran
+on every other request's critical path: while one student's PDF rendered, that worker
+served nothing else. They are now wrapped with `quart.utils.run_sync`, the same
+executor-offload `run_in_executor` performs, applied at the one blocking call rather
+than to the handler as a whole (each still does `await send_file(...)` afterwards, so
+it can't become a plain sync view).
+
+Wall-clock measurement of `pdfkit.from_string` itself wasn't possible in this
+environment — `wkhtmltopdf`'s Homebrew formula is gone, the upstream project having
+been archived — so the decision rests on the structural difference above rather than a
+timed number: a call to an external process, reachable from an ordinary user-facing
+request, is worth offloading regardless of its actual duration. The raw-SQL export
+handlers in `api_reports.py` are deliberately left as they are, consistent with every
+other DB-touching `async def` handler in the codebase; revisit one only if it is shown
+to be slow in practice (a large unindexed scan, not the general pattern). Converting
+every peewee-backed handler wholesale would need an async DB driver or `run_sync` on
+every DB call — a framework-level change, out of scope here.
 
 ## System settings (database-backed configuration)
 Institution-configurable settings live in the `SystemSetting` table, not in
@@ -251,13 +287,14 @@ if setting("enrolment.disable_fees_check", False):
     ...
 ```
 
-A key is `"<group>.<name>"`, matching the row's `group`/`name` columns. Values come
-back already typed. Precedence: stored row, then the caller's `default` argument, then
+A key is `"<group>.<name>"`, matching the row's `group`/`name` columns (unique
+together); the value is one JSONB `value` column and comes back already typed. Precedence: stored row, then the caller's `default` argument, then
 the declared default, then `None`.
 
 Every writable setting must first be declared with a `Spec` in the DECLARATIONS section
 at the bottom of `settings_store.py` (type, default, bounds/choices, optional
-validator, plus an optional cross-field validator per group). Saves go through
+validator). A validator rejects a value by raising `ValueError`, one message per
+argument; `policy_store`'s group validators follow the same convention. Saves go through
 `save_setting()`/`save_settings()`, which validate and reject bad values at write time
 — including any undeclared key — so reads can never fail on a bad value. Startup logs
 (but does not reject) any stored value that fails its declaration.
@@ -309,15 +346,23 @@ runtime config, which is a separate and harder problem):
 
 (`student_cgpa`'s parameterized `NOT IN (%s, %s, %s, %s, %s, %s)` was also checked — it
 has no caller anywhere in the codebase, so it carries no live duplication.) Also
-unchanged: status/DC-role literals inside `webapp/src/main.js`'s role-identity computed
-properties (`isStudent`, `isFaculty`, ... -- these express who the user *is*, which is
-deliberately left alone; see the RBAC section above for the permission-backed
-`hasPermission()` alongside them), `webapp/src/components/UserDetails.vue`,
-`GradesUpload.vue` (a duplicate grade list used for client-side validation) and
-`DcSearch.vue` — these read session values against hardcoded string literals rather
-than the `SD` vocab data, so they still work today but would need a matching manual
-edit if a code set changes. Migrating these three components' literals onto
-`hasPermission()` remains an open follow-up.
+unchanged, deliberately: status/DC-role literals inside `webapp/src/main.js`'s
+role-identity computed properties (`isStudent`, `isFaculty`, ...), and the
+`user.role`/`m.role` comparisons in `webapp/src/components/UserDetails.vue` and
+`DcSearch.vue` that pick which fields or data to show for the record being viewed.
+These express who the user *is*, or which record they're looking at, rather than an
+authorization decision, so they stay outside the permission system — see the RBAC
+section above for `hasPermission()` alongside them.
+
+**Follow-up work: the "-Select-" placeholder is still injected server-side.** The
+`with_blank` flag in `STATIC_DATA_KEYS` above has `api_common.static_data_dict()`
+prepend `{"id": "", "value": "-Select-"}` to each flagged vocabulary before it reaches
+the frontend. Moving that into the frontend would be the more conventional place for a
+UI-only concern, but every `SD`-backed `<select>` (15+ components, e.g. `StudentSearch.vue`)
+relies on the placeholder already being row 0 of the array rather than rendering its
+own — dropping the server-side injection would silently remove the blank option from
+all of them at once unless a shared helper replaced it everywhere in the same change.
+That is not a small, contained change, so it stays server-side for now.
 
 
 ## Versioned academic policy (effective-dated)
@@ -394,7 +439,28 @@ the generic Settings screen: `api_settings.py`'s `_EXCLUDED_GROUPS` blocks it, b
 it has its own write path, `permissions.save_permission_mapping()`, with a
 self-lockout guard (refuses to save a change that would drop the acting admin's own
 role from `system.manage_permissions`) and its own permission
-(`system.manage_permissions`).
+(`system.manage_permissions`). It has its own screen instead:
+
+- **Permissions** (`#/admin.permissions`, `system.manage_permissions`,
+  `api_settings.py` + `PermissionsAdmin.vue`) — a permissions × roles checkbox matrix,
+  grouped by permission prefix (`course.`, `grades.`, …, with the menu-only `nav.`
+  group last), each row showing the permission's doc and whether it differs from its
+  declared default. `permissions_describe` returns `permissions.describe_mapping()`;
+  `permissions_save` takes `{"values": {name: [role, ...]}}` for the changed
+  permissions only and goes through `save_permission_mapping()`. The one cell the
+  lockout guard would refuse to clear (the admin's own role on
+  `system.manage_permissions`) is disabled on screen as well. A user's menu is built
+  from their permissions at login, so it reflects a change only after they next log in.
+- **Approval Workflows** (`#/admin.workflows`, `system.manage_workflows`,
+  `api_wflow.py` + `WorkflowAdmin.vue`) — pick a workflow (`GET /workflows`), edit its
+  transition table as rows (`GET /workflow/<name>` also returns the registered
+  guard/check/effect names, the workflow's statuses and the declared permissions for
+  the dropdowns), and save the whole definition (`POST /workflow_save`). A refused
+  save answers with a structured ERROR body, `{"message", "errors": [{"row", "message"}],
+  "stranded": {status: count}}`, where `row` is the index into the submitted
+  `transitions` (null for the workflow as a whole; from `domain/workflow.problems()`),
+  so the screen shows each problem against its row. `status_vocab` and `match_on` are
+  shown read-only: changing either means rewriting every row, which is not a table edit.
 
 ### Referential integrity on configuration changes
 
@@ -412,7 +478,9 @@ still used —
 2. in another setting drawn from the same vocabulary (any declared `Spec` whose
    `choices` matches it — this is what catches "a role that permission mappings
    depend on"); or
-3. in a `WorkflowTransition` under a workflow whose `status_vocab` names it —
+3. in a transition of a workflow whose `status_vocab` names it, as `workflow.load()`
+   resolves it (the definition saved through the workflow editor, else the shipped
+   baseline) —
 
 and raises before any write if so, naming what still depends on it.
 `api_settings.py`'s `settings_save`/`settings_delete` and `config_transfer.py`'s
@@ -427,14 +495,14 @@ document (`export_config()`), and applies such a document back (`import_config()
 It is `default_seed_data.py`'s seeder run in reverse: where the seeder
 inserts `vocab_defaults.py`'s lists as rows, export walks the same stores and
 serializes whatever is actually recorded; import feeds a document back through the
-same validated write paths the admin GUI uses (`save_settings`, `supersede`,
+same guarded write paths the admin GUI uses (`guarded_save_settings`, `supersede`,
 `save_permission_mapping` for the `"permission"` group, so its lockout guard still
-applies).
+applies), all inside one transaction: if any of them rejects part of the document,
+nothing is written.
 
 Settings/vocab/permission groups are a full-overwrite snapshot: importing replaces
-this install's effective values for every group the document names, atomically (all
-values are validated — including the referential-integrity check above — before
-anything is written). Policy groups are different in kind, because `policy_store` is
+this install's effective values for every group the document names, atomically.
+Policy groups are different in kind, because `policy_store` is
 insert-only: a document can only *add* versions, never replace what is already
 recorded. A version whose session already has policy, or that lands at or before the
 install's seal line, cannot be applied; `import_config()` reports that per version

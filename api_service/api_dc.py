@@ -136,7 +136,8 @@ async def mark_attendance():
     photos = files.getlist("group_photos")
     if not photos:
         return apiVC.error_json("Please select at least one photo.")
-    if not VAL.validate_course_instructor(co, allowed_role=["ACA", "DEA"]):
+    if not (apiVC.has_permission("dc.mark_attendance_any")
+            or VAL.validate_course_instructor(co)):
         return apiVC.error_json("Insufficient privileges. Only the course coordinator can upload attendance.")
 
     # Raises exception when change not allowed
@@ -298,9 +299,6 @@ async def get_open_events():
 
 @C.rbac(permissions=["student.export_list"])
 async def download_students_list(degree, year_of_entry, dept_name,acad_session):
-    if apiVC.is_user_in_role("STU"):
-        return apiVC.error_json("Students cannot download!")
-    
     if degree == "-":
         degree = ""
     if year_of_entry == "-":
@@ -614,8 +612,8 @@ async def is_dc_chair(uid, std_id):
 
 @C.rbac
 async def get_daywise_attendance(co_id):
-    if not VAL.validate_course_instructor(co_id, 
-                            ["SUP", "ACA", "DEA", "HOD"], False):
+    if not (apiVC.has_permission("dc.view_daywise_attendance")
+            or VAL.validate_course_instructor(co_id, coordinator_only=False)):
         return apiVC.error_json("You cannot access this attendance data!")
     sql = C.sql_by_id("daywise_attendance")
     cursor = DB.db.execute_sql(sql, [co_id])

@@ -17,6 +17,7 @@ import api_common as apiVC  # noqa: E402
 import permissions as PERM  # noqa: E402
 import settings_store as ST  # noqa: E402
 from common import AcadStackException  # noqa: E402
+from conftest import create_user, login_as  # noqa: E402
 from domain.context import Actor  # noqa: E402
 import models as DB  # noqa: E402
 from domain import course as CRS  # noqa: E402
@@ -59,6 +60,22 @@ def test_every_declared_permission_choice_is_a_real_role():
         for code in spec.default:
             assert code in role_codes, \
                 f"permission '{name}' grants unknown role {code!r}"
+
+
+@pytest.mark.parametrize("name,default", [
+    # The six permissions that replace the validate_course_instructor()
+    # allowed_role=[...] bypasses and raw is_user_in_role() checks this
+    # phase converted -- see each Spec's doc in permissions.py.
+    ("course_offering.edit_any", ["ACA", "DEA", "HOD"]),
+    ("course_offering.view_all_running", ["ACA", "DEA", "SUP"]),
+    ("grades.upload_any", ["ACA", "DEA"]),
+    ("dc.mark_attendance_any", ["ACA", "DEA"]),
+    ("dc.view_daywise_attendance", ["SUP", "ACA", "DEA", "HOD"]),
+    ("enrolment.view_grades_export", ["ACA", "DEA", "HOD"]),
+])
+def test_role_check_conversion_permissions_have_the_expected_default(
+        name, default):
+    assert PERM.roles_for_permission(name) == default
 
 
 # ===================== Actor.can() =====================
@@ -137,3 +154,85 @@ def test_locked_course_statuses_use_real_membership():
     # A status that merely looks like a substring of "APP,RET" must not
     # be treated as locked.
     assert can_edit(denied, "DRA") is True
+
+
+# ===================== admin routes =====================
+
+def test_check_no_self_lockout_accepts_prefixed_keys():
+    sup = Actor(login_id="admin1", role="SUP", user_id=1)
+    with pytest.raises(AcadStackException):
+        PERM.check_no_self_lockout(
+            {f"{PERM.GROUP}.system.manage_permissions": ["ACA"]}, sup)
+    PERM.check_no_self_lockout(
+        {"system.manage_permissions": ["SUP", "ACA"]}, sup)
+
+
+def test_permissions_describe_route(client):
+    sup = create_user("SUP", "perm_admin1")
+    login_as(client, sup.login_id)
+    res = client.get("/acadstack/permissions_describe")
+    assert res.json["status"] == "OK", res.json
+    body = res.json["body"]
+    assert body["actor_role"] == "SUP"
+    assert body["manage_permission"] == PERM.MANAGE_PERMISSIONS
+    assert {"code": "STU", "label": "Student"} in body["roles"]
+    by_name = {p["name"]: p for p in body["permissions"]}
+    assert set(by_name) == set(ST.declared_groups()[PERM.GROUP].specs)
+    course_save = by_name["course.save"]
+    assert course_save["prefix"] == "course"
+    assert course_save["doc"]
+    assert course_save["roles"] == PERM.roles_for_permission("course.save")
+    assert course_save["default"] == course_save["roles"]
+
+
+def test_permission_routes_need_manage_permissions(client):
+    aca = create_user("ACA", "perm_aca1")
+    login_as(client, aca.login_id)
+    assert client.get(
+        "/acadstack/permissions_describe").json["status"] == "ERROR"
+    res = client.post("/acadstack/permissions_save",
+                      json={"values": {"user.delete": ["SUP", "ACA"]}})
+    assert res.json["status"] == "ERROR"
+    assert PERM.roles_for_permission("user.delete") == ["SUP"]
+
+
+def test_permissions_save_route_applies_a_change(client):
+    sup = create_user("SUP", "perm_admin2")
+    login_as(client, sup.login_id)
+    res = client.post("/acadstack/permissions_save",
+                      json={"values": {"user.delete": ["SUP", "DEA"]}})
+    assert res.json["status"] == "OK", res.json
+    by_name = {p["name"]: p for p in res.json["body"]["permissions"]}
+    assert by_name["user.delete"]["roles"] == ["SUP", "DEA"]
+    assert PERM.roles_for_permission("user.delete") == ["SUP", "DEA"]
+
+
+def test_permissions_save_route_refuses_a_self_lockout(client):
+    sup = create_user("SUP", "perm_admin3")
+    login_as(client, sup.login_id)
+    res = client.post("/acadstack/permissions_save", json={"values": {
+        "user.delete": ["SUP", "DEA"],
+        "system.manage_permissions": ["DEA"]}})
+    assert res.json["status"] == "ERROR"
+    assert "lock" in res.json["body"].lower()
+    # Nothing in the request was written, not even the unrelated change.
+    assert PERM.roles_for_permission("system.manage_permissions") == ["SUP"]
+    assert PERM.roles_for_permission("user.delete") == ["SUP"]
+
+
+@pytest.mark.parametrize("values", [
+    {},
+    {"user.delete": ["SUP", "NOPE"]},
+    {"no.such_permission": ["SUP"]},
+    # Only the permission group is reachable from here: this normalizes to
+    # "permission.vocab.roles", which is undeclared.
+    {"vocab.roles": [{"code": "X", "label": "X"}]},
+])
+def test_permissions_save_route_refuses_bad_values(client, values):
+    sup = create_user("SUP", "perm_admin4")
+    login_as(client, sup.login_id)
+    res = client.post("/acadstack/permissions_save",
+                      json={"values": values})
+    assert res.json["status"] == "ERROR", res.json
+    assert PERM.roles_for_permission("user.delete") == ["SUP"]
+    assert "STU" in ST.vocab_codes("roles")

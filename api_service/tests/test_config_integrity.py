@@ -2,6 +2,7 @@
 a "vocab.*" write from silently orphaning rows/settings that still use a
 code being removed.
 """
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from conftest import create_user  # noqa: E402
 import config_integrity as CI  # noqa: E402
 import models as DB  # noqa: E402
 import settings_store as ST  # noqa: E402
+from domain import workflow as WF  # noqa: E402
 
 
 # ===================== model_usages =====================
@@ -49,30 +51,44 @@ def test_settings_usages_is_empty_for_an_unused_role(db):
 # ===================== workflow_usages =====================
 
 @pytest.fixture
-def demo_workflow(db):
-    DB.WorkflowDefinition.create(
-        name="demo_wf", status_vocab="offering_statuses", match_on="to_status",
-        locked_message="locked", denied_message="denied")
-    DB.WorkflowTransition.create(
-        workflow="demo_wf", priority=1, from_status="TESTSTAT",
-        to_status="=", label="Test", permission="course_offering.save")
-    return "demo_wf"
+def edited_course_workflow(db):
+    """The course workflow as saved through the workflow editor, with an
+    extra transition naming a status the baseline doesn't use."""
+    base = WF.baseline("course")
+    WF.store(dataclasses.replace(base, transitions=base.transitions + (
+        WF.Transition(priority=9999, from_status="TESTSTAT", to_status="=",
+                      label="Test", permission="course.save"),)))
+    return "course"
 
 
-def test_workflow_usages_finds_a_referencing_transition(db, demo_workflow):
-    found = CI.workflow_usages("offering_statuses", "TESTSTAT")
-    assert found and "WorkflowTransition" in found[0]
+def test_workflow_usages_covers_the_baseline_when_nothing_is_stored(db):
+    assert not DB.WorkflowDefinition.select().exists()
+    found = CI.workflow_usages("course_statuses", "APP")
+    assert found and "'course' workflow" in found[0]
 
 
-def test_workflow_usages_ignores_sentinels(db, demo_workflow):
-    assert CI.workflow_usages("offering_statuses", "=") == []
-    assert CI.workflow_usages("offering_statuses", "*") == []
+def test_workflow_usages_finds_a_transition_saved_through_the_editor(
+        db, edited_course_workflow):
+    found = CI.workflow_usages("course_statuses", "TESTSTAT")
+    assert found == ["1 transition(s) of the 'course' workflow"]
 
 
-def test_workflow_usages_is_scoped_to_the_named_vocab(db, demo_workflow):
-    # "demo_wf" is status_vocab="offering_statuses"; a code used by its
-    # transitions must not be reported under an unrelated vocab.
+def test_workflow_usages_ignores_sentinels(db, edited_course_workflow):
+    assert CI.workflow_usages("course_statuses", "=") == []
+    assert CI.workflow_usages("course_statuses", "*") == []
+
+
+def test_workflow_usages_is_scoped_to_the_named_vocab(db, edited_course_workflow):
     assert CI.workflow_usages("degrees", "TESTSTAT") == []
+
+
+def test_guarded_save_blocks_removing_a_status_an_edited_workflow_uses(
+        db, edited_course_workflow):
+    items = ST.vocab("course_statuses") + [{"code": "TESTSTAT", "label": "T"}]
+    ST.save_settings({"vocab.course_statuses": items})
+    with pytest.raises(ST.SettingValidationError) as ei:
+        CI.guarded_save_settings({"vocab.course_statuses": items[:-1]})
+    assert "TESTSTAT" in str(ei.value) and "workflow" in str(ei.value)
 
 
 # ===================== guarded_save_settings =====================

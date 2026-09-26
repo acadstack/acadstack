@@ -16,6 +16,7 @@ import playhouse.shortcuts as PS
 import models as M
 import api_common as apiVC
 import common as C
+import permissions as PERM
 import settings_store as ST
 from domain import course as CRS
 from domain import dc as DCD
@@ -41,6 +42,7 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/dates_search', view_func=dates_search, methods=['POST'])
     bp.add_url_rule('/workflow_actions/<string:name>/<int:record_id>',
                         view_func=workflow_actions, methods=['GET'])
+    bp.add_url_rule('/workflows', view_func=workflow_list, methods=['GET'])
     bp.add_url_rule('/workflow/<string:name>', view_func=workflow_view,
                         methods=['GET'])
     bp.add_url_rule('/workflow_save', view_func=workflow_save, methods=['POST'])
@@ -145,19 +147,46 @@ async def workflow_actions(name, record_id):
 
 
 @C.rbac(permissions=["system.manage_workflows"])
+async def workflow_list():
+    """The workflows an admin can edit."""
+    return apiVC.ok_json(WF.names())
+
+
+@C.rbac(permissions=["system.manage_workflows"])
 async def workflow_view(name):
-    """A workflow's transition table, plus the guard/check/effect names a
-    row may refer to."""
-    return apiVC.ok_json({"workflow": WF.load(name).to_json(),
-                          "registered": WF.registered_steps()})
+    """A workflow's transition table, plus everything a row may refer to:
+    the registered guard/check/effect names, the workflow's statuses, the
+    special from/to values, and the declared permissions."""
+    wf = WF.load(name)
+    return apiVC.ok_json({
+        "workflow": wf.to_json(),
+        "registered": WF.registered_steps(),
+        "statuses": ST.vocab(wf.status_vocab) or [],
+        "special_statuses": {"any": WF.ANY, "new": WF.NEW, "same": WF.SAME},
+        "permissions": sorted(ST.declared_groups()[PERM.GROUP].specs),
+    })
 
 
 @C.rbac(permissions=["system.manage_workflows"])
 async def workflow_save():
     """Replaces a workflow's transition table (the whole definition, as
-    returned by workflow_view's "workflow")."""
+    returned by workflow_view's "workflow").
+
+    A refused definition answers with a structured ERROR body rather than
+    one joined message, so the editor can show each problem against its
+    row: {"message", "errors": [{"row": index into "transitions" or null,
+    "message"}], "stranded": {status: record count}}.
+    """
     fd = await request.get_json(force=True)
-    wf = WF.save_workflow(apiVC.current_actor(), fd)
+    try:
+        wf = WF.save_workflow(apiVC.current_actor(), fd)
+    except WF.InvalidWorkflow as ex:
+        return apiVC.error_json({
+            "message": str(ex),
+            "errors": [{"row": row, "message": message}
+                       for row, message in ex.problems],
+            "stranded": ex.stranded,
+        })
     return apiVC.ok_json(wf.to_json())
 
 

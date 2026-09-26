@@ -118,7 +118,7 @@ def test_grading_policy_can_be_supplied_by_the_caller():
         default_degree_class="UG",
         programme_rules={"UG": _rules(points, ["A"], ["A"])},
     )
-    courses = [{"acad_session": "2022-I", "ltp": "3-1-0-5-3",
+    courses = [{"acad_session": "2022-I", "credits": 3,
                 "enrol_type": "C", "enrol_status": "ENRO", "grade": "C",
                 "code": "CS101"}]
 
@@ -154,7 +154,7 @@ def test_a_degree_can_be_reclassified_without_touching_the_computation():
 
     # "NP" earns credit for UG but not for PG -- so the reclassification
     # is observable in the credit total, with no other change.
-    courses = [{"acad_session": "2022-I", "ltp": "3-1-0-5-3",
+    courses = [{"acad_session": "2022-I", "credits": 3,
                 "enrol_type": "C", "enrol_status": "ENRO", "grade": "NP",
                 "code": "CS101"}]
     assert TR.compute_cgpa_sgpa_ec(courses, "BMD", policy=default)["ec"] == 0
@@ -168,7 +168,7 @@ def test_the_phd_grade_rules_are_policy_not_a_literal():
     institution states different ones by supplying a ruleset -- with no
     year arithmetic anywhere.
     """
-    courses = [{"acad_session": "2022-I", "ltp": "3-1-0-5-3",
+    courses = [{"acad_session": "2022-I", "credits": 3,
                 "enrol_type": "C", "enrol_status": "ENRO", "grade": "C-",
                 "code": "CS101"}]
 

@@ -111,7 +111,7 @@ def check_student_fees_paid(actor: Actor):
                 "submit the necessary details first.")
 
 
-def slot_conflicts(co_id, student_id, policy=None, static_data=None) -> list:
+def slot_conflicts(co_id, student_id, static_data=None) -> list:
     """Timetable clashes between the offering and what the student is
     already enrolled in.
 
@@ -120,14 +120,13 @@ def slot_conflicts(co_id, student_id, policy=None, static_data=None) -> list:
             message. The adapter passes the frontend's "CourseSlots"
             vocabulary; when omitted the raw codes are shown.
     """
-    pol = policy or POL.load_enrolment_policy()
     stu = DB.User.get_or_none(int(student_id))
     if not stu:
         raise DomainError("User record not found for student.")
     slots = []
+    # Statuses that occupy a timetable slot.
     for ce in stu.enrollments.where(
-            DB.CourseEnrollment.enrol_status.in_(
-                list(pol.slot_conflict_statuses))):
+            DB.CourseEnrollment.enrol_status.in_(["IPEN", "APEN", "ENRO"])):
         if ce.course_offering.slot:
             slots.append(ce.course_offering.slot)
 
@@ -376,7 +375,7 @@ def request_enrolment(actor: Actor, student_id, co_ids, enrol_type,
     with DB.db.atomic() as txn:
         for co_id in co_ids:
             co = DB.CourseOffering.get_by_id(co_id)
-            if enrol_type == pol.audit_enrol_type:
+            if enrol_type == "A":  # audit
                 if not CAL.is_course_withdraw_open(co.acad_session):
                     raise PolicyViolation("Course enrolment/Audit not open for "
                                           + str(co.acad_session))
@@ -389,7 +388,7 @@ def request_enrolment(actor: Actor, student_id, co_ids, enrol_type,
             outcome.message += msg
             if ccode:
                 outcome.allowed_courses.append(ccode)
-            conflicts = slot_conflicts(co_id, student_id, pol, static_data)
+            conflicts = slot_conflicts(co_id, student_id, static_data)
             if len(conflicts) > 0:
                 # The request is rejected as a whole. This used to return
                 # straight out of the atomic block, which COMMITS -- so a
@@ -407,7 +406,7 @@ def request_enrolment(actor: Actor, student_id, co_ids, enrol_type,
             if prior:
                 coe = prior
             if ccode:
-                coe.enrol_status = pol.requested_status
+                coe.enrol_status = "IPEN"
                 coe.enrol_type = enrol_type
                 coe.course_offering = co_id
                 coe.student = student_id
@@ -423,11 +422,10 @@ def request_enrolment(actor: Actor, student_id, co_ids, enrol_type,
     return outcome
 
 
-def bulk_enrol(actor: Actor, entry_no_pattern, co_id, policy=None) -> tuple:
+def bulk_enrol(actor: Actor, entry_no_pattern, co_id) -> tuple:
     """Enrols every student whose org id starts with ``entry_no_pattern``
     in one offering, straight to confirmed. Returns
     ``(count, course_title)``."""
-    pol = policy or POL.load_enrolment_policy()
 
     query = DB.User.select(DB.User.id, DB.Person.org_id,
                            DB.User.role).join(DB.Person)
@@ -442,8 +440,8 @@ def bulk_enrol(actor: Actor, entry_no_pattern, co_id, policy=None) -> tuple:
             coe = DB.CourseEnrollment()
             coe.course_offering = co
             coe.student = stu.id
-            coe.enrol_type = pol.bulk_enrol_type
-            coe.enrol_status = pol.bulk_enrol_status
+            coe.enrol_type = "C"
+            coe.enrol_status = "ENRO"
             persistence.save(coe, actor)
             num += 1
         txn.commit()
@@ -451,16 +449,15 @@ def bulk_enrol(actor: Actor, entry_no_pattern, co_id, policy=None) -> tuple:
     return num, co.course.title
 
 
-def drop_or_withdraw(actor: Actor, enrolment_id, status, policy=None):
+def drop_or_withdraw(actor: Actor, enrolment_id, status):
     """Drops or withdraws an enrolment. The academic section dropping a
     course records it as a rejection instead."""
-    pol = policy or POL.load_enrolment_policy()
 
     # Raises AcadStackException
     VAL.validate_enrolment_change(enrolment_id, status, actor=actor)
 
     if actor.can("enrolment.override"):
-        status = pol.academic_section_drop_status
+        status = "ASREJ"
 
     ce = DB.CourseEnrollment.get_by_id(enrolment_id)
     ce.enrol_status = status
@@ -620,9 +617,9 @@ def enrolment_export_rows(co_id, is_grades=False, actor: Actor = None) -> tuple:
     """
     sql_id = "enrolled_students"
     if is_grades:
-        if VAL.validate_course_instructor(co_id,
-                                          allowed_role=["ACA", "DEA", "HOD"],
-                                          coordinator_only=False, actor=actor):
+        if (actor is not None and actor.can("enrolment.view_grades_export")) \
+                or VAL.validate_course_instructor(co_id, coordinator_only=False,
+                                                  actor=actor):
             sql_id = "get_course_grades"
         else:
             sql_id = "enrolled_students_for_grades"

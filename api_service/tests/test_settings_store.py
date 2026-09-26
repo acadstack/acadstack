@@ -9,13 +9,14 @@ notice another worker's save.
 
 Settings groups are declared per test through the ``settings`` fixture,
 which isolates the module-level registry and cache. Production
-declarations (currently none -- see the DECLARATIONS section at the
-bottom of settings_store.py) are restored afterwards.
+declarations (the DECLARATIONS section at the bottom of
+settings_store.py) are restored afterwards.
 """
 import asyncio
 import sys
 from pathlib import Path
 
+import peewee
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -53,8 +54,8 @@ def demo_group(settings):
         Spec("max_credits", int, default=24, min_value=1, max_value=60),
         Spec("hide_stats_from", list, default=["STU"],
              choices=["ACA", "DEA", "HOD", "FAC", "STU", "RES", "SUP"]),
-        Spec("grade_points", dict, default={"A": 10.0}, item_type=float),
-        Spec("late_fee_note", str, default="", nullable=True, max_value=20),
+        Spec("grade_points", dict, default={"A": 10.0}),
+        Spec("late_fee_note", str, default="", max_value=20),
     ], doc="Course enrolment policy.")
     return settings
 
@@ -87,24 +88,18 @@ class QueryCounter:
         self.count = 0
 
 
-def write_from_another_worker(key, value, is_json=False):
+def write_from_another_worker(key, value):
     """Simulates a save made by a DIFFERENT hypercorn worker: the row and
     the policy-version bump land in the database, but this process's cache
     is never told about it."""
     group, name = key.split(".", 1)
     with DB.db.atomic():
-        (DB.SystemSetting.insert(
-            group=group, name=name, is_json=is_json,
-            value_text=None if is_json else str(value),
-            value_json=value if is_json else None)
+        (DB.SystemSetting.insert(group=group, name=name, value=value)
          .on_conflict(
-             conflict_target=[DB.SystemSetting.group, DB.SystemSetting.name,
-                              DB.SystemSetting.is_json],
-             update={DB.SystemSetting.value_text:
-                     None if is_json else str(value),
-                     DB.SystemSetting.value_json: value if is_json else None})
+             conflict_target=[DB.SystemSetting.group, DB.SystemSetting.name],
+             update={DB.SystemSetting.value: value})
          .execute())
-        SS._bump_policy_version()
+        SS.bump_policy_version()
 
 
 # ===================== Reading and precedence =====================
@@ -165,8 +160,8 @@ def test_unusable_stored_value_falls_back_instead_of_raising(demo_group):
     """A hand-edited row or a restored dump must not blow up a read in the
     middle of, say, generating a transcript."""
     DB.SystemSetting.create(group="enrolment", name="max_credits",
-                            is_json=False, value_text="not-a-number")
-    SS._bump_policy_version()
+                            value="not-a-number")
+    SS.bump_policy_version()
     SS.invalidate_cache()
 
     assert setting("enrolment.max_credits") == 24  # declared default
@@ -189,16 +184,8 @@ def test_describe_settings_exposes_the_schema_for_an_admin_gui(demo_group):
     assert entry["default"] == 24
     assert entry["value"] == 12
     assert entry["min_value"] == 1 and entry["max_value"] == 60
-    assert described["enrolment.hide_stats_from"]["is_json"] is True
     # The internal bookkeeping group is never offered for editing.
     assert all(not d["key"].startswith(SS.SYS_GROUP) for d in described.values())
-
-
-def test_all_settings_groups_everything_by_group(demo_group):
-    save_setting("enrolment.max_credits", 12)
-    everything = SS.all_settings()
-    assert everything["enrolment"]["max_credits"] == 12
-    assert SS.SYS_GROUP not in everything
 
 
 # ===================== Write-time validation =====================
@@ -248,16 +235,10 @@ def test_choices_constrain_the_items_of_a_list_setting(demo_group):
         ["STU", "RES"]
 
 
-def test_item_type_is_enforced_for_json_settings(demo_group):
-    with pytest.raises(SettingValidationError) as ex:
-        save_setting("enrolment.grade_points", {"A": "ten"})
-    assert "every item must be float" in str(ex.value)
-
-
 def test_custom_validator_runs_on_save(settings):
     def even_only(value):
         if value % 2:
-            return "must be an even number of weeks"
+            raise ValueError("must be an even number of weeks")
 
     declare_group("calendar", [
         Spec("weeks", int, default=16, validator=even_only),
@@ -266,26 +247,6 @@ def test_custom_validator_runs_on_save(settings):
         save_setting("calendar.weeks", 15)
     assert "must be an even number of weeks" in str(ex.value)
     assert save_setting("calendar.weeks", 14) == 14
-
-
-def test_group_validator_sees_the_values_as_they_would_be_after_the_save(settings):
-    def consistent(values):
-        if values["min_credits"] > values["max_credits"]:
-            return "min_credits cannot exceed max_credits"
-
-    declare_group("credits", [
-        Spec("min_credits", int, default=12),
-        Spec("max_credits", int, default=24),
-    ], validator=consistent)
-
-    # Valid on its own, but not against the group's stored max.
-    with pytest.raises(SettingValidationError) as ex:
-        save_setting("credits.min_credits", 30)
-    assert "cannot exceed" in str(ex.value)
-
-    # Both moved together in one save: the validator sees the end state.
-    saved = save_settings({"credits.min_credits": 30, "credits.max_credits": 40})
-    assert saved == {"credits.min_credits": 30, "credits.max_credits": 40}
 
 
 def test_a_rejected_save_writes_nothing_at_all(demo_group):
@@ -347,25 +308,21 @@ def test_deleting_a_setting_reverts_it_to_the_declared_default(demo_group):
     assert delete_setting("enrolment.max_credits") is False
 
 
-def test_saving_replaces_a_row_stored_under_the_other_json_flag(demo_group):
-    """The unique index is (group, name, is_json), so the same key can
-    exist twice -- e.g. a value written before its Spec declared it as
-    JSON. A save must collapse that, or reads become ambiguous."""
-    DB.SystemSetting.create(group="enrolment", name="hide_stats_from",
-                            is_json=False, value_text="STU")
+def test_a_key_is_stored_in_exactly_one_row(demo_group):
+    save_setting("enrolment.hide_stats_from", ["STU"])
     save_setting("enrolment.hide_stats_from", ["FAC"])
-
     rows = list(DB.SystemSetting.select().where(
         (DB.SystemSetting.group == "enrolment") &
         (DB.SystemSetting.name == "hide_stats_from")))
-    assert len(rows) == 1 and rows[0].is_json is True
-    assert setting("enrolment.hide_stats_from") == ["FAC"]
+    assert len(rows) == 1 and rows[0].value == ["FAC"]
+    with pytest.raises(peewee.IntegrityError), DB.db.atomic():
+        DB.SystemSetting.create(group="enrolment", name="hide_stats_from",
+                                value=["STU"])
 
 
 def test_validate_stored_settings_reports_rows_without_a_declaration(demo_group):
-    DB.SystemSetting.create(group="orphan", name="leftover", is_json=False,
-                            value_text="x")
-    SS._bump_policy_version()
+    DB.SystemSetting.create(group="orphan", name="leftover", value="x")
+    SS.bump_policy_version()
     SS.invalidate_cache()
     problems = SS.validate_stored_settings()
     assert problems == ["orphan.leftover: stored but not declared"]
@@ -478,41 +435,19 @@ def test_with_no_cache_at_all_a_database_failure_yields_defaults(demo_group,
     assert setting("enrolment.max_credits", 7) == 7
 
 
-def test_a_corrupt_policy_version_row_recovers_on_the_next_save(demo_group):
-    save_setting("enrolment.max_credits", 20)
-    DB.SystemSetting.update(value_text="garbage").where(
-        (DB.SystemSetting.group == SS.SYS_GROUP) &
-        (DB.SystemSetting.name == SS.POLICY_VERSION_NAME)).execute()
-    SS.invalidate_cache()
-
-    # Reads still work off the stored values...
-    assert setting("enrolment.max_credits") == 20
-    # ... and a save repairs the counter instead of failing.
-    save_setting("enrolment.max_credits", 21)
-    assert SS.policy_version() == 1
-    assert setting("enrolment.max_credits") == 21
-
-
-def test_a_nullable_setting_can_be_stored_as_null(demo_group):
-    save_setting("enrolment.late_fee_note", "something")
-    assert setting("enrolment.late_fee_note") == "something"
-
-    save_setting("enrolment.late_fee_note", None)
-    assert setting("enrolment.late_fee_note") is None
-
-    # A non-nullable setting still rejects None.
+def test_none_is_rejected_as_a_missing_value(demo_group):
     with pytest.raises(SettingValidationError) as ex:
         save_setting("enrolment.max_credits", None)
     assert "is required" in str(ex.value)
 
 
-def test_a_value_stored_in_the_wrong_column_falls_back_to_the_default(demo_group):
-    """A row written before its Spec existed can sit in value_text while
-    the Spec now says JSON (or vice versa). That must degrade to the
-    declared default, not hand a string to code expecting a list."""
+def test_a_stored_value_of_the_wrong_type_falls_back_to_the_default(demo_group):
+    """A hand-edited row holding a string where the Spec says list must
+    degrade to the declared default, not hand a string to code expecting
+    a list."""
     DB.SystemSetting.create(group="enrolment", name="hide_stats_from",
-                            is_json=False, value_text="STU,RES")
-    SS._bump_policy_version()
+                            value="STU,RES")
+    SS.bump_policy_version()
     SS.invalidate_cache()
 
     assert setting("enrolment.hide_stats_from") == ["STU"]

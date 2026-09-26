@@ -4,6 +4,7 @@ from pathlib import Path
 import uuid
 from quart import Blueprint, request
 from quart.helpers import send_file
+from quart.utils import run_sync
 from io import BytesIO
 
 from validation_checks import is_current_user_in_role_and_id
@@ -140,7 +141,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
             'no-outline': None,
             "enable-local-file-access": ""
         }
-        pdf_str = pdfkit.from_string(html, False, options=options)
+        pdf_str = await run_sync(pdfkit.from_string)(html, False, options=options)
         fp = BytesIO()
         fp.write(pdf_str)
         fp.flush()
@@ -229,7 +230,7 @@ async def download_sem_grade(acad_session, entry_no, enrol_type):
     # TODO: Check the HTML and the data's structure
     html = C.fill_template("report_templates", "semester_grades.html", data)
 
-    pdf_str = pdfkit.from_string(html, False, options={"enable-local-file-access": ""})
+    pdf_str = await run_sync(pdfkit.from_string)(html, False, options={"enable-local-file-access": ""})
     fp = BytesIO()
     fp.write(pdf_str)
     fp.flush()
@@ -378,7 +379,7 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
         report_data["static_file_path"] = file_folder
 
         html = C.fill_template("report_templates", "degree.html", report_data)
-        pdf_str = pdfkit.from_string(html, False, options={"enable-local-file-access": ""})
+        pdf_str = await run_sync(pdfkit.from_string)(html, False, options={"enable-local-file-access": ""})
         fp = BytesIO()
         fp.write(pdf_str)
         fp.flush()
