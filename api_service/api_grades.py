@@ -9,6 +9,7 @@ from io import BytesIO
 
 from validation_checks import is_current_user_in_role_and_id
 from api_auth import get_user_by_org_id
+from domain import credit_reports as CR
 from domain import transcript as TR
 
 import datetime
@@ -413,15 +414,27 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
         min_credits = ""
     if max_credits == "-":
         max_credits = ""
-    cursor = DB.db.execute_sql(C.sql_by_id("download_filtered_categorized_credits_enrolled"),
-                        [str(for_year),str(for_year), str(for_year),
-                        str(degree), str(degree),
-                        str(dept_name), str(dept_name),
-                        str(acad_session), str(acad_session),
-                        str(course_type), str(course_type),
-                        int(min_credits), int(max_credits)])
+    # Each student's category totals, summed over the matching sessions.
+    students, totals = {}, {}
+    for stu, _session, cats in CR.categorized_earned_credits(
+            str(for_year), str(degree), str(dept_name), str(acad_session),
+            str(course_type), int(min_credits), int(max_credits)):
+        students[stu["id"]] = stu
+        stu_cats = totals.setdefault(stu["id"], {})
+        for cat, total in cats.items():
+            stu_cats[cat] = stu_cats.get(cat, 0) + total
 
-    fp = apiVC.db_result_to_excel(cursor)
+    rows = []
+    for sid, cats in totals.items():
+        stu = students[sid]
+        rows.append([" | ".join(f"{cat}={CR.round_credits(total)}"
+                                for cat, total in sorted(cats.items())),
+                     CR.round_credits(sum(cats.values())),
+                     stu["first_name"], stu["last_name"], stu["login_id"],
+                     stu["email"], stu["dept_name"]])
+    fp = apiVC.rows_to_csv(["cat_credits", "earned_credit_total",
+                            "first_name", "last_name", "login_id", "email",
+                            "dept_name"], rows)
     return await send_file(fp,
                      attachment_filename=f"course_enrolments_{for_year}.csv",
                      as_attachment=True)

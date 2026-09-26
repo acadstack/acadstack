@@ -459,22 +459,14 @@ def result_set_from_cursor(cursor):
 
 
 def db_result_to_excel(cursor):
-    ncols = len(cursor.description)
-    colnames = [cursor.description[i][0] for i in range(ncols)]
-    result = []
+    colnames = [d[0] for d in cursor.description]
+    return rows_to_csv(colnames, cursor.fetchall())
 
-    # Add the header row
-    hdr_row = []
-    for col_name in colnames:
-        hdr_row.append(col_name)
-    result.append(','.join(hdr_row))
 
-    # Add the data rows
-    for row in cursor.fetchall():
-        row_data = []
-        for i in range(ncols):
-            row_data.append(row[i])
-        result.append(','.join(map(str, row_data)))
+def rows_to_csv(colnames, rows):
+    """A CSV file object: a header row of ``colnames``, then ``rows``."""
+    result = [','.join(colnames)]
+    result.extend(','.join(map(str, row)) for row in rows)
     fp = BytesIO()
     fp.write('\n'.join(result).encode('utf-8'))
     fp.flush()
