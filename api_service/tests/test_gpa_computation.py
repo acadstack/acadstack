@@ -202,7 +202,8 @@ MIXED = [course(code=f"X{i}", enrol_type=t, grade=g)
 @pytest.mark.parametrize("degree", ["BTE", "MTE", "PHD"])
 def test_report_earned_credits_match_transcript_under_any_ruleset(policy,
                                                                   degree):
-    rows = [dict(c, id=1, degree=degree, c_category="PC") for c in MIXED]
+    rows = [dict(c, id=1, degree=degree, c_category="PC", offering_status="F")
+            for c in MIXED]
     report = CR.earned_credits_by_category(rows, policy=policy)
     expected = compute(MIXED, degree, policy=policy)["ec"]
     assert sum(report.get((1, "2022-I"), {}).values()) == expected
@@ -212,6 +213,6 @@ def test_report_earned_credits_match_transcript_under_any_ruleset(policy,
                          ids=["baseline", "narrow"])
 def test_report_registered_credits_follow_credit_enrol_types(policy,
                                                              expected):
-    rows = [dict(c, id=1) for c in MIXED]
+    rows = [dict(c, id=1, offering_status="F") for c in MIXED]
     assert CR.credit_enrolment_totals(rows, policy=policy) == {
         (1, "2022-I"): expected}

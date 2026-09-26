@@ -62,7 +62,7 @@ course_lectures_in_session = """SELECT count(*) as Lecture,
 # types count, from the grading policy in force for the session.
 credits_earned_report = """
     SELECT u.id, u.first_name, u.last_name, u.email, p.org_id,
-        o.acad_session, c.credits, e.enrol_type
+        o.acad_session, o.status AS offering_status, c.credits, e.enrol_type
     FROM public.courseenrollment e
     JOIN public.user u ON u.id = e.student_id
     JOIN public.person p ON p.id = u.person_id
@@ -87,13 +87,13 @@ student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
     JOIN public.user stu ON stu.id=ce.student_id
     WHERE stu.login_id=%s
     AND ce.enrol_status='ENRO'
-    AND POSITION(co.acad_session IN %s) > 0
+    AND co.acad_session = ANY(%s)
     AND NOT EXISTS (
         SELECT 1 FROM public.studentfeedbackstatus sfs
         JOIN public.feedbackform ff on ff.id=sfs.feedback_form_id
         WHERE sfs.course_instructor_id=ci.id
         AND sfs.student_id=stu.id
-        AND sfs.is_submitted=1
+        AND sfs.is_submitted
         AND ff.is_active=true
         AND ff.form_type=%s
         );"""
@@ -246,13 +246,13 @@ enrolled_students_for_grades = """
     WHERE ce.enrol_status = 'ENRO' AND co.id=%s
     ORDER BY p.org_id;"""
 
-# One row per enrolment: domain/credit_reports.py decides which rows earn
-# credit, from the grading policy in force for the session and the
-# student's degree.
+# One row per enrolment and applicable category (or one with NULL category
+# when none applies). domain/credit_reports.py picks the category and
+# decides which rows earn credit, by the same rules as transcripts.
 categorized_credit_enrolments = """
-    SELECT u.id, u.login_id, u.first_name, u.last_name, u.email,
-        p.dept_name, p.degree, co.acad_session,
-        COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
+    SELECT ce.id AS enrolment_id, u.id, u.login_id, u.first_name,
+        u.last_name, u.email, p.dept_name, p.degree, co.acad_session,
+        co.status AS offering_status, cc.category, cc.dept AS category_dept,
         c.credits, ce.enrol_type, ce.grade
     FROM public.courseenrollment ce
     JOIN public.user u ON u.id = ce.student_id
@@ -263,13 +263,13 @@ categorized_credit_enrolments = """
         ON cc.offering_id = ce.course_offering_id
         AND cc.degree = p.degree
         AND (cc.dept = p.dept_name OR cc.dept = 'ALL')
-        AND (cc.for_entry_years ~ %s)
+        AND cc.for_entry_years ILIKE '%%' || p.year_of_entry || '%%'
     WHERE ce.enrol_status = 'ENRO'
       AND (p.year_of_entry = %s OR %s = '')
       AND (p.degree = %s OR %s = '')
       AND (p.dept_name = %s OR %s = '')
       AND (co.acad_session = %s OR %s = '')
-    ORDER BY u.login_id, co.acad_session;
+    ORDER BY u.login_id, co.acad_session, ce.id, cc.id;
 """
 
 get_instructor_feedback = """

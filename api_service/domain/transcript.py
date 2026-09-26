@@ -38,6 +38,33 @@ SATISFACTORY_GRADE = "S"
 #: Decimal places SGPA and CGPA are rounded to.
 GPA_DECIMAL_PLACES = 2
 
+#: Offering statuses left off a transcript: cancelled and declined.
+EXCLUDED_OFFERING_STATUSES = ("C", "D")
+
+
+def grade_released(acad_session):
+    """Whether a session's grades may be shown: true unless a result
+    declaration date is configured and still in the future. Until then a
+    grade reads as "NA"."""
+    try:
+        declared = CAL.event_date("RESULT_DECLARATION", acad_session)
+    except Exception:
+        return True
+    return declared <= C.current_dt_str()
+
+
+def category_for(categories, dept_name):
+    """The category of one offering for a student, given the
+    ``(category, dept)`` pairs of the CourseCategory rows that apply to
+    the student's degree, entry year and department (or "ALL"): the
+    department's own row wins over "ALL". None when there are none."""
+    chosen = None
+    for category, dept in categories:
+        chosen = category
+        if dept == dept_name:
+            break
+    return chosen
+
 
 def _course_credits(course):
     """The course's stored credit value (``Course.credits``, computed from
@@ -173,8 +200,7 @@ def fetch_student_enrollments_data(enrols, include_attendance):
     enrol_data = {}
 
     for se in enrols:
-        # Ignore canceled and declined course offerings
-        if se.course_offering.status in ["C", "D"]:
+        if se.course_offering.status in EXCLUDED_OFFERING_STATUSES:
             continue
 
         my_course = {"id": se.id, "co_id": se.course_offering.id,
@@ -210,25 +236,16 @@ def fetch_student_enrollments_data(enrols, include_attendance):
             (DB.CourseCategory.dept << (st_dept_name, 'ALL')) &
             (DB.CourseCategory.for_entry_years.contains(st_year_of_entry)))
 
-        if cat_info:
-            for cat in cat_info:
-                my_course["cc_category"] = cat.category
-                if cat.dept == st_dept_name:
-                    my_course["cc_category"] = cat.category
-                    break
+        category = category_for([(c.category, c.dept) for c in cat_info],
+                                st_dept_name)
+        if category is not None:
+            my_course["cc_category"] = category
         else:
             logging.warning("Course categorization not found. CO id="
                             f"{se.course_offering.id}")
 
-        # Release the grade only after result declaration date
-        try:
-            result_dec_dt = CAL.event_date("RESULT_DECLARATION",
-                                           se.course_offering.acad_session)
-        except Exception:
-            pass
-        else:
-            if result_dec_dt > C.current_dt_str():
-                my_course["grade"] = "NA"
+        if not grade_released(se.course_offering.acad_session):
+            my_course["grade"] = "NA"
 
         if include_attendance:
             my_course["attendance"] = ATT.percent_for_enrolment(se)

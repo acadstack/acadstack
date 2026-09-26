@@ -1,13 +1,15 @@
 """Credit totals for the credit reports.
 
-The report queries return one row per enrolment and leave the grade and
-enrolment-type codes out of SQL. Which rows count is decided here, off
-the :class:`domain.policy.GradingPolicy` in force for each row's own
-session, by the rule transcripts use, so a new policy version changes
-reports and transcripts together.
+The report queries leave the grade and enrolment-type codes out of SQL.
+Which rows count is decided here, by the rules transcripts use: the
+:class:`domain.policy.GradingPolicy` in force for each row's own session,
+the offerings transcripts leave off, the category a transcript shows and
+grades hidden until result declaration. So reports and transcripts agree,
+including after a new policy version.
 """
 
 from decimal import ROUND_HALF_UP, Decimal
+from itertools import groupby
 
 import common as C
 import models as DB
@@ -15,9 +17,31 @@ from domain import policy as POL
 from domain import transcript as TR
 
 
+#: Category reported for an enrolment with none.
+UNCATEGORIZED = "UnCat"
+
+
 def _code(value):
     """A stored code as the transcript compares it."""
     return (value or "").strip().upper()
+
+
+def _counted(row):
+    """Whether a row's offering appears on transcripts at all."""
+    return row["credits"] is not None and \
+        _code(row["offering_status"]) not in TR.EXCLUDED_OFFERING_STATUSES
+
+
+#: Credit range used when a report's lower or upper bound is left blank.
+DEFAULT_MIN_CREDITS, DEFAULT_MAX_CREDITS = 0, 9999
+
+
+def credit_bounds(min_credits, max_credits):
+    """A report's credit range as ints; blank or "-" means unbounded."""
+    def bound(value, default):
+        return default if value in (None, "", "-") else int(value)
+    return (bound(min_credits, DEFAULT_MIN_CREDITS),
+            bound(max_credits, DEFAULT_MAX_CREDITS))
 
 
 def round_credits(total):
@@ -31,7 +55,7 @@ def credit_enrolment_totals(rows, policy=None):
 
     Args:
         rows: dicts with ``id`` (the student), ``acad_session``,
-            ``credits`` and ``enrol_type``.
+            ``offering_status``, ``credits`` and ``enrol_type``.
         policy: a ruleset to use for every row; by default each row's
             session resolves its own.
 
@@ -42,7 +66,7 @@ def credit_enrolment_totals(rows, policy=None):
     totals = {}
     for r in rows:
         pol = policy or POL.load_grading_policy(r["acad_session"])
-        if r["credits"] is None or \
+        if not _counted(r) or \
                 _code(r["enrol_type"]) not in pol.credit_enrol_types:
             continue
         key = (r["id"], r["acad_session"])
@@ -50,14 +74,16 @@ def credit_enrolment_totals(rows, policy=None):
     return totals
 
 
-def earned_credits_by_category(rows, category="", min_credits=0,
-                               max_credits=9999, policy=None):
+def earned_credits_by_category(rows, category="",
+                               min_credits=DEFAULT_MIN_CREDITS,
+                               max_credits=DEFAULT_MAX_CREDITS, policy=None):
     """Earned credits per student, session and course category.
 
     Args:
-        rows: dicts with ``id`` (the student), ``degree``,
-            ``acad_session``, ``c_category``, ``credits``, ``enrol_type``
-            and ``grade``.
+        rows: one dict per enrolment, with ``id`` (the student),
+            ``degree``, ``acad_session``, ``offering_status``,
+            ``c_category``, ``credits``, ``enrol_type`` and ``grade`` (as
+            released: "NA" before result declaration).
         category: keep only this category; empty keeps all.
         min_credits, max_credits: keep only category totals in this
             inclusive range.
@@ -70,7 +96,7 @@ def earned_credits_by_category(rows, category="", min_credits=0,
     totals = {}
     for r in rows:
         pol = policy or POL.load_grading_policy(r["acad_session"])
-        if r["credits"] is None or not TR.earns_credit(
+        if not _counted(r) or not TR.earns_credit(
                 _code(r["grade"]), _code(r["enrol_type"]), r["degree"], pol):
             continue
         cats = totals.setdefault((r["id"], r["acad_session"]), {})
@@ -99,13 +125,35 @@ def categorized_earned_credits(entry_year, degree, dept_name, acad_session,
         first_name, last_name, email and dept_name.
     """
     cursor = DB.db.execute_sql(C.sql_by_id("categorized_credit_enrolments"),
-                               [entry_year, entry_year, entry_year,
-                                degree, degree, dept_name, dept_name,
+                               [entry_year, entry_year, degree, degree,
+                                dept_name, dept_name,
                                 acad_session, acad_session])
     names = [d[0] for d in cursor.description]
-    rows = [dict(zip(names, row)) for row in cursor.fetchall()]
+    rows = _per_enrolment([dict(zip(names, row))
+                           for row in cursor.fetchall()])
     students = {r["id"]: r for r in rows}
     totals = earned_credits_by_category(rows, category, min_credits,
                                         max_credits, policy)
     return [(students[sid], session, cats)
             for (sid, session), cats in totals.items()]
+
+
+def _per_enrolment(join_rows):
+    """Collapses the query's one row per applicable category into one row
+    per enrolment, carrying the category and grade a transcript shows."""
+    released = {}
+    rows = []
+    for _, group in groupby(join_rows, key=lambda r: r["enrolment_id"]):
+        group = list(group)
+        row = dict(group[0])
+        category = TR.category_for(
+            [(r["category"], r["category_dept"]) for r in group
+             if r["category_dept"] is not None], row["dept_name"])
+        row["c_category"] = (category or "").strip() or UNCATEGORIZED
+        session = row["acad_session"]
+        if session not in released:
+            released[session] = TR.grade_released(session)
+        if not released[session]:
+            row["grade"] = "NA"
+        rows.append(row)
+    return rows

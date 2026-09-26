@@ -3,6 +3,7 @@ so they agree with transcripts before and after the policy is superseded."""
 import dataclasses
 import sys
 from collections import defaultdict
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import api_reports  # noqa: E402
 import models as DB  # noqa: E402
 import policy_store as PS  # noqa: E402
-from conftest import create_user  # noqa: E402
+from conftest import create_user, login_as  # noqa: E402
 from domain import credit_reports as CR  # noqa: E402
 from domain import policy as POL  # noqa: E402
 from domain import transcript as TR  # noqa: E402
@@ -120,3 +121,79 @@ def test_credits_earned_counts_credit_enrolment_types_per_session(students):
     _supersede_from_new()
     assert _credits_earned(OLD)["ORG-cr_ug"] == CR.round_credits(15)
     assert _credits_earned(NEW)["ORG-cr_ug"] == CR.round_credits(12)
+
+
+def _offering(code):
+    return DB.CourseOffering.select().join(DB.Course).where(
+        (DB.Course.code == code) & (DB.CourseOffering.acad_session == NEW)
+    ).get()
+
+
+@pytest.mark.parametrize("status", ["C", "D"])
+def test_cancelled_and_declined_offerings_count_nowhere(students, status):
+    offering = _offering("CS101")
+    offering.status = status
+    offering.save()
+    assert _report_ec() == _transcript_ec(students)
+    assert _report_ec()[("cr_ug", NEW)] == 9
+    assert _credits_earned(NEW)["ORG-cr_ug"] == CR.round_credits(12)
+
+
+def test_grades_count_only_after_result_declaration(students):
+    DB.AcademicCalendar.create(
+        acad_session=NEW, event_code="RESULT_DECLARATION",
+        event_value=(date.today() + timedelta(days=5)).strftime("%Y-%m-%d"))
+    assert _report_ec() == _transcript_ec(students)
+    assert ("cr_ug", NEW) not in _report_ec()
+
+
+def test_each_enrolment_counts_once_under_the_transcript_category(students):
+    offering = _offering("CS101")
+    # An "ALL" row loses to the student's own department, and a row for
+    # another entry year does not apply at all.
+    DB.CourseCategory.create(offering=offering, category="SC", degree="BTE",
+                             dept="ALL", for_entry_years="2022")
+    DB.CourseCategory.create(offering=offering, category="HC", degree="BTE",
+                             dept="CSE", for_entry_years="2019")
+    for entry_year in ("", "2022"):
+        rows = CR.categorized_earned_credits(entry_year, "BTE", "", NEW, "",
+                                             0, 9999)
+        assert [cats for _, _, cats in rows] == [{"PC": 12}]
+
+
+def test_blank_or_dash_credit_bounds_mean_unbounded(students):
+    assert CR.credit_bounds("-", "-") == CR.credit_bounds(None, "") == (
+        CR.DEFAULT_MIN_CREDITS, CR.DEFAULT_MAX_CREDITS)
+    assert CR.credit_bounds("3", 12) == (3, 12)
+    assert total_credits_data({"acad_session": OLD, "min_credits": "-",
+                               "max_credits": "-", "degree": "",
+                               "dept_name": "", "entry_year": ""})
+
+
+def test_feedback_lists_credit_enrolments_of_current_sessions_only(
+        students, client):
+    # "2024-I" is a prefix of the current "2024-II": it must not match.
+    current = "2024-II"
+    today = date.today()
+    for code, delta in (("SESSION_S", -30), ("SESSION_E", 30)):
+        DB.AcademicCalendar.create(
+            acad_session=current, event_code=code,
+            event_value=(today + timedelta(days=delta)).strftime("%Y-%m-%d"))
+    fac = create_user("FAC", "cr_fac")
+    for session in (NEW, current):
+        for code in ("CS101", "CS106"):  # credit, audit
+            offering = DB.CourseOffering.get_or_create(
+                course=DB.Course.get(DB.Course.code == code),
+                acad_session=session,
+                defaults=dict(status="R", slot="A", dept_name="CSE"))[0]
+            DB.CourseInstructor.get_or_create(offering=offering,
+                                              instructor=fac,
+                                              is_coordinator=True)
+            DB.CourseEnrollment.get_or_create(
+                course_offering=offering, student=students[0],
+                defaults=dict(enrol_type="A" if code == "CS106" else "C",
+                              enrol_status="ENRO", grade="NA"))
+    login_as(client, "cr_ug")
+    res = client.get("/acadstack/student_enrolments_for_fb/END_SEM_FB")
+    assert res.status_code == 200, res.json
+    assert [e["label"].split(" ")[0] for e in res.json["body"]] == ["CS101"]
