@@ -118,9 +118,34 @@ it a random key is generated at each start.
 
 `tasks_helper.create_task` runs a sync job on an executor thread with no app or request
 context: the job takes config/session values (upload folder, acting user) as
-arguments, and gets its own pooled DB connection that is returned to the pool when it
-finishes. Finished jobs are purged from `app.extensions['tasks']` after
+arguments. Finished jobs are purged from `app.extensions['tasks']` after
 `TASK_TTL_SECONDS` by a cleanup loop started at app startup.
+
+### DB connections
+peewee keeps connection state per thread. Route handlers are `async def`, so they all run
+on the event-loop thread and share its one long-lived pooled connection. Two rules keep
+that safe:
+
+- **No `await` inside a transaction.** Requests interleave only at `await`s, so a
+  `with db.atomic():` block that awaits would let another request's statements run
+  inside its transaction.
+- **Request-side code runs on the loop thread.** Hooks and views are `async` unless they
+  must block (e.g. `oauth_verify`'s HTTP call to Google). Quart runs a sync hook or view
+  on an executor thread, where it would check out a pool connection of its own; such
+  code is wrapped with `common.releases_thread_db_connection` to return it. Don't turn
+  `discard_dead_db_connection` into a sync hook, and don't add a hook that closes the
+  loop thread's connection: another request may be using it between awaits.
+
+`common.discard_dead_db_connection` (a `before_request` hook) drops the loop thread's
+connection only once the server has closed it (a Postgres restart or failover), so the
+next query opens a fresh one instead of every request failing until the app restarts.
+The request that first hits the dead connection still fails. Statements are never
+retried: a retried INSERT whose commit landed before the connection dropped would be
+duplicated.
+
+Sync code on other threads (background jobs, `oauth_verify`) uses
+`common.run_with_thread_db_connection`, which returns its connection to the pool when
+the code finishes.
 
 ## Service (domain) layer
 Business logic lives in the `api_service/domain/` package, not inside the Quart view

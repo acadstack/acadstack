@@ -182,7 +182,7 @@ def actor_or_current(actor=None) -> Actor:
     return actor if actor is not None else current_actor()
 
 
-def get_current_user_and_nav():
+async def get_current_user_and_nav():
     if "user" in session:
         u = session['user']
         nav = init_navbar_items(u["role"], u["degree"])
@@ -324,16 +324,19 @@ async def get_active_users():
     return ok_json(users)
 
 
-def update_active_users():
+async def update_active_users():
     if "user" in session:
         APP.active_users[C.this_user_name_login_id()] = DT.now()
 
 
-def logout(send_response=True):
+def end_user_session():
     APP.active_users.pop(C.this_user_name_login_id(), None)
     session.pop('user', None)
-    if send_response:
-        return ok_json("Logged out.")
+
+
+async def logout():
+    end_user_session()
+    return ok_json("Logged out.")
 
 
 def init_navbar_items(role_code:str, degree:str)->Dict[str, Any]:
