@@ -389,7 +389,7 @@ read-only code, a "reserved" badge and a disabled delete button.
 lists that were deliberately left as-is (they'd need a way to parameterize SQL from
 runtime config, which is a separate and harder problem):
 - `filtered_categorized_credits_enrolled`: `ce.grade IN ('A', 'A-', 'B', 'B-', 'C', 'C-', 'D', 'S', 'NP')`
-- `grades_status_pending`: `ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I ','W')`
+- `grades_status_pending`: `ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I','W')`
 - `download_filtered_categorized_credits_enrolled`: `ce.grade IN ('A','A-','B','B-','C','C-','D','S','NP')`
 
 (`student_cgpa`'s parameterized `NOT IN (%s, %s, %s, %s, %s, %s)` was also checked — it
