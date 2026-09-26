@@ -137,11 +137,11 @@ async def mark_attendance():
     if not photos:
         return apiVC.error_json("Please select at least one photo.")
     if not (apiVC.has_permission("dc.mark_attendance_any")
-            or VAL.validate_course_instructor(co)):
+            or VAL.validate_course_instructor(co, actor=apiVC.current_actor())):
         return apiVC.error_json("Insufficient privileges. Only the course coordinator can upload attendance.")
 
     # Raises exception when change not allowed
-    VAL.validate_coff_status(int(co))
+    VAL.validate_coff_status(int(co), actor=apiVC.current_actor())
     ap_ids = []
     with DB.db.atomic() as txn:
         for ph in photos:
@@ -166,11 +166,11 @@ async def mark_attendance():
 
 @C.rbac(permissions=["dc.view_instructor_academics"])
 async def get_instructor_academics(my_id):
-    VAL.is_current_user_in_role_and_id("FAC", "user_id", my_id, 
+    VAL.is_current_user_in_role_and_id("FAC", "user_id", my_id,
                                   ("Instructor attempted to access other's"
-                                  " academic information."))
+                                  " academic information."), actor=apiVC.current_actor())
 
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     pg_no = int(fd.get('pg_no', 1))
     subquery = DB.CourseEnrollment.select(DB.CourseEnrollment.course_offering_id,
                 DB.ORM.fn.COUNT(DB.CourseEnrollment.student_id)\
@@ -207,7 +207,7 @@ async def get_instructor_academics(my_id):
 
 @C.rbac
 async def attendance_find():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     code, ltp, title = fd.get("code"), fd.get("ltp"), fd.get("title")
     pg_no = int(fd.get('pg_no', 1))
     query = DB.CourseOffering.select().join(DB.Course)
@@ -254,8 +254,9 @@ async def get_student_attendance_details(my_id):
     ce = DB.CourseEnrollment.select().where(DB.CourseEnrollment.id == my_id)
     if ce:
         roll_no = ce[0].student.person.org_id
-        VAL.is_current_user_in_role_and_id("STU", "org_id", roll_no, 
-                                  "Student attempted to view other's attendance records.")
+        VAL.is_current_user_in_role_and_id("STU", "org_id", roll_no,
+                                  "Student attempted to view other's attendance records.",
+                                  actor=apiVC.current_actor())
         attendance = list(ce[0].attendance)  # A list of DB.StudentAttendance objects
         course_title = ce[0].course_offering.course.title
         acad_session = ce[0].course_offering.acad_session
@@ -299,14 +300,10 @@ async def get_open_events():
 
 @C.rbac(permissions=["student.export_list"])
 async def download_students_list(degree, year_of_entry, dept_name,acad_session):
-    if degree == "-":
-        degree = ""
-    if year_of_entry == "-":
-        year_of_entry = ""
-    if dept_name == "-":
-        dept_name = "" 
-    if acad_session == "-":
-        acad_session = ""   
+    degree = apiVC.none_if_dash(degree)
+    year_of_entry = apiVC.none_if_dash(year_of_entry)
+    dept_name = apiVC.none_if_dash(dept_name)
+    acad_session = apiVC.none_if_dash(acad_session)
     
     cursor = DB.db.execute_sql(C.sql_by_id("generate_student_list"),
                             [str(degree), 
@@ -314,7 +311,7 @@ async def download_students_list(degree, year_of_entry, dept_name,acad_session):
                              str(dept_name),
                              str(acad_session)])
 
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="download_student_list.csv",
                      as_attachment=True)
@@ -342,30 +339,27 @@ def schedule_event_alerts(config=None):
 
 @C.rbac(permissions=["reports.generate"])
 async def download_dept_wise_avg(form_type, acad_session):
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
 
     cursor = DB.db.execute_sql(C.sql_by_id("dept_wise_average"),
                             [str(form_type), str(acad_session)])
 
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="download_dept_wise_avg.csv",
                      as_attachment=True)
 
 @C.rbac(permissions=["dc.download_degree_wise_students"])
 async def download_degree_wise_students(course_code, acad_session):
-    if course_code == "-":
-        course_code = ""
+    course_code = apiVC.none_if_dash(course_code)
     if acad_session == "":
         acad_session = ""
 
     cursor = DB.db.execute_sql(C.sql_by_id("degree_wise_students"),
                             [str(course_code), str(course_code),str(acad_session)])
 
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="download_degree_wise_students.csv",
                      as_attachment=True)
@@ -374,7 +368,7 @@ async def download_degree_wise_students(course_code, acad_session):
 @C.rbac(permissions=["dc.save"])
 async def dc_save():
     try:
-        fd = await request.get_json(force=True)
+        fd = await apiVC.json_body()
         dc_id = DCD.save_dc(apiVC.current_actor(), fd,
                             C.update_model_skip_unknown)
         return await dc_details(dc_id)
@@ -430,7 +424,7 @@ async def dc_details(dc_id):
 
 @C.rbac
 async def dc_search():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     stu_id = fd.get("student_id") or 0
     mem_id = fd.get("member_id") or 0
     mem_role = fd.get("member_role") or ""
@@ -527,7 +521,7 @@ async def save_progress_report():
         send_access_violation_alert(msg)
         return apiVC.error_json("You are not allowed to access this data.")
     uid = apiVC.logged_in_user().id
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     pprid = fd.get("id") or 0
     ppr = DB.PhDProgressReport()
     if not __is_dc_member_or_admin(uid, fd.get("student")):
@@ -613,7 +607,8 @@ async def is_dc_chair(uid, std_id):
 @C.rbac
 async def get_daywise_attendance(co_id):
     if not (apiVC.has_permission("dc.view_daywise_attendance")
-            or VAL.validate_course_instructor(co_id, coordinator_only=False)):
+            or VAL.validate_course_instructor(co_id, coordinator_only=False,
+                                               actor=apiVC.current_actor())):
         return apiVC.error_json("You cannot access this attendance data!")
     sql = C.sql_by_id("daywise_attendance")
     cursor = DB.db.execute_sql(sql, [co_id])

@@ -81,7 +81,7 @@ def __encode_face_to_json(photo_str):
 
 
 async def gen_prk():
-    lf = await request.get_json(force=True)
+    lf = await apiVC.json_body()
     login_id = lf.get("login_id")
     email = lf.get("email")
     logging.debug(
@@ -114,7 +114,7 @@ async def gen_prk():
 
 
 async def reset_password():
-    lf = await request.get_json(force=True)
+    lf = await apiVC.json_body()
     login_id = lf.get("login_id")
     email = lf.get("email")
     new_password = lf.get("new_password")
@@ -187,7 +187,7 @@ async def get_my_photo():
 
 
 async def login():
-    lf = await request.get_json(force=True)
+    lf = await apiVC.json_body()
     login_id = lf.get("login_id")
     plain_pass = lf.get("password")
     logging.debug("Received login request for user {}".format(login_id))
@@ -226,7 +226,7 @@ async def user_find():
     if not apiVC.has_permission("user.search"):
         return apiVC.error_json("DB.User search not allowed!")
 
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     dept_name, org_id, fname, lname, role = fd.get("dept_name"), \
                                             fd.get("org_id"), fd.get("first_name"), fd.get("last_name"), \
                                             fd.get("role")
@@ -315,7 +315,7 @@ def __restricted_changes(obj, data):
 
 @C.rbac
 async def user_save():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     # Passwords change only through the reset flow.
     fd.pop("password_hashed", None)
 
@@ -627,7 +627,7 @@ def oauth_verify(token):
 
 @C.rbac(permissions=["user.delete"])
 async def user_delete():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     user_ids = fd.get("ids")
     if user_ids:
         q = (DB.User.update({DB.User.is_deleted: True})
@@ -739,7 +739,7 @@ async def find_students():
     if not apiVC.has_permission("user.search"):
         return apiVC.error_json("Operation not allowed!")
 
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     fname, lname, email = fd.get("first_name"), \
         fd.get("last_name"),  fd.get("email")
     org_id, degree, year_of_entry, dept_name = fd.get("org_id"), \
@@ -801,7 +801,7 @@ def __get_advisor(for_degree, fey, dept_name):
 
 @C.rbac
 async def find_advisor():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     for_degree, fey, dept_name = fd.get("for_degree"), \
                             fd.get("for_entry_year"), \
                             fd.get("dept_name")
@@ -821,7 +821,7 @@ async def find_advisor():
 
 @C.rbac(permissions=["user.assign_advisor"])
 async def assign_advisor():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     for_degree, fey, dept_name = fd.get("for_degree"), \
                                     fd.get("for_entry_year"), \
                                     fd.get("dept_name")

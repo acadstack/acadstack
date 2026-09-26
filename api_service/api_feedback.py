@@ -5,7 +5,7 @@ from create_email import send_access_violation_alert
 from validation_checks import (is_current_user_in_role_and_id, 
                                get_event_date, 
                                is_feedback_open)
-from quart import Blueprint, request
+from quart import Blueprint
 import logging
 import api_common as apiVC
 import models as DB
@@ -33,7 +33,7 @@ def init_routes(bp: Blueprint):
 
 @C.rbac(permissions=["feedback.manage_form"])
 async def save_feedback_form():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     logging.info("Saving feedback form details: {}".format(fd))
     with DB.db.atomic() as txn:
         if "id" in fd and int(fd["id"]) > 0:
@@ -141,7 +141,7 @@ async def save_course_instructor_feedback():
         return apiVC.error_json(
             "Only students can submit the feedback! Your attempt to submit feedback will be reported.")
 
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     ff_id = int(fd["form"]["id"])
     fform = DB.FeedbackForm.get_or_none(ff_id)
     if not fform:
@@ -226,7 +226,8 @@ def _compute_fbq_score(pct_votes, fbs):
 
 @C.rbac(permissions=["feedback.view_instructor_feedback"])
 async def get_instructor_feedback(co_id, user_id, fb_type):
-    is_current_user_in_role_and_id("FAC", "user_id", user_id, "Instructor attempted to access other's feedback.")
+    is_current_user_in_role_and_id("FAC", "user_id", user_id,
+        "Instructor attempted to access other's feedback.", actor=apiVC.current_actor())
     # if VC.is_user_in_role("HOD") and not is_hod_for_course_offering(
     #     co_id, VC.logged_in_user().id):
     #     logging.error("HOD {0} attempted to access other's feedback. CO_ID={1}".format(VC.current_login_id(), co_id))
@@ -317,15 +318,13 @@ async def get_instructor_feedback(co_id, user_id, fb_type):
 
 @C.rbac(permissions=["feedback.view_reports"])
 async def download_feedback_stats(form_type, acad_session):
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
 
     cursor = DB.db.execute_sql(C.sql_by_id("generate_feedback_stats"),
                             [str(acad_session), str(acad_session), str(form_type)])
 
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="feedback_stats.csv",
                      as_attachment=True)
@@ -333,15 +332,13 @@ async def download_feedback_stats(form_type, acad_session):
 
 @C.rbac(permissions=["feedback.view_reports"])
 async def download_course_wise_faculty_score(form_type, acad_session):
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
 
     cursor = DB.db.execute_sql(C.sql_by_id("course_wise_faculty_score"),
                             [str(form_type), str(acad_session)])
 
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="download_course_wise_faculty_score.csv",
                      as_attachment=True)
@@ -349,15 +346,13 @@ async def download_course_wise_faculty_score(form_type, acad_session):
 
 @C.rbac(permissions=["feedback.view_reports"])
 async def download_quewise_facfeedbk_score(form_type, acad_session):
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
 
     cursor = DB.db.execute_sql(C.sql_by_id("que_wise_facfeedbk_score"),
                             [str(form_type), str(acad_session)])
 
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="download_quewise_faculty_feedbk_score.csv",
                      as_attachment=True)

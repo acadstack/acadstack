@@ -7,7 +7,6 @@ __status__ = "Development"
 """
 
 from quart import Blueprint
-from quart.views import request
 
 import api_common as apiVC
 import config_integrity as CI
@@ -51,7 +50,7 @@ async def settings_describe():
 
 @rbac(permissions=[_PERM])
 async def settings_save():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     values = fd.get("values") or {}
     if not values:
         return apiVC.error_json("Nothing supplied to save.")
@@ -69,7 +68,7 @@ async def settings_save():
 async def settings_delete():
     """Reverts one setting to its declared default by removing its stored
     row (settings_store.delete_setting)."""
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     key = fd.get("key")
     if not key:
         return apiVC.error_json("Please supply the setting key to reset.")
@@ -97,7 +96,7 @@ async def permissions_describe():
 async def permissions_save():
     """Saves {"values": {permission_name: [role_code, ...]}} for the
     permissions being changed; answers with the updated mapping."""
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     values = fd.get("values") or {}
     if not values:
         return apiVC.error_json("Nothing supplied to save.")

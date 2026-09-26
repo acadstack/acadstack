@@ -45,21 +45,6 @@ async def get_face_encoding_b64():
     return jsonify({"encoding": encoding.tolist()})
 
 
-@app.route("/get_known_faces", methods=["POST"])
-async def get_known_faces():
-    files = (await request.files).getlist("images")
-    known_faces = []
-    known_names = []
-    for file in files:
-        enc = service.get_face_encoding(file.read())
-        known_faces.append(enc.tolist())
-        known_names.append(file.filename)
-    return jsonify({
-        "encodings": known_faces,
-        "names": known_names
-    })
-
-
 @app.route("/get_faces_from_photo", methods=["POST"])
 async def get_faces_from_photo():
     file = (await request.files).get("image")

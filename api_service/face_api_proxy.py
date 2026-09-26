@@ -2,14 +2,18 @@ import base64
 import json
 import requests
 import io
-import glob
 import os
-import logging
 
 import settings_store as ST
 from common import AcadStackException
 
-API_URL = "http://frec_service:5060"  # See service name in docker-compose.yml
+def _api_url():
+    """frec_service's base URL. FREC_HOST defaults to the docker-compose
+    service name; override it for local dev without compose, or a
+    deployment where frec_service runs under a different hostname."""
+    host = os.environ.get("FREC_HOST", "frec_service")
+    port = os.environ.get("FREC_PORT", "5060")
+    return f"http://{host}:{port}"
 
 
 def _post(path, **kwargs):
@@ -17,7 +21,7 @@ def _post(path, **kwargs):
     cannot block the calling worker indefinitely."""
     timeout = ST.setting("faces.request_timeout_secs")
     try:
-        response = requests.post(f"{API_URL}/{path}", timeout=timeout, **kwargs)
+        response = requests.post(f"{_api_url()}/{path}", timeout=timeout, **kwargs)
     except requests.Timeout as ex:
         raise AcadStackException(
             f"The face-recognition service did not respond within {timeout} "
@@ -43,21 +47,6 @@ def get_face_encoding_b64(image_b64):
     data = {"image_b64": image_b64}
     response = _post("get_face_encoding_b64", json=data)
     return response.json()["encoding"]
-
-
-def get_known_faces(images_glob):
-    file_paths = glob.glob(images_glob)
-    known_faces = []
-    known_names = []
-    for path in file_paths:
-        with open(path, "rb") as f:
-            try:
-                encoding = get_face_encoding(f.read())
-                known_faces.append(encoding)
-                known_names.append(os.path.basename(path))
-            except Exception as e:
-                logging.warning(f"Failed to encode {path}: {e}")
-    return known_faces, known_names
 
 
 def get_faces_from_photo(group_photo_path):

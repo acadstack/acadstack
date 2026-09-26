@@ -11,7 +11,7 @@ import logging
 import os
 from zipfile import ZipFile
 
-from quart import request, send_file, current_app as APP
+from quart import Blueprint, request, send_file, current_app as APP
 from werkzeug.utils import secure_filename
 
 import api_common as apiVC
@@ -19,6 +19,14 @@ import models as DB
 import common as C
 import face_api_proxy as fapi
 from validation_checks import is_current_user_in_role_and_id
+
+
+def init_routes(bp: Blueprint):
+    bp.add_url_rule('/kface_bulk_add', view_func=kface_bulk_add, methods=['POST'])
+    bp.add_url_rule('/face_add', view_func=kface_add, methods=['POST'])
+    bp.add_url_rule('/get_class_photo/<string:file_name>/<int:user_id>',
+                     view_func=get_class_photo, methods=['GET'])
+
 
 def process_photos_zip(zip_file):
     recs = 0
@@ -100,7 +108,8 @@ async def kface_add():
 @C.rbac
 async def get_class_photo(file_name, user_id):
     is_current_user_in_role_and_id("STU", "user_id", user_id,
-        "Cannot access other's data! Your attempt has been reported.")
+        "Cannot access other's data! Your attempt has been reported.",
+        actor=apiVC.current_actor())
     qry = DB.KnownFace.select().where(DB.KnownFace.user == user_id)
     gp = os.path.join(apiVC.get_upload_folder("photos"),
                             secure_filename(file_name))

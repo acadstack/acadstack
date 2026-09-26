@@ -1,11 +1,10 @@
 """Shared validation and access checks.
 
 These are called from both the HTTP adapters and the domain layer, so
-every function that needs to know who is acting takes an optional
-``actor`` (a :class:`domain.context.Actor`). When it is not supplied the
-actor is resolved from the Quart session, exactly as before -- that is
-what keeps the modules that have not been through the service-layer
-extraction yet working untouched.
+every function that needs to know who is acting takes an explicit
+``actor`` (a :class:`domain.context.Actor`) -- this module must not
+import ``api_common`` or read the Quart session, since domain code
+(``domain/enrolment.py``) imports it directly.
 
 This module is scheduled to move under ``domain/`` once the extraction
 has propagated past course enrolment; it is shared by nearly every
@@ -17,14 +16,20 @@ import logging
 
 from common import AcadStackException, sql_by_id
 import models as DB
-import api_common as apiVC
 import settings_store as ST
 from domain import academic_calendar as CAL
 from domain import policy as POL
 
 
-def validate_course_instructor(co_id, coordinator_only=True, actor=None):
-    actor = apiVC.actor_or_current(actor)
+def _vocab_label(code, vocab_name):
+    """The label for one vocabulary code, or the code itself if unknown."""
+    for item in ST.vocab(vocab_name):
+        if item["code"] == code:
+            return item["label"]
+    return code
+
+
+def validate_course_instructor(co_id, coordinator_only=True, *, actor):
     ci = DB.CourseInstructor.select().where(
         (DB.CourseInstructor.offering == co_id)
         & (DB.CourseInstructor.instructor == actor.user_id))
@@ -48,7 +53,7 @@ def is_hod_for_course_offering(co_id, user_id):
     return res[0][0]
 
 
-def validate_coff_status(co, actor=None):
+def validate_coff_status(co, actor):
     """Checks the status of supplied course offering by considering the role
     of current user and the status of the supplied offering.
 
@@ -64,11 +69,11 @@ def validate_coff_status(co, actor=None):
         co = DB.CourseOffering.get_by_id(co)
  
     if co.status in ["F", "C"] and \
-            not apiVC.actor_or_current(actor).can("course_offering.edit_after_close"):
+            not actor.can("course_offering.edit_after_close"):
         raise AcadStackException("Cannot change data for a course that has ended/canceled!")
 
 
-def check_enrollment_allowed(co, actor=None):
+def check_enrollment_allowed(co, actor):
     """Checks if currentl user is allowed to enrol in the supplied course
     offering by considering the role of current user and the status of 
     the supplied offering.
@@ -85,8 +90,7 @@ def check_enrollment_allowed(co, actor=None):
     """
     if type(co) is int:
         co = DB.CourseOffering.get_by_id(co)
- 
-    actor = apiVC.actor_or_current(actor)
+
     if actor.has_role(["STU"]) and co.status not in ["E", "R"]:
         msg = "User {0} forcibly attempted to enrol in course {1}.".format(
             actor.login_id, co.course.code)
@@ -105,7 +109,7 @@ get_event_date = CAL.event_date
 is_feedback_open = CAL.is_feedback_open
 
 
-def validate_enrolment_change(enrl, status, actor=None):
+def validate_enrolment_change(enrl, status, actor):
     """Checks if the supplied status can be assigned to the given enrollment
     record. The checks take into consideration the role of the current user,
     the status of the course offerring (i.e., whether the course has finished
@@ -126,8 +130,7 @@ def validate_enrolment_change(enrl, status, actor=None):
     """
     if not any(s[0] == status for s in DB.CourseEnrollment.ENROL_STATUSES):
         raise AcadStackException("Unknown enrolment status: "+status)
-    
-    actor = apiVC.actor_or_current(actor)
+
     # Academic section and dean can make a change
     if actor.can("enrolment.override"):
         return True
@@ -167,7 +170,7 @@ def validate_enrolment_change(enrl, status, actor=None):
                                 "attempt to do so has been reported.")
 
 
-def is_enrollment_owner_valid(coe, actor=None):
+def is_enrollment_owner_valid(coe, actor):
     """Checks whther currently logged in user is the owner of the supplied
     enrollment. If the current user has a role such as DEA or ACA then we
     always return True.
@@ -181,7 +184,6 @@ def is_enrollment_owner_valid(coe, actor=None):
         bool: True when the current user can be considered the owner of the
         supplied enrollment, else False.
     """
-    actor = apiVC.actor_or_current(actor)
     if actor.has_role("STU") and coe.student.id == actor.user_id:
         valid = True
     elif actor.has_role("FAC") and validate_course_instructor(
@@ -203,7 +205,7 @@ def is_enrollment_owner_valid(coe, actor=None):
 
 
 def is_current_user_in_role_and_id(role, get_by, arg_for_get_by, error_msg,
-                                   actor=None):
+                                   actor):
     """Checks whether the currently logged in user has the given role and
     the supplied identity matches the corresponding identity of the current
     user.
@@ -218,7 +220,6 @@ def is_current_user_in_role_and_id(role, get_by, arg_for_get_by, error_msg,
         AcadStackException: When the currently logged in user does not have
         supplied role and identity.
     """
-    actor = apiVC.actor_or_current(actor)
     if not actor.has_role(role):
         return
     
@@ -247,8 +248,6 @@ def validate_course_categorization(co,stu_id):
         status = False
         msg = ""
         allowed_courses = []
-        depttypes = apiVC.static_data_item("Departments")
-        degreetypes = apiVC.static_data_item("Degrees")
         cc = DB.CourseCategory.select().where(
             DB.CourseCategory.offering == int(co.id))
         for ccrow in cc:
@@ -260,9 +259,9 @@ def validate_course_categorization(co,stu_id):
                 status = True
         if status == False:
             msg = f"Course {course.code} is not offered for "\
-                f"{apiVC.label_for_static_data_item(stu.degree, degreetypes)}-"\
+                f"{_vocab_label(stu.degree, 'degrees')}-"\
                 f"{stu.year_of_entry}, "\
-                f"{apiVC.label_for_static_data_item(stu.dept_name, depttypes)}. "\
+                f"{_vocab_label(stu.dept_name, 'departments')}. "\
                 f"Kindly check the Crediting Categorization of the {course.code}."
             
         return allowed_courses, msg

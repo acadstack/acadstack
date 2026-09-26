@@ -8,7 +8,7 @@ __status__ = "Development"
 """
 
 import json
-from quart import Blueprint, request
+from quart import Blueprint
 from create_email import send_credit_violation_email
 from domain import credit_reports as CR
 from domain import transcript as TR
@@ -81,7 +81,7 @@ def __get_total_credits_data(form_data):
 async def credits_earned_report():
     if not apiVC.has_permission("reports.view"):
         return apiVC.error_json("Students not allowed access!")
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     acad_session = fd.get("acad_session")
 
     if not apiVC.academic_session_valid(acad_session):
@@ -117,17 +117,12 @@ def __get_earned_credit_data(form_data):
                                       form_data.get("max_credits"))
     acad_session = form_data.get("acad_session") or ""
 
-    if dept_name == "ALL" or dept_name == "-":
-       dept_name = ""
-    if degree == "-":
-       degree = ""
-    if entry_year == "-":
-       entry_year = ""
-    if acad_session == "-":
-       acad_session = ""
-    if course_type == "-":
-       course_type = ""
-       
+    dept_name = "" if dept_name == "ALL" else apiVC.none_if_dash(dept_name)
+    degree = apiVC.none_if_dash(degree)
+    entry_year = apiVC.none_if_dash(entry_year)
+    acad_session = apiVC.none_if_dash(acad_session)
+    course_type = apiVC.none_if_dash(course_type)
+
     if not apiVC.has_permission("reports.view"):
         raise C.AcadStackException("Students not allowed access!")
 
@@ -165,7 +160,7 @@ def __replace_ct_with_labels(creds, ctypes):
 
 @C.rbac
 async def earned_credit_check():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     data = __get_earned_credit_data(fd)
     res = {"data": data}
     return apiVC.ok_json(res)
@@ -173,7 +168,7 @@ async def earned_credit_check():
 
 @C.rbac(permissions=["reports.notify_credit_violation"])
 async def notify_credit_violation():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     rep_name = fd.get("report_name")
     data = []
     if rep_name == "EARNED_CREDITS":
@@ -199,7 +194,7 @@ async def notify_credit_violation():
 
 @C.rbac(permissions=["reports.generate"])
 async def get_fees_payment_transactions():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     degree = form_data.get("degree")
     dept_name = form_data.get("dept_name")
     entry_year = form_data.get("entry_year")
@@ -225,15 +220,13 @@ async def get_fees_payment_transactions():
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_course_enrolments():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
 
     dept_name = form_data.get("dept_name")
     entry_year = form_data.get("entry_year")
     acad_session = form_data.get("acad_session")
-    if dept_name == "-":
-        dept_name = ""
-    if entry_year == "-":
-        entry_year = ""
+    dept_name = apiVC.none_if_dash(dept_name)
+    entry_year = apiVC.none_if_dash(entry_year)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -255,13 +248,11 @@ async def generate_course_enrolments():
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_feedback_stats():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     form_type = form_data.get("form_type")
     acad_session = form_data.get("acad_session")
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -383,14 +374,12 @@ async def get_background_task_status(job_key):
 
 @C.rbac(permissions=["reports.generate"])
 async def grade_distribution():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
 
     degree = form_data.get("degree")
     acad_session = form_data.get("acad_session")
-    if degree == "-":
-        degree = ""
-    if acad_session == "-":
-        acad_session = ""
+    degree = apiVC.none_if_dash(degree)
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -406,11 +395,10 @@ async def grade_distribution():
 
 @C.rbac(permissions=["reports.view_cgpa_sgpa"])
 async def cgpa_sgpa():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     acad_session = form_data.get("acad_session")
    
-    if acad_session == "-":
-        acad_session = ""
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -429,13 +417,11 @@ async def cgpa_sgpa():
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_dept_wise_avg():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     form_type = form_data.get("form_type")
     acad_session = form_data.get("acad_session")
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -452,13 +438,11 @@ async def generate_dept_wise_avg():
 
 @C.rbac(permissions=["reports.generate"])
 async def course_wise_faculty_score():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     form_type = form_data.get("form_type")
     acad_session = form_data.get("acad_session")
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -477,13 +461,11 @@ async def course_wise_faculty_score():
 
 @C.rbac(permissions=["reports.generate"])
 async def que_wise_facfeedbkp_score():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     form_type = form_data.get("form_type")
     acad_session = form_data.get("acad_session")
-    if form_type == "-":
-        form_type = ""
-    if acad_session == "-":
-        acad_session = ""
+    form_type = apiVC.none_if_dash(form_type)
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -501,13 +483,11 @@ async def que_wise_facfeedbkp_score():
 
 @C.rbac(permissions=["reports.generate"])
 async def degree_wise_students():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     course_code = form_data.get("course_code")
     acad_session = form_data.get("acad_session")
-    if course_code == "-":
-        course_code = ""
-    if acad_session == "-":
-        acad_session = ""
+    course_code = apiVC.none_if_dash(course_code)
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
@@ -526,12 +506,11 @@ async def degree_wise_students():
 
 @C.rbac(permissions=["grades.export"])
 async def generate_grade_status():
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     grades_st = form_data.get("selected")
     acad_session = form_data.get("acad_session")
 
-    if acad_session == "-":
-        acad_session = ""
+    acad_session = apiVC.none_if_dash(acad_session)
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
