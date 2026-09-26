@@ -219,7 +219,7 @@ export default {
     },
     created: function () {
         let vm = this;
-        vm.viewOnly = !(vm.isAcad || vm.isDean);
+        vm.viewOnly = !vm.hasPermission("academic_calendar.manage_dates");
     },
     methods: {
         onAcadSessionChange(acs) {

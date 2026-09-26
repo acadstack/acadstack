@@ -126,22 +126,23 @@ def describe_mapping(actor) -> dict:
 
 
 #: Every role code except STU -- the shape of "any staff member, not a
-#: student" that recurs across the inline checks this phase converts.
+#: student" that recurs across many of the permissions below.
 ALL_BUT_STU = [r for r in VD.codes("roles") if r != "STU"]
 
 #: Every role code except PLA -- nav.json's "-PLA,*" shape.
 ALL_BUT_PLA = [r for r in VD.codes("roles") if r != "PLA"]
+
+#: Every role code except STU and PLA -- nav.json's "-STU,-PLA,*" shape.
+ALL_BUT_STU_PLA = [r for r in VD.codes("roles") if r not in ("STU", "PLA")]
 
 #: All role codes -- nav.json's "*" shape.
 ALL_ROLES = VD.codes("roles")
 
 
 # ===================== DECLARATIONS =====================
-# One Spec per permission. The default is the role list that reproduces
-# today's behaviour at the call site(s) the permission replaces -- see
-# each Spec's doc for exactly which @rbac(roles=[...])/is_user_in_role()/
-# Actor.has_role() site(s) it replaces, and docs/architecture.md's RBAC
-# section for the overall design.
+# One Spec per permission. The default is the role list an institution
+# starts with out of the box. See docs/architecture.md's RBAC section for
+# the overall design.
 
 def _spec(name, default, doc):
     # Validated against the live role vocabulary, so a role an institution
@@ -200,9 +201,8 @@ ST.declare_group(
         _spec("system.view_active_users", ["ACA", "SUP", "DEA"],
               "View the list of currently active users."),
         _spec("user.search", ALL_BUT_STU,
-              "Search for users/students. Replaces api_auth.user_find "
-              "and api_auth.find_students (same authority, collapsed) "
-              "and gates nav.json's 'Find Students' link."),
+              "Search for users/students. Also gates nav.json's 'Find "
+              "Students' menu link."),
         _spec("user.view_others", ALL_BUT_STU,
               "View another user's profile (a student may only view "
               "their own)."),
@@ -229,8 +229,7 @@ ST.declare_group(
               "user.edit_any holders may set anyone's photo."),
         _spec("fees.manage_others_txn", ALL_BUT_STU,
               "Submit/view/delete another student's fee-transaction "
-              "records (a student may always act on their own). "
-              "Replaces three api_auth.py sites with identical authority."),
+              "records (a student may always act on their own)."),
 
         # --- courses ---
         _spec("course.save", ["ACA", "FAC", "DEA", "HOD", "RES"],
@@ -246,8 +245,7 @@ ST.declare_group(
         _spec("course.bulk_create", ["ACA", "DEA"],
               "Bulk-create courses from an upload."),
         _spec("course.manage_slot_timings", ["ACA", "DEA"],
-              "View/edit course slot timings. Replaces api_course.py's "
-              "and api_dc.py's identical 'ACA,DEA' string-form checks."),
+              "View/edit course slot timings."),
         _spec("course.submit", ["FAC"],
               "Course approval workflow: submit a course to the HoD."),
         _spec("course.hod_review", ["HOD"],
@@ -262,18 +260,13 @@ ST.declare_group(
               "Edit a course offering that has finished/been cancelled."),
         _spec("course_offering.edit_any", ["ACA", "DEA", "HOD"],
               "Edit a course offering without being its coordinating "
-              "instructor. Replaces api_course_offering.py's "
-              "course_offering_save() inline "
-              "validate_course_instructor(cid, ['ACA', 'DEA', 'HOD']) "
-              "bypass."),
+              "instructor."),
         _spec("course_offering.view_stats", ALL_BUT_STU,
               "View a course's grade and attendance statistics across its "
               "offerings (api_course_offering.fetch_stats)."),
         _spec("course_offering.view_all_running", ["ACA", "DEA", "SUP"],
               "See every running course offering rather than only the "
-              "ones the actor instructs. Replaces "
-              "api_course_offering.py's get_running_courses() inline "
-              "is_user_in_role(['ACA', 'DEA', 'SUP']) check."),
+              "ones the actor instructs."),
 
         # --- grades ---
         _spec("grades.upload", ["ACA", "FAC", "DEA"],
@@ -281,15 +274,9 @@ ST.declare_group(
         _spec("grades.upload_any", ["ACA", "DEA"],
               "Upload grades for a course offering without being its "
               "coordinating instructor (narrower than grades.upload -- "
-              "no FAC, who must still be the coordinator). Replaces "
-              "api_course_offering.py's grades_upload() inline "
-              "validate_course_instructor(co_id, allowed_role=['ACA', "
-              "'DEA']) bypass."),
+              "no FAC, who must still be the coordinator)."),
         _spec("grades.export", ["ACA", "DEA", "SUP"],
-              "View/download grade reports and gradesheets. Collapses "
-              "eight sites across api_grades.py and api_reports.py that "
-              "already shared this authority under inconsistent "
-              "spacing/ordering."),
+              "View/download grade reports and gradesheets."),
         _spec("grades.view_distribution", ["DEA", "ACA"],
               "View the grade distribution report (narrower than "
               "grades.export -- no SUP)."),
@@ -314,31 +301,23 @@ ST.declare_group(
               "Change an enrolment's approval status."),
         _spec("enrolment.override", ["ACA", "DEA"],
               "Bypass the instructor/advisor approval chain and decide "
-              "an enrolment's status directly. Collapses four sites in "
-              "domain/enrolment.py and validation_checks.py, including "
-              "one that used the buggy comma-string substring form."),
+              "an enrolment's status directly."),
         _spec("enrolment.decide_as_owner", ["FAC", "HOD"],
               "Enrolment approval workflow: approve/reject as the "
               "offering's coordinating instructor and/or the student's "
-              "batch advisor. Replaces the has_role(['FAC', 'HOD']) "
-              "branch of the old approval chain."),
+              "batch advisor."),
         _spec("enrolment.decide_advisor_pending", ["HOD"],
               "Enrolment approval workflow: approve/reject any enrolment "
-              "pending advisor approval, with no ownership check. "
-              "Replaces the has_role('HOD') branch of the old chain."),
+              "pending advisor approval, with no ownership check."),
         _spec("enrolment.view_grades_export", ["ACA", "DEA", "HOD"],
               "Include grades in a course offering's enrolment export "
-              "without being its coordinating instructor. Replaces "
-              "domain/enrolment.py's enrolment_export_rows() inline "
-              "validate_course_instructor(co_id, allowed_role=['ACA', "
-              "'DEA', 'HOD'], coordinator_only=False) bypass."),
+              "without being its coordinating instructor."),
 
         # --- feedback ---
         _spec("feedback.manage_form", ["ACA", "DEA"],
               "Create/edit a feedback form."),
         _spec("feedback.view_reports", ["ACA", "DEA"],
-              "View feedback statistics/reports. Collapses three "
-              "identically-gated api_feedback.py download endpoints."),
+              "View feedback statistics/reports."),
         _spec("feedback.view_instructor_feedback", ["FAC", "ACA", "DEA"],
               "View an instructor's feedback."),
         _spec("feedback.submit", ["STU"], "Submit course feedback."),
@@ -347,9 +326,7 @@ ST.declare_group(
         _spec("reports.generate", ["ACA", "DEA"],
               "Generate/view the general academic reports (fees, "
               "enrolments, feedback stats, credits, dept-wise averages, "
-              "faculty scores, degree-wise students). Collapses eleven "
-              "identically-gated sites across api_reports.py and one in "
-              "api_dc.py."),
+              "faculty scores, degree-wise students)."),
         _spec("reports.view", ALL_BUT_STU,
               "View the credits-earned / lecture-count reports "
               "(students excluded)."),
@@ -362,23 +339,17 @@ ST.declare_group(
         _spec("dc.mark_attendance", ["ACA", "FAC"], "Mark attendance."),
         _spec("dc.mark_attendance_any", ["ACA", "DEA"],
               "Mark attendance for a course offering without being its "
-              "coordinating instructor. Replaces api_dc.py's "
-              "mark_attendance() inline validate_course_instructor(co, "
-              "allowed_role=['ACA', 'DEA']) bypass. DEA is preserved "
-              "from the old role list for parity, though it is "
-              "currently unreachable in practice: the endpoint's own "
-              "dc.mark_attendance permission excludes DEA, so this "
-              "bypass only ever fires for ACA -- a pre-existing gap, "
-              "not fixed here."),
+              "coordinating instructor. Currently only ever grants ACA "
+              "in practice: the endpoint's own dc.mark_attendance "
+              "permission excludes DEA, so a DEA actor never reaches "
+              "this check."),
         _spec("dc.view_instructor_academics", ["ACA", "FAC", "HOD", "DEA"],
               "View an instructor's academic workload."),
         _spec("dc.view_advisor_detail", ["FAC", "ACA", "DEA", "HOD"],
               "View a batch advisor's detail."),
         _spec("dc.view_daywise_attendance", ["SUP", "ACA", "DEA", "HOD"],
               "View a course offering's day-wise attendance without "
-              "being (one of) its instructors. Replaces api_dc.py's "
-              "get_daywise_attendance() inline validate_course_instructor"
-              "(co_id, ['SUP', 'ACA', 'DEA', 'HOD'], False) bypass."),
+              "being (one of) its instructors."),
         _spec("dc.download_degree_wise_students", ["ACA", "DEA", "HOD"],
               "Download the degree-wise student list."),
         _spec("dc.save", ["ACA", "FAC", "DEA", "HOD"],
@@ -399,7 +370,7 @@ ST.declare_group(
               "View the list of students under DC formation."),
         _spec("dc.manage_any", ["ACA", "DEA", "SUP"],
               "Act on any student's DC/progress-report data, bypassing "
-              "DC-membership ownership. Collapses two api_dc.py sites."),
+              "DC-membership ownership."),
         _spec("dc.manage_progress_report", ALL_BUT_STU,
               "Submit a PhD progress report."),
         _spec("student.export_list", ["PLA"],
@@ -412,54 +383,78 @@ ST.declare_group(
               "Add/delete workflow notes."),
 
         # --- nav.json-only permissions ---
-        # These gate a nav.json menu entry whose current role list does
-        # not exactly match any backend permission above (nav has always
-        # been filtered slightly differently -- sometimes stricter,
-        # sometimes looser -- than the endpoint it links to; preserved
-        # exactly rather than silently unified with a same-named backend
-        # permission that would change who sees the link).
+        # These gate a nav.json menu entry whose role list does not
+        # exactly match the backend permission the link's endpoint
+        # enforces (sometimes stricter, sometimes looser -- see each
+        # Spec's doc for the specific gap). Kept separate rather than
+        # folded onto that backend permission, which would silently
+        # change who sees the link.
         _spec("nav.user_search", ["SUP", "DEA", "ACA", "RES"],
-              "nav.json: 'Find User' menu link."),
+              "nav.json: 'Find User' menu link -- narrower than "
+              "user.search, which the /user_find lookup behind it "
+              "enforces: HOD, FAC, GUE, PLA and ADV can search but do "
+              "not see this link."),
         _spec("nav.user_create", ["SUP", "DEA", "ACA"],
-              "nav.json: 'New User' menu link."),
+              "nav.json: 'New User' menu link -- broader than "
+              "user.edit_any, which /user_save requires to create a "
+              "user: DEA sees this link but cannot save a new user."),
         _spec("nav.upload_user_faces", ["ACA", "DEA"],
-              "nav.json: 'Upload User Faces' menu link."),
+              "nav.json: 'Upload User Faces' menu link -- broader than "
+              "user.bulk_upload_faces, which the upload endpoint "
+              "enforces: DEA sees this link but the upload is "
+              "rejected."),
         _spec("nav.add_users", ["ACA", "DEA", "SUP"],
-              "nav.json: 'Add Users' menu link."),
+              "nav.json: 'Add Users' menu link -- broader than "
+              "user.bulk_create, which the endpoint enforces: DEA sees "
+              "this link but the bulk-create is rejected."),
         _spec("nav.manage_batch_advisors", ["ACA", "DEA", "SUP"],
-              "nav.json: 'Manage Batch Advisors' menu link."),
-        _spec("nav.view_attendance", [],
-              "nav.json: 'View Attendance' menu link. Pre-existing bug, "
-              "preserved rather than silently fixed: the old role string "
-              "was '-STU,-PLA' with no trailing '*', so under the old "
-              "substring-containment check NO role code was ever a "
-              "substring of that literal string -- this link has never "
-              "actually been visible to anyone. Flagged for a follow-up "
-              "decision; the evident intent was ALL_BUT_STU_PLA."),
+              "nav.json: 'Manage Batch Advisors' menu link -- broader "
+              "than user.assign_advisor, which the endpoint enforces: "
+              "SUP sees this link but cannot assign advisors."),
+        _spec("nav.view_attendance", ALL_BUT_STU_PLA,
+              "nav.json: 'View Attendance' menu link, open to every "
+              "role except STU and PLA."),
         _spec("nav.general_access", ALL_BUT_PLA,
               "nav.json: menu links open to everyone but PLA -- "
               "'Courses Offered For Enrolment', 'Courses Available For "
               "Offering', 'Slotwise Courses', 'Search Doctoral Committe', "
               "'My Progress Reports'."),
         _spec("nav.offer_course", ["FAC", "ACA"],
-              "nav.json: 'Offer a Course For Enrolment' menu link."),
+              "nav.json: 'Offer a Course For Enrolment' menu link -- "
+              "narrower than course_offering.save, which the endpoint "
+              "enforces: DEA and HOD can save a course offering but do "
+              "not see this link."),
         _spec("nav.create_course", ["ACA", "FAC"],
-              "nav.json: 'Create New Course' menu link."),
+              "nav.json: 'Create New Course' menu link -- narrower "
+              "than course.save, which the endpoint enforces: DEA, HOD "
+              "and RES can save a course but do not see this link."),
         _spec("nav.bulk_create_courses", ["ACA"],
-              "nav.json: 'Bulk Create Courses' menu link."),
+              "nav.json: 'Bulk Create Courses' menu link -- narrower "
+              "than course.bulk_create: DEA can bulk-create courses "
+              "but does not see this link."),
         _spec("nav.bulk_enrol", ["ACA"],
-              "nav.json: 'Bulk Enrol in Course' menu link."),
+              "nav.json: 'Bulk Enrol in Course' menu link -- narrower "
+              "than enrolment.bulk_enrol: DEA can bulk-enrol but does "
+              "not see this link."),
         _spec("nav.upload_grades", ["FAC", "ACA"],
-              "nav.json: 'Upload Grades' menu link."),
+              "nav.json: 'Upload Grades' menu link -- narrower than "
+              "grades.upload: DEA can upload grades but does not see "
+              "this link."),
         _spec("nav.view_academic_events", ALL_ROLES,
               "nav.json: 'Academic Events' menu link (everyone)."),
         _spec("nav.generate_credits_data", ["ACA", "SUP"],
-              "nav.json: 'Generate Students Credits Data' menu link."),
+              "nav.json: 'Generate Students Credits Data' menu link -- "
+              "differs from reports.generate, which the endpoint "
+              "enforces: SUP sees this link but cannot generate the "
+              "data, while DEA can generate it but does not see this "
+              "link."),
         _spec("nav.my_work", ["FAC"],
               "nav.json: the 'My Work' menu -- 'Courses Offered', "
               "'Courses Created', 'Action Pending'."),
         _spec("nav.create_feedback", ["ACA"],
-              "nav.json: 'Create Feedback' menu link."),
+              "nav.json: 'Create Feedback' menu link -- narrower than "
+              "feedback.manage_form: DEA can create a feedback form "
+              "but does not see this link."),
         _spec("nav.reports_manage", ["ACA", "SUP", "DEA"],
               "nav.json: menu links open to ACA/SUP/DEA -- 'Feedback "
               "Stats', 'Dept Wise Feedback Average', 'Course Wise "
@@ -480,12 +475,13 @@ ST.declare_group(
               "link (broader than reports.view_cgpa_sgpa -- includes "
               "SUP)."),
         _spec("nav.submit_progress_report", ["FAC", "ACA", "HOD", "DEA"],
-              "nav.json: 'Submit Progress Report' menu link."),
+              "nav.json: 'Submit Progress Report' menu link -- narrower "
+              "than dc.manage_progress_report, which /ppr_save "
+              "enforces: RES, SUP, GUE, PLA and ADV can submit a "
+              "progress report but do not see this link."),
     ],
-    doc="Named permissions: which roles may do what. Replaces the raw "
-        "role lists formerly spelled out at each @rbac(roles=[...]) "
-        "decorator and is_user_in_role()/Actor.has_role() call site. "
-        "Editable through save_permission_mapping(), which refuses a "
-        "save that would remove the acting admin's own access to "
+    doc="Named permissions: which roles may do what. Editable through "
+        "save_permission_mapping(), which refuses a save that would "
+        "remove the acting admin's own access to "
         "system.manage_permissions."
 )
