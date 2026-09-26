@@ -176,3 +176,42 @@ def test_a_course_with_no_stored_credits_raises_a_domain_error():
     from common import AcadStackException
     with pytest.raises(AcadStackException, match="Credits missing"):
         compute([course(credits=None)], "BTE")
+
+
+# ============== Credit reports count by the same rule ==============
+
+import dataclasses  # noqa: E402
+
+from domain import credit_reports as CR  # noqa: E402
+from domain import policy as POL  # noqa: E402
+
+BASE = POL.baseline_grading_policy()
+NARROW = dataclasses.replace(
+    BASE, credit_enrol_types=frozenset(("C",)),
+    programme_rules={name: dataclasses.replace(
+        rules, earned_credit_grades=frozenset(("A", "E")))
+        for name, rules in BASE.programme_rules.items()})
+
+MIXED = [course(code=f"X{i}", enrol_type=t, grade=g)
+         for i, (t, g) in enumerate([("C", "A"), ("C", "D"), ("CC", "B"),
+                                     ("CM", "NP"), ("C", "E"), ("A", "A"),
+                                     ("C", "S"), ("C", "F"), ("C", "I")])]
+
+
+@pytest.mark.parametrize("policy", [BASE, NARROW], ids=["baseline", "narrow"])
+@pytest.mark.parametrize("degree", ["BTE", "MTE", "PHD"])
+def test_report_earned_credits_match_transcript_under_any_ruleset(policy,
+                                                                  degree):
+    rows = [dict(c, id=1, degree=degree, c_category="PC") for c in MIXED]
+    report = CR.earned_credits_by_category(rows, policy=policy)
+    expected = compute(MIXED, degree, policy=policy)["ec"]
+    assert sum(report.get((1, "2022-I"), {}).values()) == expected
+
+
+@pytest.mark.parametrize("policy,expected", [(BASE, 24), (NARROW, 18)],
+                         ids=["baseline", "narrow"])
+def test_report_registered_credits_follow_credit_enrol_types(policy,
+                                                             expected):
+    rows = [dict(c, id=1) for c in MIXED]
+    assert CR.credit_enrolment_totals(rows, policy=policy) == {
+        (1, "2022-I"): expected}

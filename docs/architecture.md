@@ -410,16 +410,19 @@ protects them while a workflow uses them, and an institution that rewrites the
 workflow may then remove them. The Settings screen shows reserved items with a
 read-only code, a "reserved" badge and a disabled delete button.
 
-**Known remaining duplication.** `sql_statements.toml` still has three hand-typed grade
-lists that were deliberately left as-is (they'd need a way to parameterize SQL from
-runtime config, which is a separate and harder problem):
-- `filtered_categorized_credits_enrolled`: `ce.grade IN ('A', 'A-', 'B', 'B-', 'C', 'C-', 'D', 'S', 'NP')`
-- `grades_status_pending`: `ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I','W')`
-- `download_filtered_categorized_credits_enrolled`: `ce.grade IN ('A','A-','B','B-','C','C-','D','S','NP')`
+**Grade and enrolment-type codes stay out of SQL.** Queries that count credits
+(`credits_earned_report`, `categorized_credit_enrolments`, `credits_enrolled_by_student`,
+`student_enrolments_for_fb`) return one row per enrolment, and Python filters them by the
+`GradingPolicy` in force for each row's session: `credit_enrol_types`, and for earned
+credits `transcript.earns_credit()` with the student's degree — the rule transcripts use.
+`domain/credit_reports.py` holds the report-side counting. So a new policy version
+changes reports and transcripts together, and a report spanning sessions applies each
+session's own rules. None of these columns is indexed (they are residual filters after
+the offering/student index scans), so nothing is lost by filtering outside SQL.
+`grades_status_pending` needs no grade list: an enrolment is pending while its grade is
+the reserved `NA`, the complement of `grades_status_submitted`.
 
-(`student_cgpa`'s parameterized `NOT IN (%s, %s, %s, %s, %s, %s)` was also checked — it
-has no caller anywhere in the codebase, so it carries no live duplication.) Also
-unchanged, deliberately: status/DC-role literals inside `webapp/src/main.js`'s
+Also unchanged, deliberately: status/DC-role literals inside `webapp/src/main.js`'s
 role-identity computed properties (`isStudent`, `isFaculty`, ...), and the
 `user.role`/`m.role` comparisons in `webapp/src/components/UserDetails.vue` and
 `DcSearch.vue` that pick which fields or data to show for the record being viewed.

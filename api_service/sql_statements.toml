@@ -58,37 +58,27 @@ course_lectures_in_session = """SELECT count(*) as Lecture,
     group by lc.code, lc.acad_session 
     having lc.acad_session = %s ORDER BY lc.code;"""
 
+# One row per enrolment: domain/credit_reports.py decides which enrolment
+# types count, from the grading policy in force for the session.
 credits_earned_report = """
-    WITH student_credits AS (
-        SELECT u.first_name, u.last_name, u.email, o.acad_session,
-            ROUND(SUM(c.credits)::numeric, 2) AS total_credits,
-            u.id,
-            p.org_id
-        FROM public.courseenrollment e
-        JOIN public.user u ON u.id = e.student_id
-        JOIN public.person p ON p.id = u.person_id
-        JOIN public.courseoffering o ON o.id = e.course_offering_id
-        JOIN public.course c ON c.id = o.course_id
-        WHERE e.enrol_status = 'ENRO'
-        AND e.enrol_type IN ('C', 'CM', 'CC')
-        AND c.code <> %s
-        AND (p.year_of_entry = %s OR %s = '')
-        AND (p.degree = %s OR %s = '')
-        AND (p.dept_name = %s OR %s = '')
-        GROUP BY 
-            u.first_name, u.last_name, u.email, o.acad_session, u.id, p.org_id
-    )
-    SELECT *
-    FROM student_credits
-    WHERE acad_session = %s
-    AND total_credits > %s
-    AND total_credits <= %s
-    ORDER BY first_name, last_name;
+    SELECT u.id, u.first_name, u.last_name, u.email, p.org_id,
+        o.acad_session, c.credits, e.enrol_type
+    FROM public.courseenrollment e
+    JOIN public.user u ON u.id = e.student_id
+    JOIN public.person p ON p.id = u.person_id
+    JOIN public.courseoffering o ON o.id = e.course_offering_id
+    JOIN public.course c ON c.id = o.course_id
+    WHERE e.enrol_status = 'ENRO'
+    AND o.acad_session = %s
+    AND c.code <> %s
+    AND (p.year_of_entry = %s OR %s = '')
+    AND (p.degree = %s OR %s = '')
+    AND (p.dept_name = %s OR %s = '');
 """
 
 student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
     ci.id as course_instructor_id, c.title, c.code,
-    ins.first_name, ins.last_name
+    ins.first_name, ins.last_name, co.acad_session, ce.enrol_type
     FROM public.courseenrollment ce
     JOIN public.courseoffering co ON co.id=ce.course_offering_id
     JOIN public.courseinstructor ci ON ci.offering_id=co.id
@@ -97,7 +87,6 @@ student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
     JOIN public.user stu ON stu.id=ce.student_id
     WHERE stu.login_id=%s
     AND ce.enrol_status='ENRO'
-    AND ce.enrol_type IN ('C', 'CM', 'CC')
     AND POSITION(co.acad_session IN %s) > 0
     AND NOT EXISTS (
         SELECT 1 FROM public.studentfeedbackstatus sfs
@@ -257,60 +246,30 @@ enrolled_students_for_grades = """
     WHERE ce.enrol_status = 'ENRO' AND co.id=%s
     ORDER BY p.org_id;"""
 
-filtered_categorized_credits_enrolled = """
-WITH category_credits AS (
-    SELECT 
-        SUM(c.credits) AS total_credits,
+# One row per enrolment: domain/credit_reports.py decides which rows earn
+# credit, from the grading policy in force for the session and the
+# student's degree.
+categorized_credit_enrolments = """
+    SELECT u.id, u.login_id, u.first_name, u.last_name, u.email,
+        p.dept_name, p.degree, co.acad_session,
         COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
-        u.email,
-        u.id,
-        u.first_name,
-        u.last_name,
-        u.login_id,
-        co.acad_session
+        c.credits, ce.enrol_type, ce.grade
     FROM public.courseenrollment ce
     JOIN public.user u ON u.id = ce.student_id
     JOIN public.person p ON p.id = u.person_id
     JOIN public.courseoffering co ON co.id = ce.course_offering_id
     JOIN public.course c ON c.id = co.course_id
-    LEFT JOIN public.coursecategory cc 
+    LEFT JOIN public.coursecategory cc
         ON cc.offering_id = ce.course_offering_id
         AND cc.degree = p.degree
         AND (cc.dept = p.dept_name OR cc.dept = 'ALL')
         AND (cc.for_entry_years ~ %s)
     WHERE ce.enrol_status = 'ENRO'
-      AND ce.enrol_type IN ('C', 'CC', 'CM')
       AND (p.year_of_entry = %s OR %s = '')
       AND (p.degree = %s OR %s = '')
       AND (p.dept_name = %s OR %s = '')
       AND (co.acad_session = %s OR %s = '')
-      AND ce.grade IN ('A', 'A-', 'B', 'B-', 'C', 'C-', 'D', 'S', 'NP')
-    GROUP BY 
-        cc.category, u.email, u.id, u.first_name, 
-        u.last_name, u.login_id, co.acad_session
-),
-filtered AS (
-    SELECT *
-    FROM category_credits
-    WHERE (%s = '' OR c_category = %s)
-      AND total_credits BETWEEN %s AND %s
-)
-SELECT 
-    string_agg(
-        concat_ws('=', f.c_category, ROUND(f.total_credits, 2)), 
-        ','
-    ) AS cat_credits,
-    f.first_name,
-    f.last_name,
-    f.login_id,
-    f.acad_session,
-    f.email,
-    f.id AS user_id
-FROM filtered f
-GROUP BY 
-    f.first_name, f.last_name, f.login_id, f.acad_session, f.email, f.id
-ORDER BY 
-    f.login_id, f.acad_session;
+    ORDER BY u.login_id, co.acad_session;
 """
 
 get_instructor_feedback = """
@@ -771,7 +730,7 @@ grades_status_pending = """
                 JOIN public.courseinstructor ci ON ci.offering_id=co.id
                 JOIN public.user ins ON ins.id=ci.instructor_id
                 WHERE co.acad_session= %s and co.status ='R' and 
-                ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I','W')
+                ce.grade = 'NA'
                 and ce.enrol_status='ENRO' and ci.is_coordinator=TRUE) as ss
                 GROUP BY ss.code,ss.acad_session, ss.title, 
                 ss.first_name, ss.last_name, ss.dept_name;
@@ -788,76 +747,8 @@ get_dc_students = """
 """
 
 
-download_filtered_categorized_credits_enrolled = """
-WITH base_credits AS (
-    SELECT 
-        SUM(c.credits) AS total_credits,
-        COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
-        u.email,
-        u.id,
-        u.first_name,
-        u.last_name,
-        u.login_id,
-        co.acad_session,
-        p.dept_name
-    FROM public.courseenrollment ce
-    JOIN public.user u ON u.id = ce.student_id
-    JOIN public.person p ON p.id = u.person_id
-    JOIN public.courseoffering co ON co.id = ce.course_offering_id
-    JOIN public.course c ON c.id = co.course_id
-    LEFT JOIN public.coursecategory cc 
-      ON cc.offering_id = ce.course_offering_id
-      AND cc.degree = p.degree
-      AND (cc.dept = p.dept_name OR cc.dept = 'ALL')
-      AND (cc.for_entry_years ~ %s)
-    WHERE ce.enrol_status = 'ENRO'
-      AND ce.enrol_type IN ('C', 'CC', 'CM')
-      AND (p.year_of_entry = %s OR %s = '')
-      AND (p.degree = %s OR %s = '')
-      AND (p.dept_name = %s OR %s = '')
-      AND (co.acad_session = %s OR %s = '')
-      AND ce.grade IN ('A','A-','B','B-','C','C-','D','S','NP')
-    GROUP BY 
-        cc.category, u.email, u.id, u.first_name, 
-        u.last_name, u.login_id, co.acad_session, p.dept_name
-),
-filtered AS (
-    SELECT *
-    FROM base_credits
-    WHERE (%s = '' OR c_category = %s)
-      AND total_credits BETWEEN %s AND %s
-),
-category_totals AS (
-    SELECT 
-        c_category,
-        SUM(total_credits) AS cat_total,
-        first_name,
-        last_name,
-        login_id,
-        email,
-        id AS user_id,
-        dept_name
-    FROM filtered
-    GROUP BY 
-        c_category, login_id, first_name, last_name, email, id, dept_name
-)
-SELECT 
-    STRING_AGG(CONCAT_WS('=', c.c_category, ROUND(c.cat_total, 2)), ' | ') AS cat_credits,
-    SUM(c.cat_total) AS Earned_Credit_Total,
-    c.first_name,
-    c.last_name,
-    c.login_id,
-    c.email,
-    c.dept_name
-FROM category_totals c
-GROUP BY 
-    c.first_name, c.last_name, c.login_id, c.email, c.dept_name
-ORDER BY 
-    c.login_id;
-"""
-
 credits_enrolled_by_student = """
-    SELECT ROUND(sum(c.credits)::numeric, 2) as total_credits
+    SELECT c.credits, ce.enrol_type
     FROM public.courseenrollment ce
     join public.user u on u.id=ce.student_id
     join public.courseoffering co on co.id=ce.course_offering_id
@@ -865,7 +756,6 @@ credits_enrolled_by_student = """
     where u.id=%s
     and co.status in ('R', 'E')
     and ce.enrol_status in ('ENRO', 'IPEN', 'APEN') 
-    and ce.enrol_type in ('C', 'CC', 'CM')
     and co.acad_session=%s;"""
 
 daywise_attendance = """

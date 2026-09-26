@@ -20,6 +20,7 @@ def _pending_codes():
 
 
 @pytest.mark.parametrize("grade,pending", [("NA", True), ("A", False),
+                                           ("S", False), ("U", False),
                                            ("I", False), ("W", False)])
 def test_only_offerings_with_ungraded_enrolments_are_pending(db, grade, pending):
     course = DB.Course.create(code="GS101", title="Grades", ltp="3-0-0-0-3",

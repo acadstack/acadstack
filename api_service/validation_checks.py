@@ -20,6 +20,7 @@ import models as DB
 import api_common as apiVC
 import settings_store as ST
 from domain import academic_calendar as CAL
+from domain import policy as POL
 
 
 def validate_course_instructor(co_id, coordinator_only=True, actor=None):
@@ -270,14 +271,9 @@ def validate_course_categorization(co,stu_id):
 def check_enrolled_credits(user_id,acad_session):
     sql_qry = sql_by_id("credits_enrolled_by_student")
     cursor = DB.db.execute_sql(sql_qry, [user_id,acad_session])
-    res = cursor.fetchall()
-    # SUM() over no matching rows is NULL, which this then compared to an
-    # int. It happens whenever the student has no credit-bearing
-    # enrolment in the session -- notably when the enrolment being
-    # checked is an audit ('A'), which the query excludes -- and the
-    # TypeError surfaced to the student as "Error when saving course
-    # enrollment details", with their enrolment rolled back.
-    total_credits = res[0][0] or 0
+    credit_types = POL.load_grading_policy(acad_session).credit_enrol_types
+    total_credits = sum(credits or 0 for credits, enrol_type in cursor.fetchall()
+                        if enrol_type.strip().upper() in credit_types)
     max_credits = ST.setting("enrolment.max_credits_per_session")
     if total_credits > max_credits:
         raise AcadStackException(

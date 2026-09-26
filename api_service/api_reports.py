@@ -10,6 +10,7 @@ __status__ = "Development"
 import json
 from quart import Blueprint, request
 from create_email import send_credit_violation_email
+from domain import credit_reports as CR
 from domain import transcript as TR
 
 import logging
@@ -54,20 +55,25 @@ def __get_total_credits_data(form_data):
     acad_session = form_data.get("acad_session") or ""
     exclude_course = form_data.get("exclude_courses") or ""
     cursor = DB.db.execute_sql(C.sql_by_id("credits_earned_report"),
-                            [
-                                str(exclude_course),
-                                str(entry_year), str(entry_year),
-                                str(degree), str(degree),
-                                str(dept_name), str(dept_name),
-                                str(acad_session), int(min_cr),
-                                int(max_cr)])
+                            [str(acad_session), str(exclude_course),
+                             str(entry_year), str(entry_year),
+                             str(degree), str(degree),
+                             str(dept_name), str(dept_name)])
+    rows = apiVC.result_set_from_cursor(cursor)
+    students = {r["id"]: r for r in rows}
     data = []
-    for row in cursor.fetchall():
-        data.append({'first_name': row[0], 'last_name': row[1],
-                     'email': row[2], 'acad_session': row[3],
-                     'credits': row[4], 'user_id': row[5],
-                     'entry_no': row[6]
+    for (user_id, session), total in CR.credit_enrolment_totals(rows).items():
+        credits = CR.round_credits(total)
+        if not int(min_cr) < credits <= int(max_cr):
+            continue
+        stu = students[user_id]
+        data.append({'first_name': stu["first_name"],
+                     'last_name': stu["last_name"],
+                     'email': stu["email"], 'acad_session': session,
+                     'credits': credits, 'user_id': user_id,
+                     'entry_no': stu["org_id"]
                      })
+    data.sort(key=lambda d: (d['first_name'] or "", d['last_name'] or ""))
     return data
 
 
@@ -132,20 +138,18 @@ def __get_earned_credit_data(form_data):
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
     
-    cursor = DB.db.execute_sql(C.sql_by_id("filtered_categorized_credits_enrolled"),
-                            [str(entry_year), str(entry_year), str(entry_year),
-                             str(degree), str(degree),
-                             str(dept_name), str(dept_name),
-                             str(acad_session), str(acad_session),
-                             str(course_type), str(course_type),
-                             int(min_cr), int(max_cr)])
     data = []
     ctypes = apiVC.static_data_item("CourseTypes")
-    for row in cursor.fetchall():
-        data.append({'credits': __replace_ct_with_labels(row[0], ctypes), 
-                     'first_name': row[1], 'last_name': row[2],
-                     'entry_no': row[3], 'acad_session': row[4], 
-                     'email': row[5], 'user_id': row[6]})
+    for stu, session, cats in CR.categorized_earned_credits(
+            str(entry_year), str(degree), str(dept_name), str(acad_session),
+            str(course_type), int(min_cr), int(max_cr)):
+        creds = ",".join(f"{cat}={CR.round_credits(total)}"
+                         for cat, total in cats.items())
+        data.append({'credits': __replace_ct_with_labels(creds, ctypes),
+                     'first_name': stu["first_name"],
+                     'last_name': stu["last_name"],
+                     'entry_no': stu["login_id"], 'acad_session': session,
+                     'email': stu["email"], 'user_id': stu["id"]})
     return data
 
 

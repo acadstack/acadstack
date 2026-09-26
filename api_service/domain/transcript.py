@@ -78,6 +78,14 @@ def cgpa_denominator(earned_credits, satisfactory_credits):
     return earned_credits - satisfactory_credits
 
 
+def earns_credit(grade, enrol_type, degree, policy):
+    """Whether an enrolment's grade earns credit under ``policy``: a
+    credit-bearing enrolment type and one of the degree's earned-credit
+    grades. Transcripts and the credit reports both count by this."""
+    return (enrol_type in policy.credit_enrol_types
+            and grade in policy.rules_for(degree).earned_credit_grades)
+
+
 def _gpa(points, denominator):
     """A grade average, rounded, or 0 when there is nothing to average
     over."""
@@ -132,7 +140,7 @@ def compute_cgpa_sgpa_ec(courses, degree, policy=None):
                 s_ec += cc
             if grade in pol.excluded_grades:
                 u_ec += cc
-            if grade in rules.earned_credit_grades and is_credit_course:
+            if earns_credit(grade, c["enrol_type"], degree, pol):
                 ec += cc
 
             if grade in rules.grade_points and is_credit_course:

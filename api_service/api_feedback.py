@@ -10,6 +10,7 @@ import logging
 import api_common as apiVC
 import models as DB
 import common as C
+from domain import policy as POL
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/form_save', view_func=save_feedback_form, methods=['POST'])
@@ -121,7 +122,10 @@ def student_enrolments_for_fb(form_type):
     cursor = DB.db.execute_sql(qry, [stu, cas_list, form_type])
     res = []
     for row in cursor.fetchall():
-        # id, title, code, first_name, last_name
+        # Only credit enrolments, per the grading policy for their session.
+        if row[7].strip().upper() not in \
+                POL.load_grading_policy(row[6]).credit_enrol_types:
+            continue
         res.append({"enrolment_id": row[0],
                     "course_instructor_id": row[1],
                     "label": "{0} ({1}) -- {2} {3}".format(
