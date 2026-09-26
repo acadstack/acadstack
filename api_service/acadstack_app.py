@@ -143,8 +143,7 @@ def create_app(is_testing=False):
         run_startup_db_tasks(cfg)
 
     myapp.context_processor(C.add_user_to_session)
-    myapp.before_request(C.init_db_connection)
-    myapp.after_request(C.close_db_connection)
+    myapp.before_request(C.discard_dead_db_connection)
     myapp.before_request(apiVC.update_active_users)
     myapp.before_serving(lambda: setup_app_state(myapp))
     if not is_testing:

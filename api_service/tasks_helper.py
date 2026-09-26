@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from quart import current_app
 
-import models as DB
+import common as C
 
 TASK_TTL_SECONDS = 60  # TTL for completed tasks
 CLEANUP_INTERVAL_SECONDS = 20
@@ -38,17 +38,6 @@ async def start_cleanup_task():
     runs it on the event loop, not an executor thread with no loop."""
     current_app.add_background_task(cleanup_tasks_periodically)
 
-
-def _run_with_db_connection(func, *args, **kwargs):
-    """Runs func on the current (executor) thread with its own pooled DB
-    connection, returned to the pool when func finishes. Without the close,
-    each executor thread would keep its connection checked out for good."""
-    opened = DB.db.connect(reuse_if_open=True)
-    try:
-        return func(*args, **kwargs)
-    finally:
-        if opened:
-            DB.db.close()
 
 def get_task_info(task_id):
     """
@@ -107,7 +96,7 @@ def create_task(func, *args, task_id=None, owner=None, **kwargs):
             else:
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
-                    None, lambda: _run_with_db_connection(func, *args, **kwargs))
+                    None, lambda: C.run_with_thread_db_connection(func, *args, **kwargs))
 
             current_app.extensions['tasks'][task_id].update({
                 "status": "done",
