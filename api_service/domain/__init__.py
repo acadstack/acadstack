@@ -3,8 +3,8 @@
 Modules in this package hold business logic as plain functions over the
 Peewee models, with explicit inputs and return values. They are the layer
 the ``api_*.py`` HTTP adapters call into, and the layer that background
-jobs (``bg_tasks.py``, ``api_reports.py``) can reuse without faking an
-HTTP request.
+jobs (``tasks_helper.py`` tasks, ``acadstack_app.py``'s scheduled jobs)
+can reuse without faking an HTTP request.
 
 Rules for everything under ``domain/`` -- see the service-layer section
 of docs/architecture.md for the summary:

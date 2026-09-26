@@ -1,11 +1,9 @@
 """Tests for the settings seam (settings_store.py): the ``setting()``
-accessor, the policy-version-keyed cache, and write-time validation.
+accessor, the process cache and its invalidation on write, and write-time
+validation.
 
 These run against the real test database (the ``db`` fixture in
-conftest.py) because the cache's correctness is a property of what
-Postgres actually returns across transactions -- notably that the version
-bump and the value write land atomically, which is what lets one worker
-notice another worker's save.
+conftest.py), so a read after a write sees what Postgres actually stored.
 
 Settings groups are declared per test through the ``settings`` fixture,
 which isolates the module-level registry and cache. Production
@@ -14,6 +12,7 @@ settings_store.py) are restored afterwards.
 """
 import asyncio
 import sys
+import threading
 from pathlib import Path
 
 import peewee
@@ -88,18 +87,18 @@ class QueryCounter:
         self.count = 0
 
 
-def write_from_another_worker(key, value):
-    """Simulates a save made by a DIFFERENT hypercorn worker: the row and
-    the policy-version bump land in the database, but this process's cache
-    is never told about it."""
-    group, name = key.split(".", 1)
-    with DB.db.atomic():
-        (DB.SystemSetting.insert(group=group, name=name, value=value)
-         .on_conflict(
-             conflict_target=[DB.SystemSetting.group, DB.SystemSetting.name],
-             update={DB.SystemSetting.value: value})
-         .execute())
-        SS.bump_policy_version()
+def save_from_another_thread(key, value):
+    """Saves through the store from a thread with no request context, as
+    a background job would: the process cache is invalidated, but not the
+    calling request's pinned snapshot."""
+    def run():
+        try:
+            save_setting(key, value)
+        finally:
+            DB.db.close()
+    t = threading.Thread(target=run)
+    t.start()
+    t.join()
 
 
 # ===================== Reading and precedence =====================
@@ -145,8 +144,8 @@ def test_caller_cannot_mutate_the_cached_json_value(demo_group):
     save_setting("enrolment.hide_stats_from", ["STU"])
     got = setting("enrolment.hide_stats_from")
     got.append("FAC")
-    # The cache is shared by every request this worker serves until the
-    # policy version moves, so a caller's mutation must not reach it.
+    # The cache is shared by every request the process serves until the
+    # next write, so a caller's mutation must not reach it.
     assert setting("enrolment.hide_stats_from") == ["STU"]
     assert settings_in_group("enrolment")["hide_stats_from"] == ["STU"]
     # The same applies to a value that is still the declared default.
@@ -161,7 +160,6 @@ def test_unusable_stored_value_falls_back_instead_of_raising(demo_group):
     middle of, say, generating a transcript."""
     DB.SystemSetting.create(group="enrolment", name="max_credits",
                             value="not-a-number")
-    SS.bump_policy_version()
     SS.invalidate_cache()
 
     assert setting("enrolment.max_credits") == 24  # declared default
@@ -184,8 +182,6 @@ def test_describe_settings_exposes_the_schema_for_an_admin_gui(demo_group):
     assert entry["default"] == 24
     assert entry["value"] == 12
     assert entry["min_value"] == 1 and entry["max_value"] == 60
-    # The internal bookkeeping group is never offered for editing.
-    assert all(not d["key"].startswith(SS.SYS_GROUP) for d in described.values())
 
 
 # ===================== Write-time validation =====================
@@ -251,7 +247,6 @@ def test_custom_validator_runs_on_save(settings):
 
 def test_a_rejected_save_writes_nothing_at_all(demo_group):
     save_setting("enrolment.max_credits", 20)
-    version_before = SS.policy_version()
 
     with pytest.raises(SettingValidationError):
         save_settings({"enrolment.disable_fees_check": True,   # valid
@@ -260,7 +255,6 @@ def test_a_rejected_save_writes_nothing_at_all(demo_group):
     SS.invalidate_cache()
     assert setting("enrolment.disable_fees_check") is False
     assert setting("enrolment.max_credits") == 20
-    assert SS.policy_version() == version_before
 
 
 def test_form_style_string_input_is_coerced_before_validation(demo_group):
@@ -277,14 +271,6 @@ def test_form_style_string_input_is_coerced_before_validation(demo_group):
 def test_a_boolean_is_not_accepted_as_a_number(demo_group):
     with pytest.raises(SettingValidationError):
         save_setting("enrolment.max_credits", True)
-
-
-def test_the_internal_group_cannot_be_written_through_the_public_api(settings):
-    with pytest.raises(SettingValidationError) as ex:
-        save_setting(f"{SS.SYS_GROUP}.{SS.POLICY_VERSION_NAME}", 99)
-    assert "reserved" in str(ex.value)
-    with pytest.raises(SettingValidationError):
-        delete_setting(f"{SS.SYS_GROUP}.{SS.POLICY_VERSION_NAME}")
 
 
 def test_malformed_keys_are_rejected(settings):
@@ -322,7 +308,6 @@ def test_a_key_is_stored_in_exactly_one_row(demo_group):
 
 def test_validate_stored_settings_reports_rows_without_a_declaration(demo_group):
     DB.SystemSetting.create(group="orphan", name="leftover", value="x")
-    SS.bump_policy_version()
     SS.invalidate_cache()
     problems = SS.validate_stored_settings()
     assert problems == ["orphan.leftover: stored but not declared"]
@@ -330,8 +315,8 @@ def test_validate_stored_settings_reports_rows_without_a_declaration(demo_group)
 
 # ===================== Caching =====================
 
-def test_many_lookups_in_one_request_cost_two_queries(app, demo_group,
-                                                      monkeypatch):
+def test_many_lookups_in_one_request_cost_one_query(app, demo_group,
+                                                     monkeypatch):
     save_settings({"enrolment.max_credits": 20,
                    "enrolment.disable_fees_check": True})
     SS.invalidate_cache()
@@ -344,12 +329,11 @@ def test_many_lookups_in_one_request_cost_two_queries(app, demo_group,
             assert setting("enrolment.hide_stats_from") == ["STU"]
         return counter.count
 
-    # One version check plus one load of the table -- not one per lookup.
-    assert run_in_request(app, read_a_lot) == 2
+    # One load of the table -- not one per lookup.
+    assert run_in_request(app, read_a_lot) == 1
 
 
-def test_a_later_request_only_pays_the_version_check(app, demo_group,
-                                                     monkeypatch):
+def test_a_later_request_costs_no_query(app, demo_group, monkeypatch):
     save_setting("enrolment.max_credits", 20)
     SS.invalidate_cache()
     counter = QueryCounter(monkeypatch)
@@ -362,7 +346,25 @@ def test_a_later_request_only_pays_the_version_check(app, demo_group,
             assert setting("enrolment.max_credits") == 20
         return counter.count
 
-    assert run_in_request(app, read_again) == 1
+    assert run_in_request(app, read_again) == 0
+
+
+def test_a_save_is_visible_to_the_next_read(demo_group):
+    assert setting("enrolment.max_credits") == 24  # warms the cache
+    save_setting("enrolment.max_credits", 33)
+    assert setting("enrolment.max_credits") == 33
+    delete_setting("enrolment.max_credits")
+    assert setting("enrolment.max_credits") == 24
+
+
+def test_a_save_inside_a_request_is_visible_later_in_that_request(
+        app, demo_group):
+    def read_save_read():
+        first = setting("enrolment.max_credits")
+        save_setting("enrolment.max_credits", 40)
+        return first, setting("enrolment.max_credits")
+
+    assert run_in_request(app, read_save_read) == (24, 40)
 
 
 def test_a_request_sees_one_consistent_snapshot_throughout(app, demo_group):
@@ -372,8 +374,8 @@ def test_a_request_sees_one_consistent_snapshot_throughout(app, demo_group):
 
     def read_write_read():
         first = setting("enrolment.max_credits")
-        # Another worker saves halfway through this request.
-        write_from_another_worker("enrolment.max_credits", 40)
+        # A background job saves halfway through this request.
+        save_from_another_thread("enrolment.max_credits", 40)
         return first, setting("enrolment.max_credits")
 
     first, second = run_in_request(app, read_write_read)
@@ -383,35 +385,34 @@ def test_a_request_sees_one_consistent_snapshot_throughout(app, demo_group):
     assert run_in_request(app, lambda: setting("enrolment.max_credits")) == 40
 
 
-def test_another_workers_save_is_picked_up_without_a_restart(demo_group):
-    assert setting("enrolment.max_credits") == 24
-    write_from_another_worker("enrolment.max_credits", 33)
-    SS._last_check_ts = 0.0  # outside a request the check is time-boxed
-    assert setting("enrolment.max_credits") == 33
-
-
-def test_an_unchanged_policy_version_does_not_reload_the_table(demo_group,
-                                                              monkeypatch):
+def test_a_warm_cache_serves_reads_without_a_query(demo_group, monkeypatch):
     save_setting("enrolment.max_credits", 20)
-    SS.invalidate_cache()
-    setting("enrolment.max_credits")  # primes the cache
+    setting("enrolment.max_credits")  # reloads after the save
 
     counter = QueryCounter(monkeypatch)
-    SS._last_check_ts = 0.0
-    assert setting("enrolment.max_credits") == 20
-    assert counter.count == 1  # the version row only
+    for _ in range(5):
+        assert setting("enrolment.max_credits") == 20
+    assert counter.count == 0
 
 
-def test_saving_bumps_the_policy_version(demo_group):
-    before = SS.policy_version()
+def test_a_load_that_raced_a_write_is_not_cached(demo_group, monkeypatch):
+    """A background job's thread loading the table while a write lands
+    must not store its pre-write snapshot over the write's invalidation."""
     save_setting("enrolment.max_credits", 20)
-    after = SS.policy_version()
-    assert after > before
-    assert SS.policy_version() == after  # stable until the next write
+    load = SS._load_values
+
+    def load_then_write_lands():
+        snapshot = load()
+        SS.invalidate_cache()  # the write finishes mid-load
+        return snapshot
+
+    monkeypatch.setattr(SS, "_load_values", load_then_write_lands)
+    setting("enrolment.max_credits")
+    assert SS._cache is None
 
 
-def test_a_database_failure_serves_the_last_known_values(demo_group,
-                                                         monkeypatch):
+def test_a_database_failure_after_warming_serves_the_cached_values(
+        demo_group, monkeypatch):
     save_setting("enrolment.max_credits", 20)
     assert setting("enrolment.max_credits") == 20  # primes the cache
 
@@ -419,7 +420,6 @@ def test_a_database_failure_serves_the_last_known_values(demo_group,
         raise RuntimeError("database is gone")
 
     monkeypatch.setattr(DB.db, "execute_sql", boom)
-    SS._last_check_ts = 0.0
     assert setting("enrolment.max_credits") == 20
 
 
@@ -447,7 +447,6 @@ def test_a_stored_value_of_the_wrong_type_falls_back_to_the_default(demo_group):
     a list."""
     DB.SystemSetting.create(group="enrolment", name="hide_stats_from",
                             value="STU,RES")
-    SS.bump_policy_version()
     SS.invalidate_cache()
 
     assert setting("enrolment.hide_stats_from") == ["STU"]

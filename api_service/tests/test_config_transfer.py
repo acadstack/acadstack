@@ -246,8 +246,8 @@ def test_import_blocks_a_vocab_change_that_orphans_a_referenced_code(db):
 
 def test_a_failure_in_a_later_write_path_rolls_back_the_earlier_ones(db):
     """The permission mapping is written before the vocab check fails; the
-    whole import must still leave nothing behind, including in this
-    worker's cache."""
+    whole import must still leave nothing behind, including in the
+    process cache."""
     items = ST.vocab("degrees") + [{"code": "ZDEG", "label": "Z Degree"}]
     ST.save_settings({"vocab.degrees": items})
     create_user("STU", "stu1", degree="ZDEG")

@@ -4,12 +4,12 @@ resolving the ruleset in force for an academic session.
 Immutability is covered separately in test_policy_immutability.py; this
 file is about the storage/resolution contract itself.
 
-These run against the real test database, because what is being checked
-is largely a property of what Postgres returns across transactions (the
-version bump and the row landing atomically, which is what lets one
-worker notice another's write).
+These run against the real test database, so a resolution after a write
+sees what Postgres actually stored.
 """
+import asyncio
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -27,12 +27,7 @@ import settings_store as SS  # noqa: E402
 @pytest.fixture
 def policy(db):
     """Isolates the policy-group registry and both process caches, so one
-    test's groups and cached snapshots cannot leak into another.
-
-    Both caches matter: the `db` fixture truncates the version row too, so
-    a stale snapshot from a previous test could otherwise sit at the same
-    version number as this test's first write.
-    """
+    test's groups and cached snapshots cannot leak into another."""
     saved = dict(PS._REGISTRY)
     PS._REGISTRY.clear()
     PS.invalidate_cache()
@@ -295,32 +290,42 @@ def test_builder_runs_once_per_version_not_once_per_resolution(policy):
         assert policy.policy_for("counted", "2020-I") == 2
         assert policy.policy_for("counted", "2022-I") == 4
 
-    # Reads build each version at most once per worker, however many
+    # Reads build each version at most once per snapshot, however many
     # courses a transcript resolves.
     assert sorted(builds) == [1, 2]
 
 
-def test_a_write_is_visible_to_a_worker_that_cached_the_old_policy(
-        policy, simple_group):
-    """Simulates a second hypercorn worker: it holds a warm snapshot, an
-    admin saves through another process, and the version counter (bumped
-    inside the writing transaction) is what makes the change visible."""
+def test_a_write_is_visible_to_the_next_resolution(policy, simple_group):
     policy.supersede(simple_group, "2019-I", _payload(limit=1))
     assert policy.resolve(simple_group, "2020-I").payload["limit"] == 1
     cached = PS._cache
     assert cached is not None
 
-    # Another process's write: row + version bump in one transaction.
-    with DB.db.atomic():
-        DB.PolicyVersion.create(
-            policy_group=simple_group, effective_from_session="2020-I",
-            effective_from_ord=AS.ordinal("2020-I"), payload=_payload(limit=7))
-        SS.bump_policy_version()
-    # This "worker" was never told; only its own version check can help.
-    SS.invalidate_cache()
-
+    # No manual invalidation: the write drops the cache itself.
+    policy.supersede(simple_group, "2020-I", _payload(limit=7))
     assert policy.resolve(simple_group, "2020-I").payload["limit"] == 7
     assert PS._cache is not cached
+
+
+def test_a_request_resolves_against_one_snapshot(app, policy, simple_group):
+    policy.supersede(simple_group, "2019-I", _payload(limit=1))
+
+    def other_thread_supersedes():
+        try:
+            policy.supersede(simple_group, "2020-I", _payload(limit=7))
+        finally:
+            DB.db.close()
+
+    async def in_request():
+        async with app.test_request_context("/acadstack/"):
+            first = policy.resolve(simple_group, "2020-I").payload["limit"]
+            t = threading.Thread(target=other_thread_supersedes)
+            t.start()
+            t.join()
+            return first, policy.resolve(simple_group, "2020-I").payload["limit"]
+
+    assert asyncio.run(in_request()) == (1, 1)
+    assert policy.resolve(simple_group, "2020-I").payload["limit"] == 7
 
 
 # ===================== Metadata =====================

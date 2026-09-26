@@ -85,15 +85,9 @@ takes effect from, it is probably a setting, not policy.
 
 ### What they do share
 
-One thing, deliberately: the `_sys.policy_version` counter. Both stores
-cache their whole (tiny) table in-process and re-read only when that
-number moves; every write bumps it *inside the writing transaction*, so a
-worker that can see version N+1 can by definition see every row that
-transaction wrote. Sharing the counter means one answer to "is my cached
-configuration current?" instead of two that can disagree. The cost is one
-redundant reload of store A when store B is written, which for tables this
-size is not worth a second counter to avoid. `settings_store` exposes
-`bump_policy_version()` for exactly this.
+The caching approach. Both stores cache their whole (tiny) table in the one app
+process, pin it on `quart.g` for a request, and drop it on every write they make.
+Nothing else is shared: each store invalidates only its own cache.
 
 ---
 
@@ -302,8 +296,8 @@ Payloads are handed out frozen (`MappingProxyType` / tuples, built once
 when the snapshot loads) rather than deep-copied per call, so sharing is
 safe and free; `payload_dict()` gives a mutable copy for callers that want
 to edit a ruleset and supersede with it. Typed objects are memoised per
-version, so a group's builder runs at most once per version per worker
-however many courses a transcript touches.
+version, so a group's builder runs at most once per version per cached
+snapshot however many courses a transcript touches.
 
 ---
 

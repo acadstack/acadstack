@@ -150,14 +150,15 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
                         as_attachment=True)
 
 
-def _get_semester_grade_data(entry_no, acad_session, enrol_type):
+def _get_semester_grade_data(entry_no, acad_session, enrol_type, actor=None):
     acad_session = acad_session.strip().upper()
     report_data = {}
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
     is_current_user_in_role_and_id("STU", "org_id", entry_no, 
-        "Student attempted to access someone else's grades sheet.")
+        "Student attempted to access someone else's grades sheet.",
+        actor=actor)
     stu = get_user_by_org_id(entry_no)
     if not stu:
         raise C.AcadStackException(f"Student {entry_no} not found!")
@@ -254,8 +255,9 @@ def _get_student_entry_no_data(degree,dept_name,year_of_entry):
     return serialized
 
 
-def _bulk_download_sem_grade(form_data, job_key):
-    DB.db.connect(reuse_if_open=True)
+def _bulk_download_sem_grade(form_data, job_key, upload_folder, actor):
+    """Runs on an executor thread (TH.create_task), so the upload folder
+    and acting user come in as arguments, not from the app/session."""
     degree = form_data.get("degree")
     dept_name = form_data.get("dept_name")
     acad_session = form_data.get("acad_session")
@@ -263,15 +265,16 @@ def _bulk_download_sem_grade(form_data, job_key):
     year_of_entry = str(form_data.get("for_year"))
     sub_dir = 'BULK_GS_PDF'
     missing_stu_enrol = []
-    file_folder = os.path.join(apiVC.get_upload_folder(), sub_dir, job_key)
-    zip_file = f"{os.path.join(apiVC.get_upload_folder(), sub_dir)}_{job_key}"
+    file_folder = os.path.join(upload_folder, sub_dir, job_key)
+    zip_file = f"{os.path.join(upload_folder, sub_dir)}_{job_key}"
     Path(file_folder).mkdir(parents=True, exist_ok=True)
     resp = _get_student_entry_no_data(degree,dept_name,year_of_entry)
     if not resp:
         raise C.AcadStackException(f"No student record found in {dept_name} "
                             f"Department for Entry Year {year_of_entry}")
     for entry_no in resp:
-        data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
+        data = _get_semester_grade_data(entry_no, acad_session, enrol_type,
+                                        actor=actor)
         if data:
             data['enrol_type'] = enrol_type
             html = C.fill_template("report_templates", "semester_grades.html", data)
@@ -293,6 +296,7 @@ async def bulk_download_sem_grade():
     job_key = str(uuid.uuid4())
     form_data = await request.get_json(force=True)
     job_key = TH.create_task(_bulk_download_sem_grade, form_data, job_key,
+                             apiVC.get_upload_folder(), apiVC.current_actor(),
                              task_id=job_key, owner=apiVC.current_login_id())
     logging.info(f"Submitted background task (bulk grade download) with key {job_key}")
     return apiVC.ok_json({"job_key": job_key, "message": "Request successfully submitted."})

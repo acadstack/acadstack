@@ -177,15 +177,15 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
                 group: [_supersede(group, v, login_id) for v in versions]
                 for group, versions in policy_in.items()
             }
-    except Exception as ex:
-        # The writes above refreshed this worker's caches from inside the
-        # transaction that just rolled back.
+    except AcadStackException as ex:
+        raise ConfigImportError(getattr(ex, "errors", None) or [str(ex)]) \
+            from ex
+    finally:
+        # The writes above invalidated the caches from inside the outer
+        # transaction, before it committed or rolled back; a reload in that
+        # window would have cached what is no longer (or not yet) stored.
         ST.invalidate_cache()
         PS.invalidate_cache()
-        if isinstance(ex, AcadStackException):
-            raise ConfigImportError(getattr(ex, "errors", None) or [str(ex)]) \
-                from ex
-        raise
 
     logging.info(f"Imported configuration document by {login_id}: "
                  f"{len(applied)} setting(s), "

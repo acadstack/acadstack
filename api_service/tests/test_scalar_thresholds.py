@@ -29,14 +29,10 @@ ACAD_SESSION = "2024-I"
 
 @pytest.fixture(autouse=True)
 def _reset_settings_cache():
-    """settings_store's process-wide cache is keyed off a DB row and, for
-    code running outside a request context (as several calls below do --
-    they call face_api_proxy/validation_checks functions directly, not
-    through the HTTP client), is only rechecked once every
-    NON_REQUEST_RECHECK_SECS. The `db` fixture's TRUNCATE between tests
-    does not go through settings_store's own invalidation path, so
-    without this a fast-running test can still see the previous test's
-    saved value. Mirrors the `settings` fixture in test_settings_store.py.
+    """settings_store's process-wide cache is dropped only by writes made
+    through it. The `db` fixture's TRUNCATE between tests bypasses that,
+    so without this a test can still see the previous test's saved value.
+    Mirrors the `settings` fixture in test_settings_store.py.
     """
     ST.invalidate_cache()
     yield

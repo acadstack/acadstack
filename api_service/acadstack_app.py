@@ -9,7 +9,6 @@ __status__ = "Development"
 
 import os
 import secrets
-from bg_tasks import BgTasks
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -29,12 +28,14 @@ import api_settings as apiST
 import api_wflow as apiWF
 import api_common as apiVC
 import common as C
+import tasks_helper as TH
 import models as M
 from default_seed_data import run_seed_defaults
 from domain import plugins
 from schema_migrations import run_pending_migrations
 from settings_store import validate_stored_settings
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from quart import Quart
 
 
@@ -76,9 +77,8 @@ def _load_config_from_env():
 
 def _session_secret_key(cfg):
     """Returns the key that signs session cookies. Operators must set
-    SECRET_KEY in production: without it a random key is generated per
-    process, so every restart logs all users out and multiple workers
-    reject each other's sessions."""
+    SECRET_KEY in production: without it a random key is generated at
+    every start, so every restart logs all users out."""
     key = cfg.get("secret_key")
     if key:
         return key
@@ -147,6 +147,8 @@ def create_app(is_testing=False):
     myapp.after_request(C.close_db_connection)
     myapp.before_request(apiVC.update_active_users)
     myapp.before_serving(lambda: setup_app_state(myapp))
+    if not is_testing:
+        myapp.before_serving(TH.start_cleanup_task)
 
     # Central replacement for the try/except AcadStackException/Exception
     # boilerplate every route handler used to repeat. A handler may still
@@ -207,22 +209,17 @@ def create_app(is_testing=False):
 
     C.emailer.configure(myapp.config["email"])
     
-    # Start the scheduler
+    # Scheduled jobs run on APScheduler's own threads, once per deployment
+    # because the app runs as a single process.
     if not is_testing:
-        bgt = BgTasks(myapp.config)
-        # Courses status is updated every 6 hours
-        bgt.add_job(apiCO.schedule_course_status,
-            {"id": "CourseStatusUpdateTask",
-            "trigger": "interval", "hours": 6
-            })
-        
-        # Every 6hrs check for upcoming events and send alerts
-        bgt.add_job(apiDC.schedule_event_alerts,
-            {"id": "EventsAlertsTask",
-            "trigger": "interval", "hours": 24
-            })
-
-        bgt.start()
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(apiCO.schedule_course_status, "interval", hours=6,
+                          id="CourseStatusUpdateTask",
+                          kwargs={"config": myapp.config})
+        scheduler.add_job(apiDC.schedule_event_alerts, "interval", hours=24,
+                          id="EventsAlertsTask",
+                          kwargs={"config": myapp.config})
+        scheduler.start()
 
     myapp.config['EXECUTOR_PROPAGATE_EXCEPTIONS'] = True
     return myapp
