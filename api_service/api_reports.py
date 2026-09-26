@@ -359,7 +359,8 @@ def __process_credits_gen_request(acad_session):
 
 @C.rbac(permissions=["reports.generate"])
 async def generate_students_credits_info(acad_session):
-    job_key = TH.create_task(__process_credits_gen_request, acad_session)
+    job_key = TH.create_task(__process_credits_gen_request, acad_session,
+                             owner=apiVC.current_login_id())
     logging.info(f"Submitted background job with key {job_key}")
     return apiVC.ok_json({"job_key": job_key, "message": 
                        "Request successfully submitted."})
@@ -369,7 +370,9 @@ async def generate_students_credits_info(acad_session):
 # and api_grades.bulk_download_sem_grade (grades.export).
 @C.rbac(permissions=["reports.generate", "grades.export"])
 async def get_background_task_status(job_key):
-    task_result = TH.pop_task_info_if_done(job_key)
+    # Only the submitter may read a job; anyone else gets "not found".
+    task_result = TH.pop_task_info_if_done(job_key,
+                                           owner=apiVC.current_login_id())
     if not task_result:
         logging.error(f"Background job with key {job_key} not found.")
         return apiVC.error_json(f"Job info not found for {job_key}")

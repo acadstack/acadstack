@@ -127,9 +127,7 @@ export default {
     },
     async findAdvisor() {
       let vm = this;
-      // if (_.values(vm.search_crit).some(x => _.isEmpty(x))) { for_entry_year: "", dept_name: "", 
-                    for_degree: ""
-        if(vm.search_crit.for_entry_year === '' || vm.search_crit.dept_name === ''  || vm.search_crit.for_degree === '') {
+      if(vm.search_crit.for_entry_year === '' || vm.search_crit.dept_name === ''  || vm.search_crit.for_degree === '') {
         vm.setStatusMessage("Please specify all search fields!");
         return
       }

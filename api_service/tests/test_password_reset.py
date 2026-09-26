@@ -101,10 +101,58 @@ def test_gen_prk_caps_outstanding_keys(client, db, sent_keys):
     cap = ST.setting("auth.password_reset_max_active_keys")
     for _ in range(cap):
         assert _gen_prk(client).json["status"] == "OK"
+    # Same answer as a successful request, but no new key is sent.
     res = _gen_prk(client)
-    assert res.json["status"] == "ERROR"
+    assert res.json["status"] == "OK"
     assert len(sent_keys) == cap
     # Expired keys no longer count toward the cap.
     DB.PasswordResetKey.update(
         expires_at=DT.now() - timedelta(minutes=1)).execute()
     assert _gen_prk(client).json["status"] == "OK"
+
+
+def test_gen_prk_answers_the_same_for_unknown_accounts(client, db, sent_keys):
+    create_user("STU", "stu1")
+    known = _gen_prk(client)
+    unknown = _gen_prk(client, login_id="nobody")
+    assert unknown.json == known.json
+    assert len(sent_keys) == 1
+
+
+def test_reset_for_unknown_account_looks_like_a_wrong_key(client, db, sent_keys):
+    create_user("STU", "stu1")
+    _gen_prk(client)
+    wrong = _reset(client, "WRONGKEY")
+    unknown = _reset(client, "WRONGKEY", login_id="nobody")
+    assert unknown.json == wrong.json
+
+
+def test_reset_rejects_an_empty_new_password(client, db, sent_keys):
+    u = create_user("STU", "stu1")
+    old_hash = u.password_hashed
+    _gen_prk(client)
+    res = _reset(client, sent_keys[-1], new_password="  ")
+    assert res.json["status"] == "ERROR"
+    assert DB.User.get_by_id(u.id).password_hashed == old_hash
+
+
+def test_login_answers_the_same_for_unknown_and_wrong_password(client, db):
+    create_user("STU", "stu1")
+    wrong = client.post("/acadstack/login",
+                        json={"login_id": "stu1", "password": "nope"})
+    unknown = client.post("/acadstack/login",
+                          json={"login_id": "nobody", "password": "nope"})
+    assert wrong.json == unknown.json
+    assert wrong.json["status"] == "ERROR"
+
+
+def test_login_reports_a_lock_only_with_the_right_password(client, db):
+    u = create_user("STU", "stu1")
+    DB.User.update(is_locked=True).where(DB.User.id == u.id).execute()
+    wrong = client.post("/acadstack/login",
+                        json={"login_id": "stu1", "password": "nope"})
+    assert "locked" not in wrong.json["body"].lower()
+    right = client.post("/acadstack/login",
+                        json={"login_id": "stu1", "password": "test123"})
+    assert right.json["status"] == "ERROR"
+    assert "locked" in right.json["body"].lower()

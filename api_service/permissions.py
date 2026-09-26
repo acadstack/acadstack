@@ -220,6 +220,11 @@ ST.declare_group(
               "always view their own)."),
         _spec("user.bulk_upload_faces", ["ACA"],
               "Bulk-upload face images for photo-based attendance."),
+        _spec("faces.upload_own", ALL_BUT_STU,
+              "Set or replace your own reference photo for photo-based "
+              "attendance. Students are excluded by default, since a "
+              "student could otherwise swap in someone else's face. "
+              "user.edit_any holders may set anyone's photo."),
         _spec("fees.manage_others_txn", ALL_BUT_STU,
               "Submit/view/delete another student's fee-transaction "
               "records (a student may always act on their own). "

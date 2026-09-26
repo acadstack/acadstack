@@ -120,19 +120,24 @@ def find_persons_in_photo(group_photo_bytes, known_faces_data, tolerance=0.45):
     else:
         logging.debug("No faces found in group photo")
 
-    return (names_found, names_missing, len(grp_faces), 
-            mark_faces(group_photo_bytes, face_locs_found))
+    return (names_found, names_missing, len(grp_faces),
+            mark_faces(_load_bgr_image(group_photo_bytes), face_locs_found))
 
 
-def mark_faces(image, face_loc):
+def _load_bgr_image(image_bytes):
+    """Decodes image bytes into the BGR array OpenCV draws on and encodes."""
+    return cv2.cvtColor(fr.load_image_file(io.BytesIO(image_bytes)),
+                        cv2.COLOR_RGB2BGR)
+
+
+def mark_faces(image, face_loc, as_buff=False):
+    """Draws a numbered box around each face location on a BGR image.
+    Returns a JPEG data URL, or a BytesIO of the JPEG if ``as_buff``."""
     for idx, (top, right, bottom, left) in enumerate(face_loc):
         cv2.rectangle(image, (left, top), (right, bottom), (0, 0, 255), 2)
         font = cv2.FONT_HERSHEY_DUPLEX
         cv2.putText(image, str(idx), (left - 15, bottom + 30), font, 1.0, (0, 0, 255), 2)
-    
-    _, buffer = cv2.imencode(".jpg", image)
-    b64_img = base64.b64encode(buffer).decode()
-    return f"data:image/jpeg;base64,{b64_img}"
+    return _encode_image(image, as_buff=as_buff)
 
 
 def is_person_in_photo_bytes(person_photo_bytes, group_photo_bytes, tolerance=0.45):
@@ -179,14 +184,14 @@ def mark_person_in_photo_bytes(person_photo, group_photo, tolerance=0.45):
     face_distances = fr.face_distance(grp_faces, faces[0])
     bmi = np.argmin(face_distances)
     if matches[bmi]:
-        image = fr.load_image_file(io.BytesIO(group_photo))
-        return mark_faces(image, face_loc[bmi:bmi+1], as_buff=True)
+        return mark_faces(_load_bgr_image(group_photo),
+                          face_loc[bmi:bmi+1], as_buff=True)
     else:
         return None
 
 
 def write_text_on_image_bytes(image_bytes, txt, bottom_left):
-    image = fr.load_image_file(io.BytesIO(image_bytes))
+    image = _load_bgr_image(image_bytes)
     font = cv2.FONT_HERSHEY_DUPLEX
     cv2.putText(image, txt, bottom_left, font, 1.0, (0, 0, 255), 2)
     return _encode_image(image, as_buff=True)

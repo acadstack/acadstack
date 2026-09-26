@@ -105,7 +105,7 @@ def test_is_person_in_photo_uses_configured_tolerance(db, two_photos, monkeypatc
 
     def fake_post(url, files=None, data=None, **kwargs):
         captured["tolerance"] = data["tolerance"]
-        return _FakeFaceResponse({"match": True})
+        return _FakeFaceResponse({"found": True})
 
     monkeypatch.setattr(fapi.requests, "post", fake_post)
     person, group = two_photos
@@ -127,8 +127,8 @@ def test_find_persons_in_photo_uses_configured_tolerance(db, two_photos, monkeyp
 
     def fake_post(url, files=None, data=None, **kwargs):
         captured["tolerance"] = data["tolerance"]
-        return _FakeFaceResponse({"names_found": [], "names_missing": [],
-                                  "face_count": 0, "marked_image_b64": ""})
+        return _FakeFaceResponse({"found": [], "missing": [],
+                                  "total_faces": 0, "marked_image": ""})
 
     monkeypatch.setattr(fapi.requests, "post", fake_post)
     _, group = two_photos
@@ -146,7 +146,7 @@ def test_mark_person_in_photo_uses_configured_tolerance(db, two_photos, monkeypa
 
     def fake_post(url, files=None, data=None, **kwargs):
         captured["tolerance"] = data["tolerance"]
-        return _FakeFaceResponse(content=b"marked-image-bytes")
+        return _FakeFaceResponse({"marked_image": None})
 
     monkeypatch.setattr(fapi.requests, "post", fake_post)
     person, group = two_photos

@@ -113,6 +113,57 @@ def test_every_face_service_call_passes_the_configured_timeout(
     assert seen == [expected] * len(calls)
 
 
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+def test_find_persons_sends_encodings_and_maps_results_back(
+        db, monkeypatch, photo):
+    import json
+    sent = {}
+
+    def _fake_post(url, files=None, data=None, **kwargs):
+        sent.update(data)
+        return _FakeResponse({"found": [1], "missing": [0],
+                              "total_faces": 3, "marked_image": "data:x"})
+    monkeypatch.setattr(fapi.requests, "post", _fake_post)
+    infos = [{"enrollment_id": 10}, {"enrollment_id": 20}]
+    found, missing, count, marked = fapi.find_persons_in_photo(
+        photo, ([[0.1, 0.2], [0.3, 0.4]], infos), tolerance=0.5)
+    assert json.loads(sent["known_faces"]) == [[0.1, 0.2], [0.3, 0.4]]
+    assert json.loads(sent["known_names"]) == [0, 1]
+    assert (found, missing, count, marked) == \
+        ([{"enrollment_id": 20}], [{"enrollment_id": 10}], 3, "data:x")
+
+
+def test_mark_person_decodes_image_or_returns_none(db, monkeypatch, photo):
+    import base64
+    payload = {"marked_image": None}
+    monkeypatch.setattr(fapi.requests, "post",
+                        lambda url, **kwargs: _FakeResponse(payload))
+    assert fapi.mark_person_in_photo(photo, photo, tolerance=0.5) is None
+    payload["marked_image"] = "data:image/jpeg;base64," + \
+        base64.b64encode(b"JPEGBYTES").decode()
+    out = fapi.mark_person_in_photo(photo, photo, tolerance=0.5)
+    assert out.getvalue() == b"JPEGBYTES"
+
+
+# ===================== get_doc =====================
+
+def test_get_doc_for_missing_id_is_not_found(client, auth):
+    with client:
+        auth.login()
+        res = client.get("/acadstack/get_doc/999999")
+    assert res.json == {"status": "ERROR", "body": "Document not found!"}
+
+
 # ===================== persistence.save and ins_ts =====================
 
 def test_save_sets_ins_ts_on_insert_only(db):

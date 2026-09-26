@@ -30,6 +30,16 @@ from passlib.handlers.pbkdf2 import pbkdf2_sha256
 from werkzeug.utils import secure_filename
 from peewee import IntegrityError
 
+# Verified against when a login id does not exist, so a failed login
+# takes as long for unknown users as for known ones.
+_DUMMY_PASSWORD_HASH = pbkdf2_sha256.hash(secrets.token_hex(16))
+
+# gen_prk gives this same answer whether or not the account exists.
+_PRK_SENT_MSG = ("If the login ID and email match an account, a password "
+                 "reset key has been emailed to it. The key is valid for "
+                 "{} minutes.")
+
+
 def init_routes(bp:Blueprint):
     bp.add_url_rule('/oauth/<string:token>', view_func=oauth_verify, methods=['GET'])
     bp.add_url_rule('/login', view_func=login, methods=['POST'])
@@ -80,27 +90,27 @@ async def gen_prk():
     u = DB.User.get_or_none((DB.User.login_id == login_id)
                          & (DB.User.email == email))
 
+    ttl_mins = ST.setting("auth.password_reset_key_ttl_mins")
+    sent_msg = _PRK_SENT_MSG.format(ttl_mins)
     if not u:
         logging.warning(
             "Attempted to initiate password reset for non-existent user {}".format(login_id))
-        return apiVC.error_json("Invalid user/email.")
+        return apiVC.ok_json(sent_msg)
     now = DT.now()
     active_keys = DB.PasswordResetKey.select().where(
         (DB.PasswordResetKey.login_id == login_id)
         & (DB.PasswordResetKey.expires_at > now)).count()
     if active_keys >= ST.setting("auth.password_reset_max_active_keys"):
-        return apiVC.error_json(
-            "Too many password reset requests. Use the most recent key "
-            "emailed to you, or try again later.")
-    ttl_mins = ST.setting("auth.password_reset_key_ttl_mins")
+        # The account already has this many valid keys in its inbox.
+        logging.warning(f"Password reset key not sent to {login_id}: "
+                        f"{active_keys} unexpired keys outstanding.")
+        return apiVC.ok_json(sent_msg)
     prk_str = C.get_rand_str(size=8)
     obj = DB.PasswordResetKey(login_id=login_id, prk=prk_str,
                               expires_at=now + timedelta(minutes=ttl_mins))
     apiVC.save_entity(obj)
     CM.send_password_reset_code(email, prk_str)
-    return apiVC.ok_json(
-        f"A password reset key code has been emailed to you. "
-        f"It is valid for {ttl_mins} minutes.")
+    return apiVC.ok_json(sent_msg)
 
 
 async def reset_password():
@@ -118,9 +128,11 @@ async def reset_password():
     if not u:
         logging.warning(
             "Attempted to reset password for non-existent user {}".format(login_id))
-        return apiVC.error_json("Invalid user/email.")
+        return apiVC.error_json("Invalid reset key!")
     elif u.is_locked:
         return apiVC.error_json("DB.User is locked. Please contact the admin.")
+    if not (new_password or "").strip():
+        return apiVC.error_json("Please supply a new password.")
 
     prk = DB.PasswordResetKey.select().where(
         DB.PasswordResetKey.login_id == login_id).order_by(
@@ -182,28 +194,31 @@ async def login():
 
     u = DB.User.get_or_none(DB.User.login_id == login_id)
     valid = False
-    if u and plain_pass:
-        if u.is_locked:
-            return apiVC.error_json("DB.User is locked! Please contact admin.")
-        logging.info("Got user: {0}, {1}".format(u.login_id, u.first_name))
-        valid = pbkdf2_sha256.verify(plain_pass, u.password_hashed)
+    if plain_pass:
+        valid = pbkdf2_sha256.verify(
+            plain_pass, u.password_hashed if u else _DUMMY_PASSWORD_HASH) \
+            and u is not None
 
     if not valid:
         return apiVC.error_json("Invalid user/password.")
-    else:
-        user_obj = {"id": u.id, "login_id": login_id,
-                    "first_name": u.first_name, "last_name": u.last_name,
-                    "category": u.person.category, "degree": u.person.degree,
-                    "deg_type": u.person.deg_type, "role_name": u.get_role_label(),
-                    "role": u.role, "dept": u.person.dept_name,
-                    "deg_type_spec": u.person.deg_type_spec, 
-                    "current_status": u.person.current_status}
-        apiVC.session['user'] = user_obj
-        nav = apiVC.init_navbar_items(u.role, u.person.degree)
-        APP.active_users[C.this_user_name_login_id()] = DT.now()
-        return apiVC.ok_json({"user": {**user_obj,
-                                        "permissions": PERM.permissions_for_role(u.role)},
-                               "nav": nav})
+    # Reported only after the password checks out, so it does not reveal
+    # which login ids exist.
+    if u.is_locked:
+        return apiVC.error_json("DB.User is locked! Please contact admin.")
+    logging.info("Got user: {0}, {1}".format(u.login_id, u.first_name))
+    user_obj = {"id": u.id, "login_id": login_id,
+                "first_name": u.first_name, "last_name": u.last_name,
+                "category": u.person.category, "degree": u.person.degree,
+                "deg_type": u.person.deg_type, "role_name": u.get_role_label(),
+                "role": u.role, "dept": u.person.dept_name,
+                "deg_type_spec": u.person.deg_type_spec, 
+                "current_status": u.person.current_status}
+    apiVC.session['user'] = user_obj
+    nav = apiVC.init_navbar_items(u.role, u.person.degree)
+    APP.active_users[C.this_user_name_login_id()] = DT.now()
+    return apiVC.ok_json({"user": {**user_obj,
+                                    "permissions": PERM.permissions_for_role(u.role)},
+                           "nav": nav})
 
 
 @C.rbac
@@ -310,6 +325,11 @@ async def user_save():
     can_edit_any = apiVC.has_permission("user.edit_any")
     if not can_edit_any and cid != cu.id:
         return apiVC.error_json("Insufficient privileges to perform the operation!")
+    if "photo_new" in fd and not (can_edit_any
+                                  or apiVC.has_permission("faces.upload_own")):
+        return apiVC.error_json(
+            "You are not allowed to change your reference photo. "
+            "Please ask an administrator.")
     if not can_edit_any:
         own = DB.User.get_by_id(cid)
         blocked = __restricted_changes(own, fd)
@@ -365,10 +385,12 @@ async def user_save():
             kf_mod.face_enc = __encode_face_to_json(img_data_b64)
             apiVC.save_entity(kf_mod)
 
-            # Delete the old photo
+            # Delete the old photo, only if it belongs to this user
             if "known_faces" in fd and fd["known_faces"]:
                 kfid = fd["known_faces"][0]["id"]
-                DB.KnownFace.delete_by_id(kfid)
+                DB.KnownFace.delete().where(
+                    (DB.KnownFace.id == kfid)
+                    & (DB.KnownFace.user == user_mod.id)).execute()
 
         txn.commit()
     return await user_view(my_id=user_mod.id)
@@ -517,12 +539,8 @@ async def delete_doc(doc_id):
 @C.rbac
 async def get_doc(doc_id):
     u_doc = DB.UserDoc.get_or_none(DB.UserDoc.id == int(doc_id))
-    if u_doc.category == 'FEETXN':
-        docs_folder="FEETXN"
-    else:
-        docs_folder="docs"
-    
     if u_doc and u_doc.doc:
+        docs_folder = "FEETXN" if u_doc.category == 'FEETXN' else "docs"
         if __is_doc_access_allowed(u_doc.user.id):
             fp = os.path.join(apiVC.get_upload_folder(),
                               docs_folder, secure_filename(u_doc.doc))

@@ -1,5 +1,7 @@
 """user_save(): what a user may change on their own record without
 user.edit_any."""
+import pytest
+
 import models as DB
 from conftest import create_user, login_as
 
@@ -100,3 +102,60 @@ def test_edit_any_holder_can_change_another_users_role(client, db):
         res = client.post("/acadstack/user_save", json=rec)
     assert res.json["status"] == "OK", res.json
     assert DB.User.get_by_id(stu.id).role == "RES"
+
+
+# ===================== reference photo =====================
+
+_PHOTO = "data:image/jpeg;base64,/9j/AAAA"
+
+
+@pytest.fixture
+def fake_face_service(monkeypatch):
+    import api_auth
+    monkeypatch.setattr(api_auth.fapi, "get_face_encoding_b64",
+                        lambda b64: [0.1] * 128)
+
+
+def test_student_cannot_change_own_reference_photo(client, db, fake_face_service):
+    stu = create_user("STU", "stu1")
+    with client:
+        login_as(client, "stu1")
+        rec = _own_record(client, stu.id)
+        rec["photo_new"] = _PHOTO
+        res = client.post("/acadstack/user_save", json=rec)
+    assert res.json["status"] == "ERROR"
+    assert not DB.KnownFace.select().where(DB.KnownFace.user == stu.id).exists()
+
+
+def test_student_cannot_use_face_add(client, db):
+    create_user("STU", "stu1")
+    with client:
+        login_as(client, "stu1")
+        res = client.post("/acadstack/face_add")
+    assert res.json["status"] == "ERROR"
+    assert "permission" in res.json["body"].lower()
+
+
+def test_photo_permission_holder_can_change_own_photo(client, db, fake_face_service):
+    fac = create_user("FAC", "fac1")
+    with client:
+        login_as(client, "fac1")
+        rec = _own_record(client, fac.id)
+        rec["photo_new"] = _PHOTO
+        res = client.post("/acadstack/user_save", json=rec)
+    assert res.json["status"] == "OK", res.json
+    assert DB.KnownFace.select().where(DB.KnownFace.user == fac.id).count() == 1
+
+
+def test_photo_replace_cannot_delete_another_users_photo(client, db, fake_face_service):
+    fac = create_user("FAC", "fac1")
+    other = create_user("STU", "stu2")
+    theirs = DB.KnownFace.create(user=other, face_enc="{}", photo="x")
+    with client:
+        login_as(client, "fac1")
+        rec = _own_record(client, fac.id)
+        rec["photo_new"] = _PHOTO
+        rec["known_faces"] = [{"id": theirs.id}]
+        res = client.post("/acadstack/user_save", json=rec)
+    assert res.json["status"] == "OK", res.json
+    assert DB.KnownFace.get_or_none(DB.KnownFace.id == theirs.id) is not None
