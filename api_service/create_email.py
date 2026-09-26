@@ -175,7 +175,7 @@ def send_access_violation_alert(message_txt):
             apiVC.save_entity(u)
             to_list.append(u.email)
             message_txt += " DB.User's AcadStack account has been locked."
-            apiVC.logout(send_response=False)
+            apiVC.end_user_session()
         body = __make_email_body("access_violation.txt",
                                 {"message": message_txt})
         subject = "AcadStack access violation alert"

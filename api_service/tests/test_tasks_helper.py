@@ -12,6 +12,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import api_grades  # noqa: E402
+import common as C  # noqa: E402
 import models as DB  # noqa: E402
 import tasks_helper as TH  # noqa: E402
 from common import AcadStackException  # noqa: E402
@@ -67,7 +68,7 @@ def test_a_sync_job_returns_its_db_connection_to_the_pool(db):
         return DB.db.execute_sql("SELECT 1").fetchone()[0]
 
     t = threading.Thread(
-        target=lambda: results.append(TH._run_with_db_connection(job)))
+        target=lambda: results.append(C.run_with_thread_db_connection(job)))
     t.start()
     t.join()
     assert results == [1]

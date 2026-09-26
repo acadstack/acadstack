@@ -589,10 +589,10 @@ async def student_lookup(query_str):
     return apiVC.ok_json(serialized)
 
 
+@C.releases_thread_db_connection
 def oauth_verify(token):
-    """
-    Validate the OAuth token with Google OAuth
-    """
+    """Validates the OAuth token with Google. Sync, so Quart runs it on an
+    executor thread: the token check is a blocking HTTP call."""
         # Specify the CLIENT_ID of the app that accesses the backend
     CLIENT_ID = C.app_config("oauth_client_id")
     oauth_domain = C.app_config("oauth_domain")

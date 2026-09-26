@@ -277,23 +277,52 @@ def update_model_skip_unknown(mod, form_data):
     update_model_from_dict(mod, form_data, ignore_unknown=True)
 
 
-def init_db_connection():
-    try:
-        if db.is_closed():
-            # DB connection params are configured in config.json
-            db.init(current_app.config['db_name'], **current_app.config['db_args'])
-            db.connect()
-    except Exception as ex:
-        logging.exception("Failed to connect to DB.")
+async def discard_dead_db_connection():
+    """before_request hook. Async on purpose, so it runs on the event-loop
+    thread: peewee's connection state is thread-local, so every async
+    handler shares that thread's one long-lived connection. If the server
+    has dropped it (restart, failover), drop it here too, so autoconnect
+    opens a fresh one; otherwise every later request fails until the app
+    restarts. Never closes a live connection: another request may be using
+    it between awaits.
+    """
+    if not db.is_closed() and db.connection().closed:
+        logging.warning("DB connection was closed by the server; "
+                        "discarding it.")
+        _discard_thread_connection()
 
 
-def close_db_connection(http_resp):
+def _discard_thread_connection():
+    # A connection that died inside atomic() leaves peewee's transaction
+    # stack non-empty, and close() refuses to run with one open.
+    while db.in_transaction():
+        db.pop_transaction()
+    db.close()
+
+
+def run_with_thread_db_connection(func, *args, **kwargs):
+    """Runs func with a pooled DB connection of its own for the current
+    (non-event-loop) thread, returned to the pool when func finishes.
+    For sync code on executor/scheduler threads, which would otherwise
+    keep an autoconnected connection checked out for good."""
+    opened = db.connect(reuse_if_open=True)
     try:
-        if not db.is_closed():
-            db.close()
-    except Exception as ex:
-        logging.exception("Failed to close DB connection.")
-    return http_resp
+        return func(*args, **kwargs)
+    finally:
+        if opened:
+            if db.in_transaction():
+                _discard_thread_connection()
+            else:
+                db.close()
+
+
+def releases_thread_db_connection(func):
+    """Decorator form of run_with_thread_db_connection, for a sync view
+    that Quart runs on an executor thread."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        return run_with_thread_db_connection(func, *args, **kwargs)
+    return wrapper
 
 
 def fill_template(templ_dir:str, templ_name:str, data_dict:dict) -> str:
