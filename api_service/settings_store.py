@@ -97,6 +97,11 @@ class Spec:
         doc: description, for the admin GUI.
         choices: allowed values. For a list setting this constrains every
             ITEM (e.g. a list of role codes).
+        choices_vocab: name of a controlled vocabulary whose codes are the
+            allowed values, read live at validation time so a code an
+            institution adds is accepted at once. Use instead of
+            ``choices``; declared defaults are checked against the
+            vocabulary's shipped codes (vocab_defaults.py).
         min_value/max_value: bounds for int/float; length bounds for
             str/list/dict.
         validator: callable(value) for anything else. Raises ValueError to
@@ -109,6 +114,7 @@ class Spec:
     default: Any = None
     doc: str = ""
     choices: Optional[Sequence[Any]] = None
+    choices_vocab: Optional[str] = None
     min_value: Optional[float] = None
     max_value: Optional[float] = None
     validator: Optional[Callable[[Any], None]] = None
@@ -118,6 +124,9 @@ class Spec:
             raise ValueError(
                 f"Spec '{self.name}': unsupported type {self.type!r}. "
                 f"Supported: {[t.__name__ for t in SUPPORTED_TYPES]}")
+        if self.choices is not None and self.choices_vocab is not None:
+            raise ValueError(f"Spec '{self.name}': give choices or "
+                             f"choices_vocab, not both")
         # Names may contain interior dots (permission names such as
         # "course.save"), but no empty segment.
         if self.name.startswith(".") or self.name.endswith(".") or ".." in self.name:
@@ -148,7 +157,8 @@ def declare_group(group: str, specs: Iterable[Spec], doc: str = "") -> GroupSpec
         if spec.name in by_name:
             raise ValueError(f"Duplicate Spec '{group}.{spec.name}'")
         by_name[spec.name] = spec
-        _, errors = _check(f"{group}.{spec.name}", spec, spec.default)
+        _, errors = _check(f"{group}.{spec.name}", spec, spec.default,
+                           shipped=True)
         if errors:
             raise ValueError(f"Invalid declared default: {'; '.join(errors)}")
     gs = GroupSpec(name=group, specs=by_name, doc=doc)
@@ -189,6 +199,7 @@ def describe_settings() -> list:
             # (login_id, upd_ts) of the stored row; none while the setting
             # still serves its declared default.
             updated_by, updated_ts = snap.provenance.get(key, (None, None))
+            choices = allowed_choices(spec)
             out.append({
                 "key": key,
                 "group": group,
@@ -197,7 +208,9 @@ def describe_settings() -> list:
                 "type": spec.type.__name__,
                 "default": spec.default,
                 "doc": spec.doc,
-                "choices": list(spec.choices) if spec.choices else None,
+                "choices": choices,
+                "reserved_codes": (sorted(VD.reserved_codes(name))
+                                   if group == "vocab" else None),
                 "min_value": spec.min_value,
                 "max_value": spec.max_value,
                 "value": setting(key),
@@ -244,16 +257,44 @@ def run_validator(fn: Callable, value: Any, label: str) -> list:
     return []
 
 
-def _check(label: str, spec: Spec, raw: Any) -> tuple:
-    """Coerces and validates one value. Returns (value, errors)."""
+def allowed_choices(spec: Spec, shipped: bool = False,
+                    pending_vocab: Optional[dict] = None) -> Optional[list]:
+    """The values a Spec accepts, or None if unconstrained. A
+    ``choices_vocab`` resolves to that vocabulary's codes: from
+    ``pending_vocab`` ({name: codes} being saved in the same batch) if
+    present, else the shipped codes when ``shipped``, else the live ones."""
+    name = spec.choices_vocab
+    if name is not None:
+        if pending_vocab and name in pending_vocab:
+            return pending_vocab[name]
+        return VD.codes(name) if shipped else vocab_codes(name)
+    return list(spec.choices) if spec.choices is not None else None
+
+
+def pending_vocab_codes(values: dict) -> dict:
+    """{vocab name: codes} for the "vocab.*" lists in a batch of values."""
+    out = {}
+    for key, value in values.items():
+        group, _, name = key.partition(".")
+        if group == "vocab" and isinstance(value, list):
+            out[name] = [it.get("code") for it in value if isinstance(it, dict)]
+    return out
+
+
+def _check(label: str, spec: Spec, raw: Any, shipped: bool = False,
+           pending_vocab: Optional[dict] = None) -> tuple:
+    """Coerces and validates one value. Returns (value, errors).
+    ``shipped`` checks vocabulary-backed choices against the shipped codes
+    (for declared defaults, validated at import before any DB exists);
+    ``pending_vocab`` against vocabularies saved in the same batch."""
     try:
         value = _coerce(spec, raw)
     except ValueError as ex:
         return None, [f"{label}: {ex}"]
 
     errors = []
-    if spec.choices is not None:
-        allowed = list(spec.choices)
+    allowed = allowed_choices(spec, shipped, pending_vocab)
+    if allowed is not None:
         items = value if spec.type in JSON_TYPES else [value]
         errors += [f"{label}: {v!r} is not one of {allowed}"
                    for v in items if v not in allowed]
@@ -275,9 +316,12 @@ def _check(label: str, spec: Spec, raw: Any) -> tuple:
 
 
 def _validated(values: dict) -> dict:
-    """Coerces and validates a {key: value} mapping without writing.
+    """Coerces and validates a {key: value} mapping without writing. A
+    vocabulary in the batch is what the batch's other values are checked
+    against, so one save can add a role and grant it a permission.
     Raises SettingValidationError listing every problem."""
     errors, coerced = [], {}
+    pending = pending_vocab_codes(values)
     for key, raw in values.items():
         try:
             split_key(key)
@@ -289,7 +333,7 @@ def _validated(values: dict) -> dict:
             errors.append(f"{key}: no such setting is declared (declare it "
                           f"with declare_group() before saving a value)")
             continue
-        value, value_errors = _check(key, spec, raw)
+        value, value_errors = _check(key, spec, raw, pending_vocab=pending)
         errors += value_errors
         if not value_errors:
             coerced[key] = value
@@ -551,16 +595,6 @@ declare_group(
 )
 
 declare_group(
-    "course_offering",
-    [
-        Spec("hide_stats_from", list, default=["STU"],
-             choices=VD.codes("roles"),
-             doc="Roles for which course offering stats are hidden."),
-    ],
-    doc="Course offering policy."
-)
-
-declare_group(
     "auth",
     [
         Spec("password_reset_lockout_attempts", int, default=4, min_value=1,
@@ -645,7 +679,7 @@ declare_group(
 
 
 def _validate_vocab_items(items):
-    """Spec.validator for every "vocab.*" setting: each item is a
+    """Checks shared by every "vocab.*" setting: each item is a
     {"code": str, "label": str, ...} object, codes unique within the list.
     Extra keys (e.g. grades' audit_ok) are the vocabulary's own business."""
     seen = set()
@@ -662,10 +696,51 @@ def _validate_vocab_items(items):
         seen.add(code)
 
 
+def _validate_reserved(name: str, items: list) -> list:
+    """Every reserved code (vocab_defaults.reserved_codes) must be present,
+    and an item's ``reserved`` flag must match vocab_defaults, so it can be
+    neither cleared to allow a delete nor set on an arbitrary code."""
+    reserved = VD.reserved_codes(name)
+    present = {item["code"] for item in items}
+    errors = [f"'{code}' is reserved: the application depends on this "
+              f"code, so it can be relabelled but not removed"
+              for code in sorted(reserved - present)]
+    errors += [f"item {item['code']!r}: 'reserved' must be "
+               f"{item['code'] in reserved}"
+               for item in items
+               if bool(item.get("reserved", False)) != (item["code"] in reserved)]
+    return errors
+
+
+def _validate_milestone_items(items: list) -> list:
+    errors = []
+    for item in items:
+        seq = item.get("sequence")
+        if not isinstance(seq, int) or isinstance(seq, bool):
+            errors.append(f"item {item['code']!r}: 'sequence' must be a "
+                          f"whole number")
+        if not isinstance(item.get("applies_to"), str) or not item["applies_to"]:
+            errors.append(f"item {item['code']!r}: 'applies_to' must be a "
+                          f"degree code")
+    return errors
+
+
+def _vocab_validator(name: str) -> Callable[[list], None]:
+    """Spec.validator for "vocab.<name>"."""
+    def validate(items):
+        _validate_vocab_items(items)
+        errors = _validate_reserved(name, items)
+        if name == "milestones":
+            errors += _validate_milestone_items(items)
+        if errors:
+            raise ValueError(*errors)
+    return validate
+
+
 declare_group(
     "vocab",
     [Spec(name, list, default=items,
-          validator=_validate_vocab_items,
+          validator=_vocab_validator(name),
           doc=f"Controlled vocabulary: {name}.")
      for name, items in VD.ALL.items()],
     doc="Controlled vocabularies (degrees, roles, statuses, grades, ...). "

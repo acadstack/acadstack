@@ -60,7 +60,7 @@ def permissions_for_role(role_code: str) -> list:
     )
 
 
-def _normalized(values: dict) -> dict:
+def normalized(values: dict) -> dict:
     """``values`` keyed by full settings_store key ("permission.<name>"),
     whether or not the caller included the prefix."""
     return {
@@ -77,9 +77,9 @@ def check_no_self_lockout(values: dict, actor) -> None:
     MANAGE_PERMISSIONS -- an admin must always be able to get back in.
     """
     manage_key = f"{GROUP}.{MANAGE_PERMISSIONS}"
-    normalized = _normalized(values)
-    if manage_key in normalized and \
-            actor.role not in (normalized[manage_key] or []):
+    values = normalized(values)
+    if manage_key in values and \
+            actor.role not in (values[manage_key] or []):
         raise AcadStackException(
             "You cannot remove your own role from "
             f"'{MANAGE_PERMISSIONS}' -- this would lock every "
@@ -97,7 +97,7 @@ def save_permission_mapping(values: dict, actor) -> dict:
     MANAGE_PERMISSIONS (see check_no_self_lockout()).
     """
     check_no_self_lockout(values, actor)
-    return ST.save_settings(_normalized(values), login_id=actor.login_id)
+    return ST.save_settings(normalized(values), login_id=actor.login_id)
 
 
 def describe_mapping(actor) -> dict:
@@ -144,8 +144,10 @@ ALL_ROLES = VD.codes("roles")
 # section for the overall design.
 
 def _spec(name, default, doc):
+    # Validated against the live role vocabulary, so a role an institution
+    # adds can be granted permissions straight away.
     return ST.Spec(name, list, default=default,
-                    choices=VD.codes("roles"), doc=doc)
+                    choices_vocab="roles", doc=doc)
 
 
 ST.declare_group(
@@ -264,6 +266,9 @@ ST.declare_group(
               "course_offering_save() inline "
               "validate_course_instructor(cid, ['ACA', 'DEA', 'HOD']) "
               "bypass."),
+        _spec("course_offering.view_stats", ALL_BUT_STU,
+              "View a course's grade and attendance statistics across its "
+              "offerings (api_course_offering.fetch_stats)."),
         _spec("course_offering.view_all_running", ["ACA", "DEA", "SUP"],
               "See every running course offering rather than only the "
               "ones the actor instructs. Replaces "

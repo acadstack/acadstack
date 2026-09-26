@@ -70,19 +70,17 @@ def test_seed_defaults_seeds_vocab_rows(db):
 
     expected_rows = len(VD.ALL) + len(ST.declared_groups()[PERM.GROUP].specs)
 
-    from domain import milestones as MS
     from domain import workflow as WF
 
     counts = run_seed_defaults()
     # Plus the one baseline grading ruleset, which makes the versioned
     # policy store the runtime source of truth instead of the in-code
-    # fallback (see default_seed_data.seed_grading_policy); the milestone
-    # sequence; and one baseline table per approval workflow.
+    # fallback (see default_seed_data.seed_grading_policy); and one
+    # baseline table per approval workflow. The milestone sequence is one
+    # of the vocabulary rows.
     assert counts == {"SystemSetting": expected_rows, "PolicyVersion": 1,
-                      "MilestoneDefinition": len(MS.BASELINE),
                       "WorkflowDefinition": len(WF.names())}
-    assert run_seed_defaults() == {"SystemSetting": 0,
-                                   "MilestoneDefinition": 0}
+    assert run_seed_defaults() == {"SystemSetting": 0}
 
     row = DB.SystemSetting.get(DB.SystemSetting.group == "vocab",
                                 DB.SystemSetting.name == "degrees")

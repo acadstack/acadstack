@@ -147,12 +147,15 @@ institution's plugin is loaded.
 ### Approval workflows
 
 The enrolment, doctoral committee and course approval chains are
-database-backed transition tables (`WorkflowDefinition` / `WorkflowTransition`),
-resolved by `domain/workflow.py`. An institution adds or removes an approval step
-by editing rows (`POST /workflow_save`, permission `system.manage_workflows`), not
-code; the **Approval Workflows** admin screen (see Admin GUI below) is the GUI for it. The frontend's action buttons come from `GET /workflow_actions/<name>/<id>`.
-The PhD milestone sequence is data as well (`MilestoneDefinition`). See
-[workflows.md](workflows.md).
+database-backed transition tables, resolved by `domain/workflow.py`. Each workflow
+is one `WorkflowDefinition` row whose `transitions` JSON column holds the whole table:
+it is only ever read and written whole, as `PolicyVersion` stores its payload. An
+institution adds or removes an approval step by editing the table
+(`POST /workflow_save`, permission `system.manage_workflows`), not code; the
+**Approval Workflows** admin screen (see Admin GUI below) is the GUI for it. The
+frontend's action buttons come from `GET /workflow_actions/<name>/<id>`. The PhD
+milestone sequence is the `vocab.milestones` controlled vocabulary (see Controlled
+vocabularies below). See [workflows.md](workflows.md).
 
 ## Handling role based access control (RBAC)
 Roles are central to the entire functionality of the AcadStack application, but
@@ -199,9 +202,13 @@ the query to their own records" -- are unaffected and still use
 | PLA | Placement Cell role |
 | ADV | Advisor role |
 
-You may add, remove or edit these roles as required (see `vocab_defaults.ROLES`).
-When removing or editing an existing role, update every permission in
-`permissions.py` that grants it. `system.manage_permissions` (seeded to `SUP`) gates
+Roles are the `vocab.roles` vocabulary, edited on the System Settings screen. A role
+added there can be granted permissions immediately: every permission's role list is
+validated against the live vocabulary (`Spec(choices_vocab="roles")`), not the codes
+the app shipped with. Every role above except `ADV` is *reserved* (see Controlled
+vocabularies): code checks it by name, so it can be relabelled but not removed. An
+open role can be removed only once no user holds it and no permission grants it
+(see Referential integrity below). `system.manage_permissions` (seeded to `SUP`) gates
 editing the mapping itself, and `permissions.save_permission_mapping()` refuses a
 save that would remove the acting admin's own role from it, so an admin can never
 lock themselves out. The mapping is edited on the **Permissions** admin screen (see
@@ -357,6 +364,26 @@ exactly like any other setting group. Nothing else restates these lists:
   `valid_audit_grade_codes()` replace the old `common.VALID_GRADES` /
   `VALID_AUDIT_GRADES` constants, deriving from `vocab_defaults.GRADES`'s `audit_ok` flag
   on each grade instead of a separately maintained audit-grade list.
+- The academic milestone sequence is `vocab.milestones`: items carry `sequence` (their
+  order) and `applies_to` (a degree code) as well as code/label.
+  `domain/milestones.py` reads it, and an `AcademicMilestone` row stores one of its
+  codes. It therefore gets the vocabulary editor, export/import and the orphan check
+  like any other list.
+
+**Reserved codes.** Some codes are named directly by Python, SQL or Vue code: STU in
+role checks, ENRO in enrolment queries, PHD in `nav.json`'s `restrictToDegree`, every
+academic-event code in `AddAcademicDates.vue`, and so on. Those items carry
+`"reserved": True` in `vocab_defaults.py`, and the flag is carried into the stored
+`vocab.<name>` rows. Each vocabulary's `Spec` validator refuses a list that drops a
+reserved code, or whose `reserved` flags disagree with `vocab_defaults.py`. So a
+reserved code can be relabelled, but not removed or recoded, whether through the
+admin screen, a config import, or a hand-edited row (reported at startup).
+`vocab_defaults.py` is the authority, not the stored flag. When new code starts
+depending on a code literal, mark that code reserved there. Codes named only by a
+shipped workflow's baseline table are *not* reserved: the workflow check below
+protects them while a workflow uses them, and an institution that rewrites the
+workflow may then remove them. The Settings screen shows reserved items with a
+read-only code, a "reserved" badge and a disabled delete button.
 
 **Known remaining duplication.** `sql_statements.toml` still has three hand-typed grade
 lists that were deliberately left as-is (they'd need a way to parameterize SQL from
@@ -500,32 +527,47 @@ still used —
 1. in a mapped business-table column (`VOCAB_MODEL_FIELDS`, e.g. `Person.degree` for
    `"degrees"`, `User.role` for `"roles"`);
 2. in another setting drawn from the same vocabulary (any declared `Spec` whose
-   `choices` matches it — this is what catches "a role that permission mappings
-   depend on"); or
-3. in a transition of a workflow whose `status_vocab` names it, as `workflow.load()`
-   resolves it (the definition saved through the workflow editor, else the shipped
-   baseline) —
+   `choices_vocab` names it — this is what catches "a role that permission mappings
+   depend on", including a role added at runtime);
+3. in an item of another vocabulary that names it (`VOCAB_ITEM_REFS`, e.g. a
+   milestone's `applies_to` degree); or
+4. in a workflow, as `workflow.load()` resolves it (the stored definition, else the
+   shipped baseline): as a transition's from/to status when the workflow's
+   `status_vocab` names the vocabulary, or, for `"milestones"`, as the code a
+   `milestone.record` effect records —
 
-and raises before any write if so, naming what still depends on it.
-`api_settings.py`'s `settings_save`/`settings_delete` and `config_transfer.py`'s
+and raises before any write if so, naming what still depends on it. Codes the
+application itself depends on are protected separately, by the reserved-code check
+above. `api_settings.py`'s `settings_save`/`settings_delete` and `config_transfer.py`'s
 import path (below) both go through this guard rather than calling
 `settings_store.save_settings()`/`delete_setting()` directly.
 
 ### Exporting and importing configuration
 
-`config_transfer.py` serializes an institution's full configuration — every declared
-settings/vocab/permission group, plus every recorded policy version — into one JSON
-document (`export_config()`), and applies such a document back (`import_config()`).
+`config_transfer.py` serializes an institution's full configuration into one JSON
+document (`export_config()`), and applies such a document back (`import_config()`):
+every declared settings/vocab/permission group (the milestone sequence included, as
+`vocab.milestones`), the approval workflow in force for each registered workflow
+(`"workflows": {name: definition}`), and every recorded policy version.
 It is `default_seed_data.py`'s seeder run in reverse: where the seeder
 inserts `vocab_defaults.py`'s lists as rows, export walks the same stores and
 serializes whatever is actually recorded; import feeds a document back through the
 same guarded write paths the admin GUI uses (`guarded_save_settings`, `supersede`,
-`save_permission_mapping` for the `"permission"` group, so its lockout guard still
-applies), all inside one transaction: if any of them rejects part of the document,
-nothing is written.
+`permissions.check_no_self_lockout()` for the `"permission"` group, and
+`workflow.replace_workflow()`, which validates a workflow and refuses one
+that would strand records), all inside one transaction: if any of them rejects part
+of the document, nothing is written. The permission mapping is saved in one batch
+with the vocabularies, and a batch is validated against the vocabularies it contains,
+so one document can add a role and grant it, or stop granting a role and remove it.
+Settings are applied before workflows, so an
+imported workflow may use a status code the same document adds. The reverse does not
+work in one import: a document that removes a status code *and* the transitions using
+it is refused, because the code is still in use when the settings are checked. Import
+the workflow change first.
 
-Settings/vocab/permission groups are a full-overwrite snapshot: importing replaces
-this install's effective values for every group the document names, atomically.
+Settings/vocab/permission groups and workflows are a full-overwrite snapshot:
+importing replaces this install's effective values for every group and workflow the
+document names, atomically.
 Policy groups are different in kind, because `policy_store` is
 insert-only: a document can only *add* versions, never replace what is already
 recorded. A version whose session already has policy, or that lands at or before the

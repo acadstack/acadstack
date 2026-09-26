@@ -8,6 +8,7 @@ payload shape -- export_config()/import_config() only need
 PS.declared_groups()/versions()/supersede(), which behave identically for
 any declared group.
 """
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -23,6 +24,8 @@ import permissions as PERM  # noqa: E402
 import policy_store as PS  # noqa: E402
 import settings_store as ST  # noqa: E402
 from common import AcadStackException  # noqa: E402
+from domain import milestones as MS  # noqa: E402
+from domain import workflow as WF  # noqa: E402
 from domain.context import Actor  # noqa: E402
 
 
@@ -281,3 +284,81 @@ def test_export_then_import_replays_policy_history_into_a_fresh_group(db, policy
         ["applied", "applied"]
     assert PS.resolve("dst", "2020-I").payload_dict() == {"limit": 1}
     assert PS.resolve("dst", "2022-I").payload_dict() == {"limit": 2}
+
+
+# ===================== workflows and milestones =====================
+
+def test_export_includes_every_workflow_and_the_milestone_sequence(db):
+    doc = CT.export_config()
+    assert set(doc["workflows"]) == set(WF.names())
+    assert doc["workflows"]["enrolment"] == WF.load("enrolment").to_json()
+    assert [m["code"] for m in doc["settings"]["vocab"]["milestones"]][:2] == \
+        ["JOINING", "DC_PROPOSED"]
+
+
+def test_export_then_import_restores_an_edited_workflow(db):
+    base = WF.baseline("course")
+    edited = dataclasses.replace(base, locked_message="Locked, sorry.")
+    WF.store(edited)
+    doc = CT.export_config(include_permissions=False)
+    WF.store(base)
+
+    report = CT.import_config(doc)
+    assert WF.load("course").locked_message == "Locked, sorry."
+    assert "course" in report["workflows_applied"]
+
+
+def test_export_then_import_restores_an_edited_milestone_sequence(db):
+    items = ST.vocab("milestones") + [{"code": "PUBLICATION",
+                                       "label": "Publication", "sequence": 85,
+                                       "applies_to": "PHD"}]
+    ST.save_setting("vocab.milestones", items)
+    doc = CT.export_config(include_permissions=False)
+    ST.delete_setting("vocab.milestones")
+
+    CT.import_config(doc)
+    assert "PUBLICATION" in MS.codes()
+
+
+def test_import_rejects_an_invalid_workflow_and_writes_nothing(db):
+    definition = dict(WF.baseline("course").to_json(), match_on="bogus")
+    doc = {"acadstack_config_version": CT.DOCUMENT_VERSION,
+           "settings": {"enrolment": {"max_credits_per_session": 30}},
+           "workflows": {"course": definition}}
+    with pytest.raises(CT.ConfigImportError, match="workflow: match_on"):
+        CT.import_config(doc)
+    assert ST.setting("enrolment.max_credits_per_session") != 30
+    assert not DB.WorkflowDefinition.select().exists()
+
+
+def test_import_cannot_remove_a_reserved_code(db):
+    doc = {"acadstack_config_version": CT.DOCUMENT_VERSION,
+           "settings": {"vocab": {"enrolment_statuses": [
+               it for it in ST.vocab("enrolment_statuses")
+               if it["code"] != "ENRO"]}}}
+    with pytest.raises(CT.ConfigImportError, match="ENRO"):
+        CT.import_config(doc)
+    assert "ENRO" in ST.vocab_codes("enrolment_statuses")
+
+
+# ===================== roles and their grants in one document =====================
+
+def _roles_doc(roles, grants):
+    return {"acadstack_config_version": CT.DOCUMENT_VERSION,
+            "settings": {"vocab": {"roles": roles}, PERM.GROUP: grants}}
+
+
+def test_import_can_add_a_role_and_grant_it_permissions(db):
+    roles = ST.vocab("roles") + [{"code": "LIB", "label": "Librarian"}]
+    CT.import_config(_roles_doc(roles, {"course.save": ["ACA", "LIB"]}),
+                     actor=SUP)
+    assert PERM.role_has_permission("LIB", "course.save")
+
+
+def test_import_can_stop_granting_a_role_and_remove_it(db):
+    ST.save_setting("vocab.roles", ST.vocab("roles") +
+                    [{"code": "LIB", "label": "Librarian"}])
+    ST.save_setting("permission.course.save", ["ACA", "LIB"])
+    roles = [it for it in ST.vocab("roles") if it["code"] != "LIB"]
+    CT.import_config(_roles_doc(roles, {"course.save": ["ACA"]}), actor=SUP)
+    assert "LIB" not in ST.vocab_codes("roles")

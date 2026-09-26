@@ -62,6 +62,10 @@ diffing two exports.
                             {{ settingsGroupCount }} settings group(s):
                             {{ Object.keys(pendingDoc.settings || {}).join(", ") }}
                         </li>
+                        <li v-if="workflowNames.length">
+                            {{ workflowNames.length }} workflow(s):
+                            {{ workflowNames.join(", ") }}
+                        </li>
                         <li v-if="policyGroupCount">
                             {{ policyGroupCount }} policy group(s) with
                             {{ policyVersionCount }} version(s) total:
@@ -70,7 +74,7 @@ diffing two exports.
                     </ul>
                     <div class="alert alert-warning">
                         Importing REPLACES this install's current value for every settings/
-                        vocabulary group named above. Policy versions can only be added (never
+                        vocabulary group and workflow named above. Policy versions can only be added (never
                         replace what is already recorded) -- one that clashes with an existing
                         version, or lands at or before a closed session, is skipped and reported,
                         not applied.
@@ -85,6 +89,10 @@ diffing two exports.
                     <p v-if="importReport.settings_applied.length">
                         Applied settings:
                         <code>{{ importReport.settings_applied.join(", ") }}</code>
+                    </p>
+                    <p v-if="(importReport.workflows_applied || []).length">
+                        Applied workflows:
+                        <code>{{ importReport.workflows_applied.join(", ") }}</code>
                     </p>
                     <div v-for="(entries, group) in importReport.policy" :key="group" class="mb-2">
                         <b>{{ group }}</b>
@@ -124,6 +132,9 @@ export default {
     computed: {
         settingsGroupCount() {
             return this.pendingDoc ? Object.keys(this.pendingDoc.settings || {}).length : 0;
+        },
+        workflowNames() {
+            return this.pendingDoc ? Object.keys(this.pendingDoc.workflows || {}) : [];
         },
         policyGroupCount() {
             return this.pendingDoc ? Object.keys(this.pendingDoc.policy || {}).length : 0;

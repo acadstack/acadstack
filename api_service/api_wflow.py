@@ -47,8 +47,6 @@ def init_routes(bp: Blueprint):
                         methods=['GET'])
     bp.add_url_rule('/workflow_save', view_func=workflow_save, methods=['POST'])
     bp.add_url_rule('/milestones', view_func=milestones_view, methods=['GET'])
-    bp.add_url_rule('/milestones_save', view_func=milestones_save,
-                        methods=['POST'])
 
 
 @C.rbac
@@ -193,11 +191,3 @@ async def workflow_save():
 @C.rbac
 async def milestones_view():
     return apiVC.ok_json(MS.definitions())
-
-
-@C.rbac(permissions=["system.manage_workflows"])
-async def milestones_save():
-    """Replaces the academic milestone sequence."""
-    fd = await request.get_json(force=True)
-    return apiVC.ok_json(
-        MS.save_definitions(apiVC.current_actor(), fd.get("milestones") or []))

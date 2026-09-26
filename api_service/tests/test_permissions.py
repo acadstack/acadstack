@@ -62,6 +62,44 @@ def test_every_declared_permission_choice_is_a_real_role():
                 f"permission '{name}' grants unknown role {code!r}"
 
 
+def test_a_role_added_at_runtime_can_be_granted_a_permission(db):
+    ST.save_setting("vocab.roles", ST.vocab("roles") +
+                    [{"code": "LIB", "label": "Librarian"}])
+    PERM.save_permission_mapping(
+        {"course.save": PERM.roles_for_permission("course.save") + ["LIB"]},
+        Actor(login_id="sup", role="SUP", user_id=1))
+    assert PERM.role_has_permission("LIB", "course.save")
+
+
+def test_a_permission_cannot_grant_an_unknown_role(db):
+    with pytest.raises(ST.SettingValidationError, match="'NOPE' is not one of"):
+        ST.save_setting("permission.course.save", ["NOPE"])
+
+
+def test_describe_settings_lists_live_role_choices(db):
+    ST.save_setting("vocab.roles", ST.vocab("roles") +
+                    [{"code": "LIB", "label": "Librarian"}])
+    described = {d["key"]: d for d in ST.describe_settings()}
+    assert "LIB" in described["permission.course.save"]["choices"]
+
+
+def test_course_stats_are_hidden_from_students_by_default(client):
+    create_user("STU", "statstu")
+    login_as(client, "statstu")
+    res = client.get("/acadstack/fetch_stats/1")
+    assert res.json["status"] == "ERROR"
+
+
+def test_course_stats_follow_the_view_stats_permission(client):
+    create_user("STU", "statstu2")
+    login_as(client, "statstu2")
+    ST.save_setting("permission.course_offering.view_stats",
+                    PERM.roles_for_permission("course_offering.view_stats") +
+                    ["STU"])
+    res = client.get("/acadstack/fetch_stats/1")
+    assert res.json["status"] == "OK"
+
+
 @pytest.mark.parametrize("name,default", [
     # The six permissions that replace the validate_course_instructor()
     # allowed_role=[...] bypasses and raw is_user_in_role() checks this

@@ -1,7 +1,6 @@
 """Tests for the scalar thresholds backed by the settings_store accessor
 (max credits per session, face-recognition tolerance, password-reset
-lockout, active-user window, page size, disable_fees_check,
-hide_stats_from).
+lockout, active-user window, page size, disable_fees_check).
 
 Every test below checks both ends: the DECLARED DEFAULT matches the
 documented default (so nothing changes for an institution that never
@@ -217,25 +216,6 @@ def test_user_find_pagination_respects_saved_page_size(client, auth):
     assert res.json["body"]["pg_size"] == 2
     assert len(res.json["body"]["users"]) == 2
     assert res.json["body"]["has_next"] is True
-
-
-# ===================== course_offering.hide_stats_from =====================
-
-def test_hide_stats_from_default_matches_old_hardcoded_literal(client):
-    create_user("STU", "statstu")
-    login_as(client, "statstu")
-
-    res = client.get("/acadstack/fetch_stats/1")
-    assert res.json["status"] == "ERROR"
-
-
-def test_hide_stats_from_is_configurable(client):
-    create_user("STU", "statstu2")
-    login_as(client, "statstu2")
-
-    ST.save_setting("course_offering.hide_stats_from", [])
-    res = client.get("/acadstack/fetch_stats/1")
-    assert res.json["status"] == "OK"
 
 
 # ===================== enrolment.disable_fees_check =====================

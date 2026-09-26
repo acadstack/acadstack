@@ -21,6 +21,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import models as DB  # noqa: E402
+import vocab_defaults as VD  # noqa: E402
 import settings_store as SS  # noqa: E402
 from settings_store import (Spec, SettingValidationError, declare_group,  # noqa: E402
                             delete_setting, save_setting, save_settings,
@@ -450,3 +451,83 @@ def test_a_stored_value_of_the_wrong_type_falls_back_to_the_default(demo_group):
     SS.invalidate_cache()
 
     assert setting("enrolment.hide_stats_from") == ["STU"]
+
+
+# ===================== Vocabulary-backed choices =====================
+
+def test_choices_vocab_reads_the_live_vocabulary(db):
+    SS.declare_group("paint_demo", [Spec("roles", list, default=["STU"],
+                                         choices_vocab="roles")])
+    try:
+        with pytest.raises(SettingValidationError, match="'LIB' is not one of"):
+            save_setting("paint_demo.roles", ["LIB"])
+        save_setting("vocab.roles", SS.vocab("roles") +
+                     [{"code": "LIB", "label": "Librarian"}])
+        assert save_setting("paint_demo.roles", ["LIB"]) == ["LIB"]
+    finally:
+        del SS._REGISTRY["paint_demo"]
+
+
+def test_a_declared_default_is_checked_against_the_shipped_codes(settings):
+    with pytest.raises(ValueError, match="'NOPE' is not one of"):
+        declare_group("paint", [Spec("roles", list, default=["NOPE"],
+                                     choices_vocab="roles")])
+
+
+def test_a_spec_takes_choices_or_choices_vocab_not_both():
+    with pytest.raises(ValueError, match="not both"):
+        Spec("x", list, choices=["A"], choices_vocab="roles")
+
+
+# ===================== Reserved vocabulary codes =====================
+
+def _roles_without(code):
+    return [it for it in SS.vocab("roles") if it["code"] != code]
+
+
+def test_a_reserved_code_cannot_be_removed(db):
+    with pytest.raises(SettingValidationError, match="'STU' is reserved"):
+        save_setting("vocab.roles", _roles_without("STU"))
+
+
+def test_a_reserved_code_can_be_relabelled(db):
+    items = [dict(it, label="Learner") if it["code"] == "STU" else it
+             for it in SS.vocab("roles")]
+    save_setting("vocab.roles", items)
+    assert {"code": "STU", "label": "Learner", "reserved": True} in \
+        SS.vocab("roles")
+
+
+def test_an_open_code_can_be_removed(db):
+    assert "ADV" not in VD.reserved_codes("roles")
+    save_setting("vocab.roles", _roles_without("ADV"))
+    assert "ADV" not in SS.vocab_codes("roles")
+
+
+def test_the_reserved_flag_cannot_be_cleared(db):
+    items = [dict(it, reserved=False) if it["code"] == "STU" else it
+             for it in SS.vocab("roles")]
+    with pytest.raises(SettingValidationError, match="'reserved' must be True"):
+        save_setting("vocab.roles", items)
+
+
+def test_the_reserved_flag_cannot_be_set_on_an_open_code(db):
+    items = SS.vocab("roles") + [{"code": "LIB", "label": "Librarian",
+                                  "reserved": True}]
+    with pytest.raises(SettingValidationError, match="'reserved' must be False"):
+        save_setting("vocab.roles", items)
+
+
+def test_describe_settings_names_the_reserved_codes(db):
+    described = {d["key"]: d for d in SS.describe_settings()}
+    assert "ENRO" in described["vocab.enrolment_statuses"]["reserved_codes"]
+    assert described["app.page_size"]["reserved_codes"] is None
+
+
+def test_milestone_items_need_a_sequence_and_a_degree(db):
+    items = SS.vocab("milestones") + [{"code": "X", "label": "X",
+                                       "sequence": "5"}]
+    with pytest.raises(SettingValidationError) as ei:
+        save_setting("vocab.milestones", items)
+    assert "'sequence' must be a whole number" in str(ei.value)
+    assert "'applies_to' must be a degree code" in str(ei.value)
