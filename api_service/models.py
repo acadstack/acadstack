@@ -412,7 +412,7 @@ class StudentFeedbackStatus(BaseModel):
     course_instructor = ORM.ForeignKeyField(CourseInstructor,
                                         backref='student_feedbacks',
                                         on_delete='CASCADE')
-    student = ORM.ForeignKeyField(CourseEnrollment,
+    student = ORM.ForeignKeyField(User,
                               backref='student_feedbacks',
                               on_delete='CASCADE')
     is_submitted = ORM.BooleanField()
