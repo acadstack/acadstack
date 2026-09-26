@@ -281,7 +281,8 @@ class CourseCategory(BaseModel):
     offering = ORM.ForeignKeyField(CourseOffering, null=True,
                                backref='course_categories',
                                on_delete='SET NULL')
-    degree = ORM.CharField(max_length=20, choices=DEGREES, default="ALL")
+    # Matched against the student's degree exactly; there is no wildcard.
+    degree = ORM.CharField(max_length=20, choices=DEGREES)
     dept = ORM.CharField(max_length=4, null=True)
     category = ORM.CharField(max_length=4, null=True,
                          choices=VD.choices("course_types"))

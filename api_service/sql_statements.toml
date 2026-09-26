@@ -771,7 +771,7 @@ grades_status_pending = """
                 JOIN public.courseinstructor ci ON ci.offering_id=co.id
                 JOIN public.user ins ON ins.id=ci.instructor_id
                 WHERE co.acad_session= %s and co.status ='R' and 
-                ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I ','W')
+                ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I','W')
                 and ce.enrol_status='ENRO' and ci.is_coordinator=TRUE) as ss
                 GROUP BY ss.code,ss.acad_session, ss.title, 
                 ss.first_name, ss.last_name, ss.dept_name;

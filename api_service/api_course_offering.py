@@ -57,6 +57,11 @@ def _save_co_categorization(cats, co_id):
         cc_obj = DB.CourseCategory()
         cc_obj.offering = co_id
         C.update_model_skip_unknown(cc_obj, cc)
+        if not cc_obj.is_deleted and \
+                cc_obj.degree not in ST.vocab_codes("degrees"):
+            raise C.AcadStackException(
+                f"Categorization degree {cc_obj.degree!r} is not a known "
+                f"degree code.")
         if not apiVC.entry_years_valid(cc_obj.for_entry_years):
             raise C.AcadStackException("Entry years invalid! Must be a "
                                   "comma separated list of years "
