@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging, os, re, secrets, string, threading, toml
+import inspect, logging, os, re, secrets, string, threading, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -177,7 +177,12 @@ def rbac(_func:Callable=None, *, permissions=None):
                     msg = "You do not have required permissions to access."
                     logging.warning(msg)
                     return jsonify({"status": "ERROR", "body": msg})
-            return await func(*args, **kwargs)
+            # Views may be sync or async: only an async one's result is
+            # awaited (awaiting a sync view's Response raises TypeError).
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
 
         return wrapper_auth
 

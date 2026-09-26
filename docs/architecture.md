@@ -204,7 +204,8 @@ The above usage states that the function `course_save` can be invoked only when 
 logged in user's role holds at least one of the permissions named in the
 `permissions` attribute of the decorator -- in the above example, `"course.save"`,
 which `permissions.py` currently grants to `ACA, FAC, DEA, HOD, RES`. A bare `@rbac`
-(no `permissions=`) only requires the user to be logged in, same as before.
+(no `permissions=`) only requires the user to be logged in, same as before. The
+decorated view may be `async def` or plain `def`; only an awaitable result is awaited.
 
 Finer-grained, resource-scoped checks (deeper inside a handler, or in the domain
 layer) use `apiVC.has_permission(name)` (session-only, cheap) or
