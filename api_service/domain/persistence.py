@@ -18,13 +18,15 @@ from domain.context import Actor
 
 
 def save(obj: M.BaseModel, actor: Optional[Actor]):
-    """Inserts (or saves) ``obj``, stamping audit columns.
+    """Inserts (or saves) ``obj``, stamping audit columns. ``ins_ts`` is
+    set only on insert, so re-saving an existing row keeps it.
 
     ``actor=None`` (a write outside a request) leaves ``txn_login_id`` NULL.
     """
     obj.txn_login_id = actor.login_id if actor else None
     obj.upd_ts = DT.now()
-    obj.ins_ts = DT.now()
+    if obj.get_id() is None:
+        obj.ins_ts = DT.now()
     return obj.save()
 
 

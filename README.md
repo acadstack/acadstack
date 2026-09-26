@@ -80,7 +80,7 @@ configuration entirely from environment variables (`app_env_vars.env`), never fr
 1. Compile the VueJS app: `npm run build`
 1. Start the PostgreSQL server.
 1. Copy `./api_service/config.json.example` to `./api_service/config.json` and edit it to set proper values for the database connection information, and other settings. This is used by `demo_data.py`/`migrate.py` only, not by the running server.
-1. Copy `app_env_vars.env.example` to `app_env_vars.env` and edit it to set required environment variables — this is what actually configures `main.py`, including the database connection.
+1. Copy `app_env_vars.env.example` to `app_env_vars.env` and edit it to set required environment variables — this is what actually configures `main.py`, including the database connection. In production you must set `SECRET_KEY`, which signs session cookies.
 1. Source this file to set these variables in 
 current shell: `source app_env_vars.env`
 1. `cd ./api_service`
@@ -108,7 +108,8 @@ You may exclude building this image/container if you do not want to use it._
 1. Change directories into that folder: `cd $HOME/acadstack-docker`
 1. Copy the `docker-compose.yml` and `app_env_vars.env.example` to `$HOME/acadstack-docker` folder.
 1. Copy `app_env_vars.env.example` to `app_env_vars.env` and edit it if needed. For simple demo you can leave it unchanged (except for the port number 
-if it collides with something already running on your host).
+if it collides with something already running on your host). For anything beyond a throwaway demo, set
+`SECRET_KEY` (see the comment in the file): without it every restart logs all users out.
 1. Run `docker compose --env-file app_env_vars.env up -d` to launch the containers.
 1. Run `docker ps | grep acadstack` to verify that the containers are up. You may see something like the following:
 ```bash

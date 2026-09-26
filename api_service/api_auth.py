@@ -11,6 +11,7 @@ import base64
 import csv
 import logging
 import os
+import secrets
 from pathlib import Path
 import create_email as CM
 import models as DB
@@ -20,7 +21,7 @@ import face_api_proxy as fapi
 import permissions as PERM
 import settings_store as ST
 
-from datetime import datetime as DT
+from datetime import datetime as DT, timedelta
 from quart import Blueprint, request, current_app as APP
 from quart.helpers import send_file
 from google.auth.transport import requests
@@ -83,22 +84,23 @@ async def gen_prk():
         logging.warning(
             "Attempted to initiate password reset for non-existent user {}".format(login_id))
         return apiVC.error_json("Invalid user/email.")
-    else:
-        attempts = DB.PasswordResetKey.select().where(
-            DB.PasswordResetKey.login_id == login_id).count()
-        max_attempts = ST.setting("auth.password_reset_lockout_attempts")
-        if attempts > max_attempts:
-            u.is_locked = True
-            apiVC.save_entity(u)
-            return apiVC.error_json(
-                f"Too many attempts (more than {max_attempts})! "
-                f"Your account has been locked.")
-        prk_str = C.get_rand_str(size=8)
-        CM.send_password_reset_code(email, prk_str)
-        obj = DB.PasswordResetKey(login_id=login_id, prk=prk_str)
-        apiVC.save_entity(obj)
-        logging.debug("PRK: {}".format(prk_str))
-        return apiVC.ok_json("A password reset key code has been emailed to you.")
+    now = DT.now()
+    active_keys = DB.PasswordResetKey.select().where(
+        (DB.PasswordResetKey.login_id == login_id)
+        & (DB.PasswordResetKey.expires_at > now)).count()
+    if active_keys >= ST.setting("auth.password_reset_max_active_keys"):
+        return apiVC.error_json(
+            "Too many password reset requests. Use the most recent key "
+            "emailed to you, or try again later.")
+    ttl_mins = ST.setting("auth.password_reset_key_ttl_mins")
+    prk_str = C.get_rand_str(size=8)
+    obj = DB.PasswordResetKey(login_id=login_id, prk=prk_str,
+                              expires_at=now + timedelta(minutes=ttl_mins))
+    apiVC.save_entity(obj)
+    CM.send_password_reset_code(email, prk_str)
+    return apiVC.ok_json(
+        f"A password reset key code has been emailed to you. "
+        f"It is valid for {ttl_mins} minutes.")
 
 
 async def reset_password():
@@ -119,19 +121,42 @@ async def reset_password():
         return apiVC.error_json("Invalid user/email.")
     elif u.is_locked:
         return apiVC.error_json("DB.User is locked. Please contact the admin.")
-    else:
-        res = DB.PasswordResetKey.select(DB.PasswordResetKey.prk).where(
-            DB.PasswordResetKey.login_id == login_id).order_by(
-            -DB.PasswordResetKey.id).execute()
 
-        if res and res[0].prk == key_code:
-            u.password_hashed = pbkdf2_sha256.hash(new_password)
-            apiVC.save_entity(u)
-            DB.PasswordResetKey.delete().where(DB.PasswordResetKey.login_id == login_id).execute()
-            CM.send_password_changed_alert(u.email, u.first_name)
-            return apiVC.ok_json("Your password has been changed!")
-        else:
-            return apiVC.error_json("Invalid reset key!")
+    prk = DB.PasswordResetKey.select().where(
+        DB.PasswordResetKey.login_id == login_id).order_by(
+        -DB.PasswordResetKey.id).first()
+    if not prk:
+        return apiVC.error_json("Invalid reset key!")
+    if not secrets.compare_digest(prk.prk.encode(), str(key_code or "").encode()):
+        return __record_failed_reset(u, prk)
+    if prk.expires_at <= DT.now():
+        return apiVC.error_json(
+            "This reset key has expired. Please request a new one.")
+
+    u.password_hashed = pbkdf2_sha256.hash(new_password)
+    apiVC.save_entity(u)
+    __clear_prk_for_user(login_id)
+    CM.send_password_changed_alert(u.email, u.first_name)
+    return apiVC.ok_json("Your password has been changed!")
+
+
+def __record_failed_reset(u, prk):
+    """Counts a wrong reset key against the login and locks the account
+    once the failures since the last reset/unlock exceed the configured
+    limit."""
+    prk.failed_attempts += 1
+    apiVC.save_entity(prk)
+    failures = DB.PasswordResetKey.select(
+        DB.ORM.fn.SUM(DB.PasswordResetKey.failed_attempts)).where(
+        DB.PasswordResetKey.login_id == u.login_id).scalar() or 0
+    max_attempts = ST.setting("auth.password_reset_lockout_attempts")
+    if failures > max_attempts:
+        u.is_locked = True
+        apiVC.save_entity(u)
+        return apiVC.error_json(
+            f"Too many wrong reset keys (more than {max_attempts})! "
+            f"Your account has been locked. Please contact the admin.")
+    return apiVC.error_json("Invalid reset key!")
 
 
 def __clear_prk_for_user(login_id):
@@ -243,16 +268,58 @@ async def user_view(my_id):
         return apiVC.error_json("Record not found for ID {}".format(my_id))
 
 
+# Fields a user may change on their own record without user.edit_any.
+_SELF_EDITABLE_FIELDS = {
+    DB.User: {"first_name", "last_name", "email"},
+    DB.Person: {"gender"},
+}
+# Bookkeeping fields the client echoes back; the server stamps these.
+_BOOKKEEPING_FIELDS = {"txn_no", "ins_ts", "upd_ts", "txn_login_id"}
+
+
+def __restricted_changes(obj, data):
+    """Names of fields in ``data`` that would change ``obj`` (a User or
+    Person) but are not self-editable. A nested ``person`` dict is left
+    to the caller to check against the Person row."""
+    allowed = _SELF_EDITABLE_FIELDS[type(obj)] | _BOOKKEEPING_FIELDS
+    changed = []
+    for name, field in obj._meta.fields.items():
+        if name in allowed or name not in data:
+            continue
+        value = data[name]
+        if isinstance(field, DB.ORM.ForeignKeyField):
+            if isinstance(value, dict):
+                continue
+            current = getattr(obj, field.object_id_name)
+        else:
+            current = field.db_value(getattr(obj, name))
+        if field.db_value(value) != current:
+            changed.append(name)
+    return changed
+
+
 @C.rbac
 async def user_save():
     fd = await request.get_json(force=True)
-    role = fd.get("role")
+    # Passwords change only through the reset flow.
+    fd.pop("password_hashed", None)
 
     logging.info("Saving user details: {}".format(fd))
     cid = int(fd.get("id") or 0)
     cu = apiVC.logged_in_user()
-    if (not apiVC.has_permission("user.edit_any")) and cid != cu.id:
+    can_edit_any = apiVC.has_permission("user.edit_any")
+    if not can_edit_any and cid != cu.id:
         return apiVC.error_json("Insufficient privileges to perform the operation!")
+    if not can_edit_any:
+        own = DB.User.get_by_id(cid)
+        blocked = __restricted_changes(own, fd)
+        if isinstance(fd.get("person"), dict):
+            blocked += __restricted_changes(own.person or DB.Person(),
+                                            fd["person"])
+        if blocked:
+            return apiVC.error_json(
+                "You may only change your own name, email and gender. "
+                "Ask an administrator to change: {}.".format(", ".join(blocked)))
     user_mod = DB.User()
     with DB.db.atomic() as txn:
         if cid:

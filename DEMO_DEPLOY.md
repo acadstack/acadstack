@@ -17,7 +17,8 @@ for the instructions about how to install docker engine on your machine.
 1. Change directories into that folder: `cd $HOME/acadstack-docker`
 1. Copy the `docker-compose.yml` and `app_env_vars.env.example` to `$HOME/acadstack-docker` folder.
 1. Copy `app_env_vars.env.example` to `app_env_vars.env` and edit it if needed. For simple demo you can leave it unchanged (except for the port number 
-if it collides with something already running on your host).
+if it collides with something already running on your host). For anything beyond a throwaway demo, set
+`SECRET_KEY` (see the comment in the file): without it every restart logs all users out.
 1. Run `docker compose --env-file app_env_vars.env up -d` to launch the containers.
 1. Run `docker ps | grep acadstack` to verify that the containers are up. You may see something like the following:
 ```bash

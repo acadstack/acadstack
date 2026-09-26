@@ -5,21 +5,34 @@ import os
 import logging
 
 import settings_store as ST
+from common import AcadStackException
 
 API_URL = "http://frec_service:5060"  # See service name in docker-compose.yml
 
 
+def _post(path, **kwargs):
+    """POSTs to frec_service with the configured timeout, so a hung call
+    cannot block the calling worker indefinitely."""
+    timeout = ST.setting("faces.request_timeout_secs")
+    try:
+        response = requests.post(f"{API_URL}/{path}", timeout=timeout, **kwargs)
+    except requests.Timeout as ex:
+        raise AcadStackException(
+            f"The face-recognition service did not respond within {timeout} "
+            f"seconds. Please try again later.") from ex
+    response.raise_for_status()
+    return response
+
+
 def get_face_encoding(image_bytes):
     files = {'image': ('image.jpg', image_bytes, 'image/jpeg')}
-    response = requests.post(f"{API_URL}/get_face_encoding", files=files)
-    response.raise_for_status()
+    response = _post("get_face_encoding", files=files)
     return response.json()["encoding"]
 
 
 def get_face_encoding_b64(image_b64):
     data = {"image_b64": image_b64}
-    response = requests.post(f"{API_URL}/get_face_encoding_b64", json=data)
-    response.raise_for_status()
+    response = _post("get_face_encoding_b64", json=data)
     return response.json()["encoding"]
 
 
@@ -41,8 +54,7 @@ def get_known_faces(images_glob):
 def get_faces_from_photo(group_photo_path):
     with open(group_photo_path, "rb") as group_file:
         files = {"image": ("group.jpg", group_file, "image/jpeg")}
-        response = requests.post(f"{API_URL}/get_faces_from_photo", files=files)
-        response.raise_for_status()
+        response = _post("get_faces_from_photo", files=files)
         data = response.json()
         return data["encodings"], data["locations"]
 
@@ -56,8 +68,7 @@ def is_person_in_photo(person_photo_path, group_photo_path, tolerance=None):
             "group_photo": ("group.jpg", group_file, "image/jpeg")
         }
         data = {"tolerance": tolerance}
-        response = requests.post(f"{API_URL}/is_person_in_photo", files=files, data=data)
-        response.raise_for_status()
+        response = _post("is_person_in_photo", files=files, data=data)
         return response.json()["match"]
 
 
@@ -72,8 +83,7 @@ def find_persons_in_photo(group_photo_path, known_faces_data, tolerance=None):
     }
     with open(group_photo_path, "rb") as group_file:
         files = {"group_photo": ("group.jpg", group_file, "image/jpeg")}
-        response = requests.post(f"{API_URL}/find_persons_in_photo", files=files, data={"tolerance": tolerance})
-    response.raise_for_status()
+        response = _post("find_persons_in_photo", files=files, data={"tolerance": tolerance})
     result = response.json()
     return (
         result["names_found"],
@@ -91,8 +101,7 @@ def write_text_on_image(photo_path, txt, bottom_left):
             "x": bottom_left[0],
             "y": bottom_left[1]
         }
-        response = requests.post(f"{API_URL}/write_text_on_image", files=files, data=data)
-        response.raise_for_status()
+        response = _post("write_text_on_image", files=files, data=data)
         return io.BytesIO(response.content)
 
 
@@ -105,6 +114,5 @@ def mark_person_in_photo(person_photo_path, group_photo_path, tolerance=None):
             "group_photo": ("group.jpg", group_file, "image/jpeg")
         }
         data = {"tolerance": tolerance}
-        response = requests.post(f"{API_URL}/mark_person_in_photo", files=files, data=data)
-        response.raise_for_status()
+        response = _post("mark_person_in_photo", files=files, data=data)
         return io.BytesIO(response.content)

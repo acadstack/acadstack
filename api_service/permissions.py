@@ -205,8 +205,9 @@ ST.declare_group(
               "View another user's profile (a student may only view "
               "their own)."),
         _spec("user.edit_any", ["ACA", "SUP"],
-              "Edit another user's profile (a user may always edit "
-              "their own)."),
+              "Edit any field of any user's record, including their own "
+              "role/degree/status (without it a user may edit only their "
+              "own name, email and gender)."),
         _spec("user.bulk_create", ["ACA", "SUP"],
               "Bulk-create users from an upload."),
         _spec("user.delete", ["SUP"], "Delete a user."),

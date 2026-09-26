@@ -632,8 +632,17 @@ declare_group(
     "auth",
     [
         Spec("password_reset_lockout_attempts", int, default=4, min_value=1,
-             doc="Lock the account once more than this many password-reset "
-                 "keys have been requested."),
+             doc="Lock the account once more than this many wrong "
+                 "password-reset keys have been entered since the last "
+                 "successful reset or unlock."),
+        Spec("password_reset_key_ttl_mins", int, default=30, min_value=1,
+             max_value=1440,
+             doc="Minutes a password-reset key stays valid after it is "
+                 "emailed."),
+        Spec("password_reset_max_active_keys", int, default=5, min_value=1,
+             doc="Refuse new password-reset key requests while this many "
+                 "unexpired keys are outstanding for the account. Never "
+                 "locks the account."),
     ],
     doc="Authentication and account-lockout policy."
 )
@@ -678,6 +687,10 @@ declare_group(
              min_value=0.0, max_value=1.0,
              doc="Face-recognition match tolerance passed to frec_service; "
                  "lower is stricter."),
+        Spec("request_timeout_secs", int, default=10, min_value=1,
+             max_value=300,
+             doc="Seconds to wait for frec_service to answer a request "
+                 "before failing it."),
     ],
     doc="Photo-based attendance / face-recognition policy."
 )

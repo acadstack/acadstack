@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging, re, random, string, threading, toml
+import logging, re, secrets, string, threading, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -164,15 +164,21 @@ def jinja2_filter_datefmt(dt, fmt=None):
     return nat_dt.strftime(to_fmt)
 
 def parse_number(sval):
-    p = r"^[-+]?\d+[\./]?\d*$"
+    """Parses an integer, decimal or 'a/b' fraction string. Returns an int
+    for integers, a float rounded to 2 places otherwise, or None if
+    ``sval`` is not one of those forms."""
     sval = sval.strip()
-    if re.search(p, sval):
-        n = eval(sval)
-        if isinstance(n, float):
-            return round(n, 2)
-        else:
-            return n
-    return None
+    if not re.fullmatch(r"[-+]?\d+[\./]?\d*", sval):
+        return None
+    try:
+        if "/" in sval:
+            num, den = sval.split("/")
+            return round(int(num) / int(den), 2)
+        if "." in sval:
+            return round(float(sval), 2)
+        return int(sval)
+    except (ValueError, ZeroDivisionError):
+        return None
 
 def now_str():
     return DT.now().strftime(TS_FORMAT)
@@ -216,14 +222,16 @@ def apply_computed_course_credits(course):
         course.ltp, course.s_hours, course.credits = result
 
 def get_rand_str(size=10):
-    """Makes a random string from ASCII upper case letters and digits.
+    """Makes a cryptographically secure random string from ASCII upper case
+    letters and digits.
     Args:
         size (int, optional): Length desired. Defaults to 10.
 
     Returns:
         str: Random alphanumeric ASCII string.
     """
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=size))
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(size))
 
 
 def update_model_skip_unknown(mod, form_data):
