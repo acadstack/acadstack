@@ -50,8 +50,8 @@ def __get_total_credits_data(form_data):
     dept_name = form_data.get("dept_name")
     course_type = form_data.get("course_type")
     entry_year = form_data.get("entry_year")
-    min_cr = form_data.get("min_credits") or 0
-    max_cr = form_data.get("max_credits") or 9999
+    min_cr, max_cr = CR.credit_bounds(form_data.get("min_credits"),
+                                      form_data.get("max_credits"))
     acad_session = form_data.get("acad_session") or ""
     exclude_course = form_data.get("exclude_courses") or ""
     cursor = DB.db.execute_sql(C.sql_by_id("credits_earned_report"),
@@ -64,7 +64,7 @@ def __get_total_credits_data(form_data):
     data = []
     for (user_id, session), total in CR.credit_enrolment_totals(rows).items():
         credits = CR.round_credits(total)
-        if not int(min_cr) < credits <= int(max_cr):
+        if not min_cr < credits <= max_cr:
             continue
         stu = students[user_id]
         data.append({'first_name': stu["first_name"],
@@ -113,8 +113,8 @@ def __get_earned_credit_data(form_data):
     dept_name = form_data.get("dept_name")
     course_type = form_data.get("course_type")
     entry_year = form_data.get("for_year")
-    min_cr = form_data.get("min_credits") or 0
-    max_cr = form_data.get("max_credits") or 9999
+    min_cr, max_cr = CR.credit_bounds(form_data.get("min_credits"),
+                                      form_data.get("max_credits"))
     acad_session = form_data.get("acad_session") or ""
 
     if dept_name == "ALL" or dept_name == "-":
@@ -127,10 +127,6 @@ def __get_earned_credit_data(form_data):
        acad_session = ""
     if course_type == "-":
        course_type = ""
-    if min_cr == "-":
-       min_cr = ""
-    if max_cr == "-":
-       max_cr = ""
        
     if not apiVC.has_permission("reports.view"):
         raise C.AcadStackException("Students not allowed access!")
@@ -142,7 +138,7 @@ def __get_earned_credit_data(form_data):
     ctypes = apiVC.static_data_item("CourseTypes")
     for stu, session, cats in CR.categorized_earned_credits(
             str(entry_year), str(degree), str(dept_name), str(acad_session),
-            str(course_type), int(min_cr), int(max_cr)):
+            str(course_type), min_cr, max_cr):
         creds = ",".join(f"{cat}={CR.round_credits(total)}"
                          for cat, total in cats.items())
         data.append({'credits': __replace_ct_with_labels(creds, ctypes),

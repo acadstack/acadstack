@@ -114,12 +114,11 @@ def get_active_feedback_form(form_type):
 
 
 @C.rbac
-def student_enrolments_for_fb(form_type):
+async def student_enrolments_for_fb(form_type):
     stu = apiVC.current_login_id()
     cas = apiVC.current_acad_session_list(False)
     qry = C.sql_by_id("student_enrolments_for_fb")
-    cas_list = [",".join(map(str, cas))]
-    cursor = DB.db.execute_sql(qry, [stu, cas_list, form_type])
+    cursor = DB.db.execute_sql(qry, [stu, list(cas), form_type])
     res = []
     for row in cursor.fetchall():
         # Only credit enrolments, per the grading policy for their session.

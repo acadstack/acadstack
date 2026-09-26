@@ -410,15 +410,12 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
         acad_session = ""
     if course_type == "-":
         course_type = ""
-    if min_credits == "-":
-        min_credits = ""
-    if max_credits == "-":
-        max_credits = ""
+    min_credits, max_credits = CR.credit_bounds(min_credits, max_credits)
     # Each student's category totals, summed over the matching sessions.
     students, totals = {}, {}
     for stu, _session, cats in CR.categorized_earned_credits(
             str(for_year), str(degree), str(dept_name), str(acad_session),
-            str(course_type), int(min_credits), int(max_credits)):
+            str(course_type), min_credits, max_credits):
         students[stu["id"]] = stu
         stu_cats = totals.setdefault(stu["id"], {})
         for cat, total in cats.items():
