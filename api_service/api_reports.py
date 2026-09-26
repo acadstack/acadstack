@@ -302,7 +302,6 @@ async def get_slotwise_courses(acad_session):
 
 def __process_credits_gen_request(acad_session):
     try:
-        DB.db.connect(reuse_if_open=True)
         cursor = DB.db.execute_sql(C.sql_by_id("get_students_having_enrolment"),
                                 [acad_session])
         entry_nos = [(row[0], row[1]) for row in cursor.fetchall()]

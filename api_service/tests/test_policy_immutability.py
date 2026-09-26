@@ -270,11 +270,12 @@ def test_an_unsealed_version_cannot_be_dragged_back_into_sealed_history(
 
 def test_a_trigger_refusal_is_reported_as_policy_immutable_error(
         policy, monkeypatch):
-    """A session closed by another worker can slip past supersede()'s
-    cached check; the insert trigger then refuses the row, and the caller
-    sees the same error type as a refusal from the check itself."""
+    """A session closed outside policy_store (by hand in psql) can slip
+    past supersede()'s cached check; the insert trigger then refuses the
+    row, and the caller sees the same error type as a refusal from the
+    check itself."""
     policy.close_session("2020-II")
-    # This worker's snapshot predates the close.
+    # Stands in for a cached snapshot that predates the close.
     monkeypatch.setattr(PS, "is_sealed", lambda acad_session: False)
 
     with pytest.raises(PS.PolicyImmutableError, match="already closed"):

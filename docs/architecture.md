@@ -102,6 +102,26 @@ def init_routes(bp: Blueprint):
     ...
 ```
 
+## Deployment: one process
+Each deployment runs exactly one hypercorn process (`main.py`, the Dockerfile's
+`python main.py`). Several things live only in that process's memory:
+
+- logged-in-user tracking (`app.active_users`);
+- background job state (`app.extensions['tasks']`, `tasks_helper.py`);
+- the APScheduler jobs started in `create_app`, which would run once per process;
+- the `settings_store`/`policy_store` caches, which a write invalidates in its own
+  process only.
+
+Running several workers would break each of these, so don't. Session cookies are signed
+with `SECRET_KEY` from the environment so that a restart keeps users logged in; without
+it a random key is generated at each start.
+
+`tasks_helper.create_task` runs a sync job on an executor thread with no app or request
+context: the job takes config/session values (upload folder, acting user) as
+arguments, and gets its own pooled DB connection that is returned to the pool when it
+finishes. Finished jobs are purged from `app.extensions['tasks']` after
+`TASK_TTL_SECONDS` by a cleanup loop started at app startup.
+
 ## Service (domain) layer
 Business logic lives in the `api_service/domain/` package, not inside the Quart view
 functions. The `api_*.py` modules are HTTP adapters: they parse the request, call a
@@ -250,8 +270,8 @@ embedded images under `assets-degree`, whatever I/O the renderer itself does).
 Unlike `_bulk_download_sem_grade` and `__process_credits_gen_request` — the actually
 heavy per-student loops in `api_grades.py`/`api_reports.py` — which already run off
 the event loop via `tasks_helper.create_task`'s `loop.run_in_executor`, these three ran
-on every other request's critical path: while one student's PDF rendered, that worker
-served nothing else. They are now wrapped with `quart.utils.run_sync`, the same
+on every other request's critical path: while one student's PDF rendered, the server's
+event loop served nothing else. They are now wrapped with `quart.utils.run_sync`, the same
 executor-offload `run_in_executor` performs, applied at the one blocking call rather
 than to the handler as a whole (each still does `await send_file(...)` afterwards, so
 it can't become a plain sync view).
@@ -299,13 +319,14 @@ argument; `policy_store`'s group validators follow the same convention. Saves go
 — including any undeclared key — so reads can never fail on a bad value. Startup logs
 (but does not reject) any stored value that fails its declaration.
 
-Settings are cached per worker process, keyed by a single `_sys.policy_version` row
-that every write bumps inside the writing transaction. A request that reads any setting
-costs one small indexed query for that row, and re-reads the table only when the
-version has moved; the snapshot is pinned on `g` for the request, so a request sees one
-consistent set of values throughout. That is what keeps multiple hypercorn workers in
-step without a restart. Code outside a request context re-checks the version at most
-every `NON_REQUEST_RECHECK_SECS`.
+**Caching.** The whole settings table is cached in the process, loaded on first use,
+and pinned on `g` for the rest of a request, so a request sees one consistent set of
+values throughout. Reads cost no query once the cache is warm. There is one process
+(see "Deployment: one process" above), so every write goes through `settings_store`
+and drops the cache itself (`invalidate_cache()`); the next read reloads what is
+stored, with no other process to notify. The same applies to `policy_store`. A row
+edited by hand in the database is not seen until the next write through the store, or a
+restart.
 
 
 ### Controlled vocabularies
@@ -401,7 +422,10 @@ year. `acad_session.py` instead gives every suffix a month offset into the acade
 year (`SESSION_TYPES`) and derives each session's ordinal as `year * 12 + offset`, so
 concurrent sessions in different calendars (a semester programme and a quarter
 programme) correctly share an ordinal, and resolution is a binary search over that
-ordinal list — no query per course during transcript building. `api_common.py`'s
+ordinal list — no query per course during transcript building. **Resolution cost:** the
+whole policy table (tens of rows over an institution's life) is cached in the process
+and pinned on `g` per request, like settings; `supersede()`/`close_session()` drop the
+cache when they write, so the next read reloads it. `api_common.py`'s
 session-succession and validity helpers delegate to this module rather than
 maintaining their own copies of the suffix table.
 

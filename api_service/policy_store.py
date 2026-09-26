@@ -67,13 +67,10 @@ Transcript building calls resolution per course, so it must not query.
 The whole policy table is tiny and append-only (tens of rows for the
 life of an institution), so the entire set is cached in the process and
 resolution is a binary search over an ordinal list -- no query, no
-allocation. The cache is keyed on the same monotonic
-``_sys.policy_version`` counter that ``settings_store`` uses, and every
-policy write bumps it inside the writing transaction, so a worker that
-can see the new version can by definition see the rows it wrote. Sharing
-one counter across both stores means one extra (tiny) reload when the
-other store is written; that is the price of having a single answer to
-"is my cached configuration current?".
+allocation. The app runs as one process, so every write goes through this
+module and drops the cache itself. Within a request the snapshot is
+pinned on ``quart.g``, as settings_store does, so one request resolves
+against one consistent policy set.
 
 Relationship to SystemSetting
 -----------------------------
@@ -99,6 +96,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, Optional
 
 import peewee
+from quart import g, has_app_context, has_request_context
 
 import acad_session as AS
 import models as M
@@ -171,7 +169,7 @@ def declare_policy_group(name: str, doc: str = "",
                            validator=validator)
     _REGISTRY[name] = spec
     # A group declared after a snapshot was built would otherwise serve
-    # unbuilt values until the next version bump.
+    # unbuilt values until the next write.
     invalidate_cache()
     return spec
 
@@ -191,7 +189,7 @@ def _freeze(value):
 
     Resolution is on the per-course hot path, so it must not deep-copy a
     payload per call. Handing out a shared mutable dict instead would let
-    one caller's edit leak into every later resolution in the worker, so
+    one caller's edit leak into every later resolution in the process, so
     what is shared is frozen: dicts become mapping proxies and lists
     become tuples, once, when the snapshot loads.
     """
@@ -251,15 +249,14 @@ class ResolvedPolicy:
 # ===================== Cache =====================
 
 class _Snapshot:
-    """Every policy version and closed session, as of one policy version
-    number. Small enough to hold entirely: policy rows accumulate at the
-    rate an institution amends its regulations."""
+    """Every policy version and closed session. Small enough to hold
+    entirely: policy rows accumulate at the rate an institution amends its
+    regulations."""
 
-    __slots__ = ("version", "by_group", "ords_by_group", "closed",
+    __slots__ = ("by_group", "ords_by_group", "closed",
                  "closed_set", "seal_ord", "_built", "_build_lock")
 
-    def __init__(self, version):
-        self.version = version
+    def __init__(self):
         # group -> list[ResolvedPolicy], ascending by effective_from_ord
         self.by_group: dict = {}
         # group -> list[int], the same rows' ordinals (for bisect)
@@ -277,14 +274,19 @@ class _Snapshot:
         self._build_lock = threading.Lock()
 
 
-_EMPTY_SNAPSHOT = _Snapshot(-1)
+_EMPTY_SNAPSHOT = _Snapshot()
+
+_G_ATTR = "_acadstack_policy_snapshot"
 
 _cache_lock = threading.RLock()
 _cache: Optional[_Snapshot] = None
+# Bumped by every invalidation, so a load that raced a write (a background
+# job's thread) is not stored over the write's invalidation.
+_generation = 0
 
 
-def _load_snapshot(version: int) -> _Snapshot:
-    snap = _Snapshot(version)
+def _load_snapshot() -> _Snapshot:
+    snap = _Snapshot()
 
     closed_rows = M.ClosedAcademicSession.select()
     for row in closed_rows:
@@ -328,52 +330,51 @@ def _load_snapshot(version: int) -> _Snapshot:
     return snap
 
 
-def _current_snapshot() -> _Snapshot:
-    """The policy set matching the configuration version currently being
-    served.
+def _in_request() -> bool:
+    # `g` lives on the app context, so both contexts must be pushed.
+    return has_request_context() and has_app_context()
 
-    The version number comes from ``settings_store``, which already pins
-    it on ``quart.g`` for the duration of a request and rate-limits the
-    check outside one -- so on the per-course hot path this costs a dict
-    lookup, not a query.
-    """
+
+def _cached_snapshot() -> _Snapshot:
+    """The process-wide snapshot, loading it if a write dropped it."""
     global _cache
-    try:
-        version = SS.policy_version()
-    except Exception:
-        logging.exception("Could not read the policy version; serving the "
-                          "last known policy.")
-        with _cache_lock:
-            return _cache or _EMPTY_SNAPSHOT
-
     with _cache_lock:
-        cached = _cache
-    if cached is not None and cached.version == version:
-        return cached
-
+        if _cache is not None:
+            return _cache
+        generation = _generation
     try:
-        # Loaded outside the lock: two threads racing here just do the
-        # same idempotent read twice.
-        snap = _load_snapshot(version)
+        snap = _load_snapshot()
     except Exception:
-        logging.exception("Could not load versioned policy; serving the last "
-                          "known policy.")
-        with _cache_lock:
-            return _cache or _EMPTY_SNAPSHOT
-
+        logging.exception("Could not load versioned policy; serving none.")
+        return _EMPTY_SNAPSHOT
+    logging.info(f"Loaded policy versions for {len(snap.by_group)} group(s).")
     with _cache_lock:
-        _cache = snap
-    logging.info(f"Loaded policy versions for {len(snap.by_group)} group(s) "
-                 f"at policy version {version}.")
+        if generation == _generation:
+            _cache = snap
+    return snap
+
+
+def _current_snapshot() -> _Snapshot:
+    """The policy set being served: pinned on ``quart.g`` for the rest of
+    a request, so on the per-course hot path this is an attribute lookup."""
+    if not _in_request():
+        return _cached_snapshot()
+    snap = getattr(g, _G_ATTR, None)
+    if snap is None:
+        snap = _cached_snapshot()
+        setattr(g, _G_ATTR, snap)
     return snap
 
 
 def invalidate_cache() -> None:
-    """Drops this process's cached policy. Writes call this; other workers
-    pick the change up via the shared policy version."""
-    global _cache
+    """Drops the cached policy and the request's pinned snapshot, so the
+    next read loads what is now stored."""
+    global _cache, _generation
     with _cache_lock:
         _cache = None
+        _generation += 1
+    if _in_request():
+        g.pop(_G_ATTR, None)
 
 
 # ===================== Read =====================
@@ -414,7 +415,7 @@ def policy_for(group: str, acad_session: str) -> Any:
 
     This is the call transcript building makes per course. The built
     object is memoised per version, so the builder runs at most once per
-    version per worker, not once per course.
+    version per snapshot, not once per course.
     """
     resolved = resolve(group, acad_session)
     return built_value(resolved)
@@ -514,13 +515,12 @@ def close_session(acad_session: str, note: Optional[str] = None,
         row = M.ClosedAcademicSession.create(
             acad_session=acad_session, session_ord=ord_value, note=note,
             txn_login_id=login_id)
-        version = SS.bump_policy_version()
 
-    _invalidate_all()
-    sealed = [g for g in _current_snapshot().by_group]
+    invalidate_cache()
+    sealed = sorted(_current_snapshot().by_group)
     logging.info(f"Academic session {acad_session} closed by {login_id}; "
-                 f"policy for group(s) {sorted(sealed)} effective up to it is "
-                 f"now final. Policy version {version}.")
+                 f"policy for group(s) {sealed} effective up to it is "
+                 f"now final.")
     return row
 
 
@@ -551,12 +551,6 @@ def _trigger_refusals_as_policy_errors():
         if getattr(orig, "pgcode", None) != _TRIGGER_REFUSAL_SQLSTATE:
             raise
         raise PolicyImmutableError(orig.diag.message_primary) from ex
-
-
-def _invalidate_all() -> None:
-    """Both stores share the version counter, so both caches drop."""
-    SS.invalidate_cache()
-    invalidate_cache()
 
 
 def _session_ordinal_or_error(acad_session: str) -> int:
@@ -658,8 +652,8 @@ def supersede(group: str, effective_from_session: str, payload: dict,
             f"Supersede it from a later session rather than replacing it.")
 
     login_id = login_id or SS.current_login_id()
-    # The check above reads this worker's cached snapshot, so a session
-    # closed by another worker a moment ago can slip past it; the insert
+    # The check above reads the cached snapshot, which misses a session
+    # closed outside this module (e.g. by hand in psql); the insert
     # trigger still refuses the row, and this reports it the same way.
     with _trigger_refusals_as_policy_errors(), M.db.atomic():
         row = M.PolicyVersion.create(
@@ -669,10 +663,8 @@ def supersede(group: str, effective_from_session: str, payload: dict,
             payload=payload,
             note=note,
             txn_login_id=login_id)
-        version = SS.bump_policy_version()
 
-    _invalidate_all()
+    invalidate_cache()
     logging.info(f"Stored policy {group!r} effective from "
-                 f"{effective_from_session} (id {row.id}) by {login_id}; "
-                 f"policy version now {version}.")
+                 f"{effective_from_session} (id {row.id}) by {login_id}.")
     return row

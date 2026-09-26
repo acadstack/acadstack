@@ -19,21 +19,17 @@ passed by the caller > the declared Spec default > None.
 
 Caching
 -------
-A request can touch dozens of settings, and hypercorn runs several worker
-processes, so one worker's cache goes stale the moment an admin saves
-through another. The whole table is cached, keyed by a single
-``_sys.policy_version`` counter that every write bumps inside the writing
-transaction: a reader that sees version N+1 also sees every value that
-transaction wrote. A request costs one indexed single-row read of the
-counter; the table is re-read only when the number moved. Within one
-request the snapshot is pinned on ``quart.g``, so multi-step work such as
-generating a transcript sees one consistent set of values. Outside a
-request (background jobs, scripts) the check is rate-limited to
-NON_REQUEST_RECHECK_SECS instead.
+The whole table is cached in the process and loaded on first use. The app
+runs as one hypercorn process (see docs/architecture.md), so every write
+goes through this module and drops the cache itself; there is no other
+process whose cache could go stale. Within one request the snapshot is
+pinned on ``quart.g``, so multi-step work such as generating a transcript
+sees one consistent set of values. A row edited directly in the database
+is picked up on the next write through this module, or a restart.
 
-If reading settings fails (DB down, table missing), the last good
-snapshot is served, or an empty one, so call sites fall back to their
-defaults rather than raising.
+If loading the settings fails (DB down, table missing), an empty snapshot
+is served and not cached, so call sites fall back to their defaults
+rather than raising and the next read retries.
 
 
 Validation
@@ -54,7 +50,6 @@ import copy
 import json
 import logging
 import threading
-import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional, Sequence
 
@@ -63,14 +58,6 @@ from quart import g, has_app_context, has_request_context, session
 import models as M
 import vocab_defaults as VD
 from common import AcadStackException
-
-# Reserved for this module's own bookkeeping: hidden from the read/describe
-# APIs and not writable through them.
-SYS_GROUP = "_sys"
-POLICY_VERSION_NAME = "policy_version"
-
-# Bounds how long a background job can act on stale settings.
-NON_REQUEST_RECHECK_SECS = 5.0
 
 _G_ATTR = "_acadstack_settings_snapshot"
 
@@ -154,7 +141,7 @@ _WARNED_UNDECLARED: set[str] = set()
 def declare_group(group: str, specs: Iterable[Spec], doc: str = "") -> GroupSpec:
     """Registers the Specs of one setting group. Every declared default is
     validated here, so an invalid one fails at import time."""
-    if not group or "." in group or group == SYS_GROUP:
+    if not group or "." in group:
         raise ValueError(f"Invalid settings group name: {group!r}")
     by_name = {}
     for spec in specs:
@@ -293,13 +280,9 @@ def _validated(values: dict) -> dict:
     errors, coerced = [], {}
     for key, raw in values.items():
         try:
-            group, _ = split_key(key)
+            split_key(key)
         except ValueError as ex:
             errors.append(str(ex))
-            continue
-        if group == SYS_GROUP:
-            errors.append(f"{key}: '{SYS_GROUP}' is reserved and cannot be "
-                          f"written")
             continue
         spec = spec_for(key)
         if spec is None:
@@ -334,36 +317,27 @@ def validate_stored_settings() -> list:
 # ===================== Cache =====================
 
 class _Snapshot:
-    __slots__ = ("version", "values", "provenance")
+    __slots__ = ("values", "provenance")
 
-    def __init__(self, version: int, values: dict, provenance: dict = None):
-        self.version = version
+    def __init__(self, values: dict, provenance: dict = None):
         self.values = values
         # key -> (txn_login_id, upd_ts) of the stored row.
         self.provenance = provenance or {}
 
 
-_EMPTY_SNAPSHOT = _Snapshot(-1, {})
+_EMPTY_SNAPSHOT = _Snapshot({})
 
 _cache_lock = threading.RLock()
 _cache: Optional[_Snapshot] = None
-_last_check_ts = 0.0
+# Bumped by every invalidation, so a load that raced a write (a background
+# job's thread) is not stored over the write's invalidation.
+_generation = 0
 
 
-def _read_policy_version() -> int:
-    """One indexed single-row read. No row yet counts as version 0."""
-    cur = M.db.execute_sql(
-        'SELECT value FROM systemsetting WHERE "group" = %s AND name = %s',
-        (SYS_GROUP, POLICY_VERSION_NAME))
-    row = cur.fetchone()
-    return int(row[0]) if row else 0
-
-
-def _load_values(version: int) -> _Snapshot:
+def _load_values() -> _Snapshot:
     values, provenance = {}, {}
     query = (M.SystemSetting.select()
-             .where((M.SystemSetting.is_deleted == False) &  # noqa: E712
-                    (M.SystemSetting.group != SYS_GROUP)))
+             .where(M.SystemSetting.is_deleted == False))  # noqa: E712
     for row in query:
         key = f"{row.group}.{row.name}"
         spec = spec_for(key)
@@ -377,30 +351,25 @@ def _load_values(version: int) -> _Snapshot:
                 continue
         values[key] = value
         provenance[key] = (row.txn_login_id, row.upd_ts)
-    return _Snapshot(version, values, provenance)
+    return _Snapshot(values, provenance)
 
 
-def _refresh_snapshot() -> _Snapshot:
-    """Checks the policy version and reloads the values only if it moved."""
-    global _cache, _last_check_ts
-    try:
-        version = _read_policy_version()
-        with _cache_lock:
-            cached = _cache
-        if cached is not None and cached.version == version:
-            snapshot = cached
-        else:
-            snapshot = _load_values(version)
-            logging.info(f"Loaded {len(snapshot.values)} system setting(s) "
-                         f"at policy version {version}.")
-    except Exception:
-        logging.exception("Could not read system settings; serving the last "
-                          "known settings.")
-        with _cache_lock:
-            return _cache or _EMPTY_SNAPSHOT
+def _cached_snapshot() -> _Snapshot:
+    """The process-wide snapshot, loading it if a write dropped it."""
+    global _cache
     with _cache_lock:
-        _cache = snapshot
-        _last_check_ts = time.monotonic()
+        if _cache is not None:
+            return _cache
+        generation = _generation
+    try:
+        snapshot = _load_values()
+    except Exception:
+        logging.exception("Could not read system settings; serving defaults.")
+        return _EMPTY_SNAPSHOT
+    logging.info(f"Loaded {len(snapshot.values)} system setting(s).")
+    with _cache_lock:
+        if generation == _generation:
+            _cache = snapshot
     return snapshot
 
 
@@ -410,34 +379,24 @@ def _in_request() -> bool:
 
 
 def _current_snapshot() -> _Snapshot:
-    if _in_request():
-        snapshot = getattr(g, _G_ATTR, None)
-        if snapshot is None:
-            snapshot = _refresh_snapshot()
-            setattr(g, _G_ATTR, snapshot)
-        return snapshot
-
-    with _cache_lock:
-        if _cache is not None and \
-                (time.monotonic() - _last_check_ts) < NON_REQUEST_RECHECK_SECS:
-            return _cache
-    return _refresh_snapshot()
+    if not _in_request():
+        return _cached_snapshot()
+    snapshot = getattr(g, _G_ATTR, None)
+    if snapshot is None:
+        snapshot = _cached_snapshot()
+        setattr(g, _G_ATTR, snapshot)
+    return snapshot
 
 
 def invalidate_cache() -> None:
-    """Drops this process's cached settings (and the request's pinned
-    snapshot). Other workers pick a change up via the policy version."""
-    global _cache, _last_check_ts
+    """Drops the cached settings and the request's pinned snapshot, so the
+    next read loads what is now stored."""
+    global _cache, _generation
     with _cache_lock:
         _cache = None
-        _last_check_ts = 0.0
+        _generation += 1
     if _in_request():
         g.pop(_G_ATTR, None)
-
-
-def policy_version() -> int:
-    """The policy version behind the settings currently being served."""
-    return _current_snapshot().version
 
 
 # ===================== Read =====================
@@ -462,8 +421,7 @@ def setting(key: str, default: Any = _UNSET) -> Any:
 
     values = _current_snapshot().values
     if key in values:
-        # A copy: the cached list/dict is shared by every request this
-        # worker serves.
+        # A copy: the cached list/dict is shared by every request.
         return copy.deepcopy(values[key])
     if not isinstance(default, _Unset):
         return default
@@ -519,26 +477,9 @@ def current_login_id() -> Optional[str]:
     return None
 
 
-def bump_policy_version() -> int:
-    """Increments the shared configuration version counter, creating it if
-    absent. MUST run inside the writing transaction, so a reader that sees
-    the new version also sees the new values. policy_store shares it."""
-    cur = M.db.execute_sql(
-        'INSERT INTO systemsetting ("group", name, value, is_deleted, txn_no, '
-        '  ins_ts, upd_ts) '
-        "VALUES (%s, %s, '1'::jsonb, false, 1, now(), now()) "
-        'ON CONFLICT ("group", name) DO UPDATE SET '
-        '  value = to_jsonb(systemsetting.value::text::bigint + 1), '
-        '  txn_no = systemsetting.txn_no + 1, upd_ts = now() '
-        'RETURNING value',
-        (SYS_GROUP, POLICY_VERSION_NAME))
-    return int(cur.fetchone()[0])
-
-
 def save_settings(values: dict, login_id: Optional[str] = None) -> dict:
     """Validates and stores several settings atomically: either every value
-    is written and the policy version bumped once, or nothing is. Returns
-    the coerced values as stored.
+    is written or nothing is. Returns the coerced values as stored.
 
     Raises:
         SettingValidationError: if any value is invalid or undeclared.
@@ -563,11 +504,9 @@ def save_settings(values: dict, login_id: Optional[str] = None) -> dict:
                          M.SystemSetting.txn_no: M.SystemSetting.txn_no + 1,
                          M.SystemSetting.upd_ts: now})
              .execute())
-        version = bump_policy_version()
 
     invalidate_cache()
-    logging.info(f"Saved system setting(s) {sorted(coerced)} by "
-                 f"{login_id}; policy version now {version}.")
+    logging.info(f"Saved system setting(s) {sorted(coerced)} by {login_id}.")
     return coerced
 
 
@@ -580,20 +519,13 @@ def delete_setting(key: str, login_id: Optional[str] = None) -> bool:
     """Removes the stored row for a key, so it reverts to its declared
     default. Returns True if a row was actually removed."""
     group, name = split_key(key)
-    if group == SYS_GROUP:
-        raise SettingValidationError(
-            [f"{key}: '{SYS_GROUP}' is reserved and cannot be modified"])
-    with M.db.atomic():
-        removed = (M.SystemSetting.delete()
-                   .where((M.SystemSetting.group == group) &
-                          (M.SystemSetting.name == name)).execute())
-        if removed:
-            version = bump_policy_version()
-            logging.info(f"Deleted system setting {key} by "
-                         f"{login_id or current_login_id()}; policy version "
-                         f"now {version}.")
+    removed = (M.SystemSetting.delete()
+               .where((M.SystemSetting.group == group) &
+                      (M.SystemSetting.name == name)).execute())
     if removed:
         invalidate_cache()
+        logging.info(f"Deleted system setting {key} by "
+                     f"{login_id or current_login_id()}.")
     return bool(removed)
 
 
