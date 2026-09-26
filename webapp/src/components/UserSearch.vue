@@ -128,7 +128,7 @@ export default {
   },
   computed: {
     canDelete() {
-      return this.markedItems.length > 0 && this.isSuperuser;
+      return this.markedItems.length > 0 && this.hasPermission("user.delete");
     }
   },
   beforeRouteUpdate(to, from, next) {

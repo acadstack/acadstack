@@ -101,9 +101,8 @@ def test_course_stats_follow_the_view_stats_permission(client):
 
 
 @pytest.mark.parametrize("name,default", [
-    # The six permissions that replace the validate_course_instructor()
-    # allowed_role=[...] bypasses and raw is_user_in_role() checks this
-    # phase converted -- see each Spec's doc in permissions.py.
+    # Permissions that grant an "act without being the coordinating
+    # instructor/owner" bypass -- see each Spec's doc in permissions.py.
     ("course_offering.edit_any", ["ACA", "DEA", "HOD"]),
     ("course_offering.view_all_running", ["ACA", "DEA", "SUP"]),
     ("grades.upload_any", ["ACA", "DEA"]),

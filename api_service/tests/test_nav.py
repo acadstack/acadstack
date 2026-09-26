@@ -3,13 +3,8 @@ visibility off permissions (permissions.py) rather than raw role-list
 strings.
 
 Each nav.json entry names a "permission" key (or a list, any one of
-which grants visibility), seeded to reproduce the
-visibility of the old role-list strings ("ACA,DEA,SUP", "-STU,-PLA"
-negation, "-PLA,*" wildcard + negation) exactly -- these tests pin that
-per-role equivalence for a representative slice of entries, including the
-negation/wildcard forms and the one pre-existing bug that was preserved
-rather than silently fixed (see permissions.py's "nav.view_attendance"
-doc).
+which grants visibility). These tests pin per-role visibility for a
+representative slice of entries.
 """
 import asyncio
 import sys
@@ -72,13 +67,11 @@ def test_phd_menu_still_hidden_from_non_phd_students(hrefs_for):
     assert "#/dc.form" not in hrefs_for("STU", degree="BTE")
 
 
-def test_view_attendance_preserved_pre_existing_bug(hrefs_for):
-    # roles was "-STU,-PLA" with no trailing "*", so under the OLD
-    # substring-containment check no role code was ever a substring of
-    # that literal string -- nobody could ever see this link. Preserved
-    # exactly rather than silently granted to the evidently-intended
-    # ALL_BUT_STU_PLA set; see permissions.py's "nav.view_attendance" doc.
-    for role in ["STU", "ACA", "FAC", "HOD", "DEA", "SUP", "GUE", "PLA", "ADV", "RES"]:
+def test_view_attendance_visible_to_everyone_but_student_and_placement(hrefs_for):
+    # nav.view_attendance grants ALL_BUT_STU_PLA (permissions.py).
+    for role in ["ACA", "FAC", "HOD", "DEA", "SUP", "GUE", "ADV", "RES"]:
+        assert "#/att.find" in hrefs_for(role)
+    for role in ["STU", "PLA"]:
         assert "#/att.find" not in hrefs_for(role)
 
 
