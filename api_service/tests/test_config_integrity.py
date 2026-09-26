@@ -139,3 +139,41 @@ def test_guarded_delete_setting_allows_reset_when_nothing_is_orphaned(db):
 
     CI.guarded_delete_setting("vocab.degrees")
     assert "ZDEG4" not in ST.vocab_codes("degrees")
+
+
+# ===================== live vocabularies and item references =====================
+
+def test_settings_usages_covers_a_role_added_at_runtime(db):
+    ST.save_setting("vocab.roles", ST.vocab("roles") +
+                    [{"code": "LIB", "label": "Librarian"}])
+    ST.save_setting("permission.course.save", ["LIB"])
+    assert CI.settings_usages("roles", "LIB") == ["permission.course.save"]
+    without = [it for it in ST.vocab("roles") if it["code"] != "LIB"]
+    with pytest.raises(ST.SettingValidationError, match="permission.course.save"):
+        CI.guarded_save_settings({"vocab.roles": without})
+
+
+def test_a_degree_a_milestone_applies_to_cannot_be_removed(db):
+    ST.save_setting("vocab.degrees", ST.vocab("degrees") +
+                    [{"code": "DSC", "label": "D.Sc"}])
+    ST.save_setting("vocab.milestones", ST.vocab("milestones") + [
+        {"code": "DSC_THESIS", "label": "D.Sc thesis", "sequence": 5,
+         "applies_to": "DSC"}])
+    without = [it for it in ST.vocab("degrees") if it["code"] != "DSC"]
+    with pytest.raises(ST.SettingValidationError,
+                       match="vocab.milestones item\\(s\\) DSC_THESIS"):
+        CI.guarded_save_settings({"vocab.degrees": without})
+
+
+def test_a_reached_milestone_counts_as_used(db):
+    stu = create_user("STU", "ms1")
+    dc = DB.DcForStudent.create(student=stu, status="DRA")
+    DB.AcademicMilestone.create(student=stu, dc=dc, milestone="COMPRE")
+    assert CI.model_usages("milestones", "COMPRE") == \
+        ["1 AcademicMilestone.milestone row(s)"]
+
+
+def test_a_milestone_recorded_by_a_workflow_counts_as_used(db):
+    assert CI.workflow_usages("milestones", "DC_APPROVED") == \
+        ["6 transition(s) of the 'dc' workflow"]
+    assert CI.workflow_usages("milestones", "COMPRE") == []

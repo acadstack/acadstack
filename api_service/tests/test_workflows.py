@@ -24,6 +24,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import config_integrity as CI  # noqa: E402
 import models as DB  # noqa: E402
 import settings_store as ST  # noqa: E402
 from conftest import create_user, login_as  # noqa: E402
@@ -35,18 +36,14 @@ from domain import workflow as WF  # noqa: E402
 from domain.context import Actor  # noqa: E402
 from domain.errors import PermissionDenied, PolicyViolation  # noqa: E402
 
-WORKFLOW_TABLES = [DB.WorkflowTransition, DB.WorkflowDefinition,
-                   DB.MilestoneDefinition]
-
-
 @pytest.fixture
 def wfdb(db):
-    """``db``, plus clearing the workflow tables afterwards too: domain
-    tests that run without the ``db`` fixture load workflows from
-    whatever is stored, so an edited table must not outlive its test."""
+    """``db``, plus clearing stored workflows and milestones afterwards
+    too: domain tests that run without the ``db`` fixture load them from
+    whatever is stored, so an edit must not outlive its test."""
     yield db
-    for model in WORKFLOW_TABLES:
-        model.delete().execute()
+    DB.WorkflowDefinition.delete().execute()
+    ST.delete_setting("vocab.milestones")
 
 
 def actor(role, user_id=1, dept_name=None):
@@ -516,19 +513,47 @@ def test_workflow_save_reports_stranded_statuses(client, wfdb):
 
 # ===================== milestones =====================
 
-def test_milestone_sequence_is_data(wfdb):
+PUBLICATION = dict(code="PUBLICATION", label="Publication", sequence=85,
+                   applies_to="PHD")
+
+
+def test_milestone_sequence_is_a_vocabulary(wfdb):
     assert MS.codes()[:3] == ["JOINING", MS.DC_PROPOSED, MS.DC_APPROVED]
-    items = MS.definitions() + [dict(code="PUBLICATION", label="Publication",
-                                     sequence=85, applies_to="PHD")]
-    MS.save_definitions(actor("SUP"), items)
+    CI.guarded_save_settings(
+        {"vocab.milestones": ST.vocab("milestones") + [PUBLICATION]})
     assert "PUBLICATION" in MS.codes()
     assert MS.codes().index("PUBLICATION") == MS.codes().index("SYNOPSIS") + 1
 
 
+def test_a_reserved_milestone_cannot_be_removed(wfdb):
+    items = [d for d in ST.vocab("milestones") if d["code"] != MS.DC_APPROVED]
+    with pytest.raises(ST.SettingValidationError, match="'DC_APPROVED' is reserved"):
+        ST.save_setting("vocab.milestones", items)
+
+
 def test_a_milestone_a_workflow_records_cannot_be_removed(wfdb):
-    items = [d for d in MS.definitions() if d["code"] != MS.DC_APPROVED]
-    with pytest.raises(PolicyViolation, match="recorded by the 'dc' workflow"):
-        MS.save_definitions(actor("SUP"), items)
+    CI.guarded_save_settings(
+        {"vocab.milestones": ST.vocab("milestones") + [PUBLICATION]})
+    base = WF.baseline("dc")
+    t = WF.with_effects(base.transitions[0], {
+        "name": "milestone.record", "params": {"code": "PUBLICATION"}})
+    WF.store(WF.Workflow.from_json(dict(
+        base.to_json(), transitions=[t.to_json()] +
+        [x.to_json() for x in base.transitions[1:]])))
+    items = [d for d in ST.vocab("milestones") if d["code"] != "PUBLICATION"]
+    with pytest.raises(ST.SettingValidationError,
+                       match="1 transition\\(s\\) of the 'dc' workflow"):
+        CI.guarded_save_settings({"vocab.milestones": items})
+
+
+def test_a_milestone_a_student_reached_cannot_be_removed(wfdb):
+    stu = create_user("STU", "ms_reached")
+    dc = DB.DcForStudent.create(student=stu, status="DRA")
+    MS.record(actor("SUP"), dc.id, stu.id, "COMPRE")
+    items = [d for d in ST.vocab("milestones") if d["code"] != "COMPRE"]
+    with pytest.raises(ST.SettingValidationError,
+                       match="1 AcademicMilestone.milestone row"):
+        CI.guarded_save_settings({"vocab.milestones": items})
 
 
 def test_unknown_milestones_are_refused(db):
@@ -536,3 +561,15 @@ def test_unknown_milestones_are_refused(db):
     dc = DB.DcForStudent.create(student=stu, status="DRA")
     with pytest.raises(PolicyViolation, match="Unknown academic milestone"):
         MS.record(actor("SUP"), dc.id, stu.id, "DC Approved")
+
+
+# ===================== storage =====================
+
+def test_a_stored_workflow_round_trips_through_one_row(wfdb):
+    base = WF.baseline("course")
+    edited = WF.Workflow.from_json(dict(
+        base.to_json(), transitions=[t.to_json() for t in base.transitions[1:]]))
+    WF.store(edited)
+    WF.store(edited)  # a second store replaces, not duplicates
+    assert DB.WorkflowDefinition.select().count() == 1
+    assert WF.load("course") == edited

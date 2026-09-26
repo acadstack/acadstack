@@ -5,8 +5,8 @@ them, and how an institution changes a chain without touching code.
 
 Code: `api_service/domain/workflow.py` (the engine), `domain/enrolment.py`,
 `domain/dc.py`, `domain/course.py` (the three workflows and what their rows refer
-to), `domain/milestones.py`, the `WorkflowDefinition` / `WorkflowTransition` /
-`MilestoneDefinition` models in `models.py`, and `tests/test_workflows.py`.
+to), `domain/milestones.py`, the `WorkflowDefinition` model in `models.py`, and
+`tests/test_workflows.py`.
 
 ---
 
@@ -22,14 +22,16 @@ has no independent way to refuse an illegal one. Second, changing a chain
 means changing code: an institution cannot add, remove or reassign an
 approval step on its own.
 
-Representing a chain as rows instead — a `WorkflowDefinition` plus its
-`WorkflowTransition` rows, resolved by one shared engine — gives the server
+Representing a chain as a table of rows instead — a `WorkflowDefinition` and
+its transition table, resolved by one shared engine — gives the server
 a table to validate every request against regardless of which workflow it
 is, and gives an institution a row to edit instead of a deploy.
 
 ## 2. The model
 
-A **workflow** is one `WorkflowDefinition` row plus its `WorkflowTransition` rows.
+A **workflow** is one `WorkflowDefinition` row. Its `transitions` column holds the
+whole transition table as a JSON list: the table is only ever read and written
+whole, so it is not split into rows of its own.
 
 | `WorkflowDefinition` | |
 |---|---|
@@ -40,11 +42,12 @@ A **workflow** is one `WorkflowDefinition` row plus its `WorkflowTransition` row
 | `checks` | checks run for every transition, after it is chosen |
 | `locked_message` | shown when the user has no transition out of the record's current status |
 | `denied_message` | shown when they have some, but not the one asked for |
+| `transitions` | the transition table, one object per row (below) |
 
 Messages may use `{role}`, `{from_status}`, `{to_status}`, `{from_label}`,
 `{to_label}`.
 
-| `WorkflowTransition` | |
+| a row of `transitions` | |
 |---|---|
 | `priority` | rows are tried in this order; unique per workflow |
 | `from_status` | a status code, `*` (any existing status) or `_new` (a record being created) |
@@ -147,14 +150,15 @@ this.
 
 ## 6. Milestones
 
-The PhD milestone sequence is `MilestoneDefinition` rows (code, label, sequence,
-`applies_to`), seeded from `domain/milestones.BASELINE`. An `AcademicMilestone`
-stores a code, and recording an unknown or inactive code is refused. Recording a
-milestone the student has already reached is a no-op, so a DC that is approved,
-returned and approved again does not fail on the unique index.
-`POST /milestones_save` replaces the sequence. It will not remove a code that
-students have reached (deactivate it instead), and a code a workflow records
-must stay active.
+The PhD milestone sequence is the `vocab.milestones` controlled vocabulary: items
+with code, label, `sequence` and `applies_to` (a degree code), seeded from
+`vocab_defaults.MILESTONES` and edited in the System Settings vocabulary editor.
+An `AcademicMilestone` stores a code, and recording an unknown code is refused.
+Recording a milestone the student has already reached is a no-op, so a DC that
+is approved, returned and approved again does not fail on the unique index.
+`config_integrity` refuses to remove a code that students have reached or that a
+workflow's `milestone.record` effect records. `DC_PROPOSED`/`DC_APPROVED` are
+reserved, because `domain/dc.py` names them.
 
 ## 7. Plugins
 

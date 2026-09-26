@@ -19,18 +19,25 @@ could break silently, and raises before any write if it would. It does not
 attempt a general "is this safe" analysis -- only "does removing this
 vocab code orphan something we can find."
 
-Three kinds of usage are checked, for a code being removed from
+Four kinds of usage are checked, for a code being removed from
 "vocab.<name>":
 
 1. Business-table columns that store codes from that vocabulary
    (VOCAB_MODEL_FIELDS below) -- e.g. Person.degree for "degrees".
 2. Other settings whose value is drawn from the same vocabulary -- any
-   declared Spec whose `choices` matches the vocabulary's codes, e.g. a
-   permission's role list for "roles".
-3. Transitions of a workflow whose `status_vocab` names this vocabulary,
-   via `from_status`/`to_status` (skipping the "*"/"_new"/"=" sentinels,
-   which are not codes) -- whether the workflow is stored (edited through
-   the workflow editor) or still its shipped baseline.
+   declared Spec whose `choices_vocab` names it, e.g. a permission's role
+   list for "roles".
+3. Items of another vocabulary that name the code in one of their fields
+   (VOCAB_ITEM_REFS) -- e.g. a milestone's `applies_to` degree.
+4. Workflows: transitions of a workflow whose `status_vocab` names this
+   vocabulary, via `from_status`/`to_status` (skipping the "*"/"_new"/"="
+   sentinels, which are not codes), and for "milestones" any
+   `milestone.record` effect naming the code -- whether the workflow is
+   stored (edited through the workflow editor) or still its shipped
+   baseline.
+
+Codes the application itself depends on are protected separately, by
+settings_store's vocab validator (see vocab_defaults.py's "reserved").
 
 __author__ = "Balwinder Sodhi"
 __copyright__ = "Copyright 2025"
@@ -42,17 +49,13 @@ from typing import Optional
 
 import models as M
 import settings_store as ST
-import vocab_defaults as VD
 from domain import workflow as WF
 
 VOCAB_GROUP = "vocab"
 
 #: vocab name -> [(Model, field_name), ...] of business-table columns
 #: whose values are codes from that vocabulary. Deliberately only the
-#: fields that store a SINGLE vocabulary's codes unambiguously; a few
-#: soft-referencing fields in models.py (MilestoneDefinition.applies_to,
-#: AcademicMilestone.milestone) name a code from a concept that isn't
-#: cleanly one vocabulary and are left out rather than guessed at.
+#: fields that store a SINGLE vocabulary's codes unambiguously.
 VOCAB_MODEL_FIELDS: dict = {
     "degrees": [
         (M.Person, "degree"),
@@ -82,10 +85,17 @@ VOCAB_MODEL_FIELDS: dict = {
     "ppr_statuses": [(M.PhDProgressReport, "status")],
     "student_statuses": [(M.Person, "current_status")],
     "minor_conc_specializations": [(M.Person, "deg_type_spec")],
+    "milestones": [(M.AcademicMilestone, "milestone")],
 }
 
-#: Sentinels used in WorkflowTransition.from_status/to_status that are
-#: never real vocabulary codes (see models.py's WorkflowTransition doc).
+#: vocab name -> [(other vocab, item field), ...] where items of the other
+#: vocabulary name a code from this one.
+VOCAB_ITEM_REFS: dict = {
+    "degrees": [("milestones", "applies_to")],
+}
+
+#: Sentinels used in a transition's from_status/to_status that are never
+#: real vocabulary codes (see domain/workflow.py's ANY/NEW/SAME).
 _WORKFLOW_SENTINELS = {"*", "_new", "="}
 
 
@@ -102,56 +112,80 @@ def model_usages(vocab_name: str, code: str) -> list:
     return found
 
 
-def settings_usages(vocab_name: str, code: str) -> list:
-    """Other declared settings whose value is drawn from this same
-    vocabulary and still names `code`. Matched by comparing a Spec's
-    `choices` to the vocabulary's codes, so it covers every current and
-    future role-valued (etc.) setting without a hand-maintained list --
-    e.g. every "permission.*" entry and "course_offering.hide_stats_from"
-    for "roles"."""
-    codes = set(VD.codes(vocab_name)) if vocab_name in VD.ALL else set()
-    if code not in codes:
-        codes = codes | {code}  # still check even if already removed from defaults
+def _effective(key: str, pending: Optional[dict]):
+    """The value `key` will have once `pending` (a batch being saved) is."""
+    return pending[key] if pending and key in pending else ST.setting(key)
+
+
+def settings_usages(vocab_name: str, code: str,
+                    pending: Optional[dict] = None) -> list:
+    """Other declared settings whose value is drawn from this vocabulary
+    (their Spec's `choices_vocab`) and still names `code` -- e.g. every
+    "permission.*" role list for "roles". Values in `pending` (the batch
+    being saved) replace stored ones."""
     found = []
     for group, gs in ST.declared_groups().items():
         if group == VOCAB_GROUP:
             continue
         for name, spec in gs.specs.items():
-            if not spec.choices or set(spec.choices) != codes:
+            if spec.choices_vocab != vocab_name:
                 continue
             key = f"{group}.{name}"
-            value = ST.setting(key)
+            value = _effective(key, pending)
             hit = (code in value) if isinstance(value, list) else (value == code)
             if hit:
                 found.append(key)
     return found
 
 
+def vocab_item_usages(vocab_name: str, code: str,
+                      pending: Optional[dict] = None) -> list:
+    """Items of other vocabularies naming `code` (VOCAB_ITEM_REFS)."""
+    found = []
+    for other, field_name in VOCAB_ITEM_REFS.get(vocab_name, []):
+        items = _effective(f"{VOCAB_GROUP}.{other}", pending)
+        hits = [it["code"] for it in items
+                if isinstance(it, dict) and it.get(field_name) == code]
+        if hits:
+            found.append(f"vocab.{other} item(s) {', '.join(hits)}")
+    return found
+
+
+def _names_code(vocab_name: str, wf, t, code: str) -> bool:
+    if wf.status_vocab == vocab_name and code in (t.from_status, t.to_status):
+        return True
+    return vocab_name == "milestones" and any(
+        step.name == "milestone.record" and step.params.get("code") == code
+        for step in t.effects)
+
+
 def workflow_usages(vocab_name: str, code: str) -> list:
-    """Transitions of any workflow whose status_vocab names this
-    vocabulary that still name `code` as a from_status/to_status. Reads
-    each workflow as workflow.load() resolves it -- the stored definition
-    saved through the workflow editor, else the shipped baseline -- so a
-    code is protected whichever one is in force. Inactive transitions
-    count too, since re-activating one must not strand anything."""
+    """Transitions of any workflow that still name `code`: as a
+    from_status/to_status when the workflow's status_vocab is this
+    vocabulary, or as the milestone a `milestone.record` effect records.
+    Reads each workflow as workflow.load() resolves it -- the stored
+    definition, else the shipped baseline -- so a code is protected
+    whichever one is in force. Inactive transitions count too, since
+    re-activating one must not strand anything."""
     if code in _WORKFLOW_SENTINELS:
         return []
     found = []
     for name in WF.names():
         wf = WF.load(name)
-        if wf.status_vocab != vocab_name:
-            continue
         count = sum(1 for t in wf.transitions
-                    if code in (t.from_status, t.to_status))
+                    if _names_code(vocab_name, wf, t, code))
         if count:
             found.append(f"{count} transition(s) of the '{name}' workflow")
     return found
 
 
-def usages_of(vocab_name: str, code: str) -> list:
-    """Every place `code` is still used, across all three checks."""
+def usages_of(vocab_name: str, code: str,
+              pending: Optional[dict] = None) -> list:
+    """Every place `code` is still used, across all four checks, with the
+    settings in `pending` (the batch being saved) taken as already saved."""
     return (model_usages(vocab_name, code) +
-            settings_usages(vocab_name, code) +
+            settings_usages(vocab_name, code, pending) +
+            vocab_item_usages(vocab_name, code, pending) +
             workflow_usages(vocab_name, code))
 
 
@@ -162,10 +196,11 @@ def _removed_codes(vocab_name: str, new_items) -> set:
     return old_codes - new_codes
 
 
-def _check_removed_codes(vocab_name: str, removed: set, action: str) -> list:
+def _check_removed_codes(vocab_name: str, removed: set, action: str,
+                         pending: Optional[dict] = None) -> list:
     errors = []
     for code in sorted(removed):
-        usages = usages_of(vocab_name, code)
+        usages = usages_of(vocab_name, code, pending)
         if usages:
             errors.append(
                 f"Cannot {action} '{code}' from vocab.{vocab_name}: still "
@@ -173,10 +208,11 @@ def _check_removed_codes(vocab_name: str, removed: set, action: str) -> list:
     return errors
 
 
-def _removal_errors(key: str, new_value) -> list:
+def _removal_errors(key: str, new_value, pending: dict) -> list:
     """The referential-integrity errors (if any) from writing `new_value`
-    to `key`. Empty for any key outside the "vocab" group, or for a vocab
-    write that doesn't drop a still-used code."""
+    to `key` as part of the batch `pending`. Empty for any key outside the
+    "vocab" group, or for a vocab write that doesn't drop a still-used
+    code."""
     try:
         group, name = ST.split_key(key)
     except ValueError:
@@ -184,18 +220,20 @@ def _removal_errors(key: str, new_value) -> list:
     if group != VOCAB_GROUP:
         return []
     removed = _removed_codes(name, new_value)
-    return _check_removed_codes(name, removed, "remove")
+    return _check_removed_codes(name, removed, "remove", pending)
 
 
 def guarded_save_settings(values: dict, login_id: Optional[str] = None) -> dict:
     """ST.save_settings(), with a referential-integrity pre-check applied
     to every "vocab.*" key in `values`: a code present in the currently
     effective list but absent from the proposed one must not still be in
-    use. Raises SettingValidationError (before any write) if it is; keys
-    outside the vocab group pass straight through, unchecked."""
+    use, counting the other values in the same batch as already saved (so
+    one save can stop granting a role and remove it). Raises
+    SettingValidationError (before any write) if it is; keys outside the
+    vocab group pass straight through, unchecked."""
     errors = []
     for key, new_items in values.items():
-        errors.extend(_removal_errors(key, new_items))
+        errors.extend(_removal_errors(key, new_items, values))
     if errors:
         raise ST.SettingValidationError(errors)
     return ST.save_settings(values, login_id=login_id)

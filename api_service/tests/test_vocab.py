@@ -157,9 +157,11 @@ def test_static_data_dict_shape_matches_the_old_hand_maintained_file(app, db):
 
 
 def test_static_data_dict_reflects_a_stored_override(app, db):
-    save_setting("vocab.dc_roles", [{"code": "XX", "label": "Extra Role"}])
+    items = VD.DC_ROLES + [{"code": "XX", "label": "Extra Role"}]
+    save_setting("vocab.dc_roles", items)
     sd = _in_request(app, apiVC.static_data_dict)
-    assert sd["DcRoles"] == [{"id": "XX", "value": "Extra Role"}]
+    assert sd["DcRoles"][-1] == {"id": "XX", "value": "Extra Role"}
+    assert len(sd["DcRoles"]) == len(VD.DC_ROLES) + 1
 
 
 def test_get_static_data_endpoint(client, auth):
@@ -172,3 +174,16 @@ def test_get_static_data_endpoint(client, auth):
     codes = {d["id"] for d in body["Degrees"]}
     assert "PHD" in codes
     assert "JEE_PREP" not in codes
+
+
+def test_every_reserved_code_is_a_code_of_its_vocabulary():
+    for name, items in VD.ALL.items():
+        assert VD.reserved_codes(name) <= set(VD.codes(name)), name
+
+
+def test_the_seeded_vocabularies_carry_the_reserved_flag(db):
+    from default_seed_data import run_seed_defaults
+    run_seed_defaults()
+    ST.invalidate_cache()
+    stu = next(it for it in ST.vocab("roles") if it["code"] == "STU")
+    assert stu.get("reserved") is True

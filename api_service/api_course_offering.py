@@ -402,11 +402,9 @@ async def offerings_of_course(my_id):
     return apiVC.ok_json(serialized)
 
 
-@C.rbac
+@C.rbac(permissions=["course_offering.view_stats"])
 async def fetch_stats(my_id):
     res = {"data_att": [], "Weeks": [], "grades": [], "data": []}
-    if apiVC.is_user_in_role(ST.setting("course_offering.hide_stats_from")):
-        return apiVC.error_json("DB.Course stats are not visible for you!")
 
     cursor = DB.db.execute_sql(C.sql_by_id("course_grades"), [int(my_id)])
     grades = []

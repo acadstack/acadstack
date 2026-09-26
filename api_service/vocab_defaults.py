@@ -32,6 +32,13 @@ Each vocabulary is a list of ``{"code": ..., "label": ...}`` dicts (plus
 extra keys where a vocabulary needs more than a label -- see GRADES'
 ``audit_ok``). Order is display order only; it has no semantic meaning.
 
+``"reserved": True`` marks a code that Python, SQL or Vue code names
+directly (branches on, filters by, or uses as a default). An institution
+may relabel a reserved code but not delete or recode it: settings_store's
+vocab validator refuses any list that drops one. This module is the
+authority for which codes are reserved; the flag on a stored item must
+match it. When code starts depending on a new code literal, mark it here.
+
 __author__ = "Balwinder Sodhi"
 __copyright__ = "Copyright 2025"
 __license__ = "MIT"
@@ -39,12 +46,12 @@ __status__ = "Development"
 """
 
 DEGREES = [
-    {"code": "BTE", "label": "B.Tech"},
+    {"code": "BTE", "label": "B.Tech", "reserved": True},
     {"code": "MTE", "label": "M.Tech"},
     {"code": "MSR", "label": "M.S (Research)"},
     {"code": "MSC", "label": "M.Sc"},
     {"code": "BMD", "label": "B.Tech-M.Tech Dual"},
-    {"code": "PHD", "label": "PhD"},
+    {"code": "PHD", "label": "PhD", "reserved": True},
     {"code": "MCS_AI", "label": "M.Tech(AI)"},
     {"code": "MEE_SIGNAL", "label": "M.Tech(Signal Processing)"},
     {"code": "MEE_MICRO", "label": "M.Tech(Micro. & VLSI)"},
@@ -61,92 +68,92 @@ DEGREES = [
 ]
 
 ROLES = [
-    {"code": "STU", "label": "Student"},
-    {"code": "ACA", "label": "Academic Section"},
-    {"code": "FAC", "label": "Faculty"},
-    {"code": "HOD", "label": "Head of Dept."},
-    {"code": "DEA", "label": "Dean of Academics"},
-    {"code": "SUP", "label": "Superuser"},
-    {"code": "GUE", "label": "Guest"},
-    {"code": "PLA", "label": "Placement Cell"},
+    {"code": "STU", "label": "Student", "reserved": True},
+    {"code": "ACA", "label": "Academic Section", "reserved": True},
+    {"code": "FAC", "label": "Faculty", "reserved": True},
+    {"code": "HOD", "label": "Head of Dept.", "reserved": True},
+    {"code": "DEA", "label": "Dean of Academics", "reserved": True},
+    {"code": "SUP", "label": "Superuser", "reserved": True},
+    {"code": "GUE", "label": "Guest", "reserved": True},
+    {"code": "PLA", "label": "Placement Cell", "reserved": True},
     {"code": "ADV", "label": "Advisor"},
-    {"code": "RES", "label": "Research Section"},
+    {"code": "RES", "label": "Research Section", "reserved": True},
 ]
 
 COURSE_STATUSES = [
-    {"code": "DRA", "label": "Draft"},
-    {"code": "APP", "label": "Approved"},
-    {"code": "HAP", "label": "HoD Approval Pending"},
-    {"code": "HAR", "label": "HoD Rejected"},
-    {"code": "CAP", "label": "Council Approval Pending"},
-    {"code": "CAR", "label": "Council Rejected"},
+    {"code": "DRA", "label": "Draft", "reserved": True},
+    {"code": "APP", "label": "Approved", "reserved": True},
+    {"code": "HAP", "label": "HoD Approval Pending", "reserved": True},
+    {"code": "HAR", "label": "HoD Rejected", "reserved": True},
+    {"code": "CAP", "label": "Council Approval Pending", "reserved": True},
+    {"code": "CAR", "label": "Council Rejected", "reserved": True},
     {"code": "RET", "label": "Retired"},
 ]
 
 OFFERING_STATUSES = [
-    {"code": "E", "label": "Enrolling"},
-    {"code": "R", "label": "Running"},
-    {"code": "F", "label": "Finished"},
-    {"code": "P", "label": "Proposed"},
-    {"code": "D", "label": "Declined"},
-    {"code": "C", "label": "Canceled"},
+    {"code": "E", "label": "Enrolling", "reserved": True},
+    {"code": "R", "label": "Running", "reserved": True},
+    {"code": "F", "label": "Finished", "reserved": True},
+    {"code": "P", "label": "Proposed", "reserved": True},
+    {"code": "D", "label": "Declined", "reserved": True},
+    {"code": "C", "label": "Canceled", "reserved": True},
 ]
 
 ENROLMENT_STATUSES = [
-    {"code": "IPEN", "label": "Pending Instructor Approval"},
+    {"code": "IPEN", "label": "Pending Instructor Approval", "reserved": True},
     {"code": "IREJ", "label": "Instructor Rejected"},
-    {"code": "APEN", "label": "Pending Advisor Approval"},
+    {"code": "APEN", "label": "Pending Advisor Approval", "reserved": True},
     {"code": "AREJ", "label": "Advisor Rejected"},
-    {"code": "ENRO", "label": "Enrolled"},
-    {"code": "DROP", "label": "Dropped by Student"},
-    {"code": "ASREJ", "label": "Acadmic section Rejected"},
-    {"code": "WDRAW", "label": "Withdrawn by Student"},
+    {"code": "ENRO", "label": "Enrolled", "reserved": True},
+    {"code": "DROP", "label": "Dropped by Student", "reserved": True},
+    {"code": "ASREJ", "label": "Acadmic section Rejected", "reserved": True},
+    {"code": "WDRAW", "label": "Withdrawn by Student", "reserved": True},
 ]
 
 ENROLMENT_TYPES = [
-    {"code": "A", "label": "Audit"},
-    {"code": "C", "label": "Credit"},
-    {"code": "CM", "label": "Credit for Minor"},
-    {"code": "CC", "label": "Credit for Concent."},
+    {"code": "A", "label": "Audit", "reserved": True},
+    {"code": "C", "label": "Credit", "reserved": True},
+    {"code": "CM", "label": "Credit for Minor", "reserved": True},
+    {"code": "CC", "label": "Credit for Concent.", "reserved": True},
 ]
 
 # audit_ok: whether the grade is a valid grade for an audited ('A')
 # enrolment (replaces the separate VALID_AUDIT_GRADES list that used to
 # live in common.py -- see settings_store.valid_audit_grade_codes()).
 GRADES = [
-    {"code": "NA", "label": "NA", "audit_ok": True},
-    {"code": "A", "label": "A", "audit_ok": False},
-    {"code": "A-", "label": "A-", "audit_ok": False},
-    {"code": "B", "label": "B", "audit_ok": False},
-    {"code": "B-", "label": "B-", "audit_ok": False},
-    {"code": "C", "label": "C", "audit_ok": False},
-    {"code": "C-", "label": "C-", "audit_ok": False},
-    {"code": "D", "label": "D", "audit_ok": False},
-    {"code": "E", "label": "E", "audit_ok": False},
-    {"code": "F", "label": "F", "audit_ok": False},
-    {"code": "NP", "label": "NP", "audit_ok": True},
-    {"code": "NF", "label": "NF", "audit_ok": True},
-    {"code": "I", "label": "I", "audit_ok": True},
-    {"code": "W", "label": "W", "audit_ok": True},
-    {"code": "S", "label": "S", "audit_ok": False},
-    {"code": "U", "label": "U", "audit_ok": False},
+    {"code": "NA", "label": "NA", "audit_ok": True, "reserved": True},
+    {"code": "A", "label": "A", "audit_ok": False, "reserved": True},
+    {"code": "A-", "label": "A-", "audit_ok": False, "reserved": True},
+    {"code": "B", "label": "B", "audit_ok": False, "reserved": True},
+    {"code": "B-", "label": "B-", "audit_ok": False, "reserved": True},
+    {"code": "C", "label": "C", "audit_ok": False, "reserved": True},
+    {"code": "C-", "label": "C-", "audit_ok": False, "reserved": True},
+    {"code": "D", "label": "D", "audit_ok": False, "reserved": True},
+    {"code": "E", "label": "E", "audit_ok": False, "reserved": True},
+    {"code": "F", "label": "F", "audit_ok": False, "reserved": True},
+    {"code": "NP", "label": "NP", "audit_ok": True, "reserved": True},
+    {"code": "NF", "label": "NF", "audit_ok": True, "reserved": True},
+    {"code": "I", "label": "I", "audit_ok": True, "reserved": True},
+    {"code": "W", "label": "W", "audit_ok": True, "reserved": True},
+    {"code": "S", "label": "S", "audit_ok": False, "reserved": True},
+    {"code": "U", "label": "U", "audit_ok": False, "reserved": True},
 ]
 
 ATTENDANCE_CODES = [
-    {"code": "A", "label": "Absent"},
-    {"code": "P", "label": "Present"},
+    {"code": "A", "label": "Absent", "reserved": True},
+    {"code": "P", "label": "Present", "reserved": True},
     {"code": "L", "label": "On Leave"},
 ]
 
 DC_ROLES = [
-    {"code": "ME", "label": "Member"},
-    {"code": "SU", "label": "Supervisor"},
+    {"code": "ME", "label": "Member", "reserved": True},
+    {"code": "SU", "label": "Supervisor", "reserved": True},
     {"code": "CO", "label": "Co-Supervisor"},
-    {"code": "CP", "label": "Chairperson"},
+    {"code": "CP", "label": "Chairperson", "reserved": True},
 ]
 
 DC_STATUSES = [
-    {"code": "DRA", "label": "Draft"},
+    {"code": "DRA", "label": "Draft", "reserved": True},
     {"code": "SUB", "label": "Submitted to HoD"},
     {"code": "FTD", "label": "Forwarded to Dean"},
     {"code": "RTS", "label": "Returned to Supervisor"},
@@ -173,7 +180,7 @@ DEPARTMENTS = [
     {"code": "HSS", "label": "Humanities and Social Sciences"},
     {"code": "CARD", "label": "Centre for Applied Research in Data Science"},
     {"code": "PREP", "label": "Preparatory Dept."},
-    {"code": "ALL", "label": "All Departments"},
+    {"code": "ALL", "label": "All Departments", "reserved": True},
 ]
 
 # Core vs elective (used by sql_statements.toml's dept_wise_course_load/
@@ -181,17 +188,17 @@ DEPARTMENTS = [
 # are elective; CP/CT/NN are neither. Not modeled as a field on each item
 # below since only that hand-written SQL currently needs the grouping.
 COURSE_TYPES = [
-    {"code": "SC", "label": "Science Requirement Core"},
-    {"code": "SE", "label": "Science Electives"},
-    {"code": "GR", "label": "General Engineering Requirement"},
-    {"code": "PC", "label": "Programme Core"},
-    {"code": "PE", "label": "Programme Elective"},
-    {"code": "HC", "label": "Humanities and Social Sciences core"},
-    {"code": "HE", "label": "Humanities and Social Sciences Electives"},
+    {"code": "SC", "label": "Science Requirement Core", "reserved": True},
+    {"code": "SE", "label": "Science Electives", "reserved": True},
+    {"code": "GR", "label": "General Engineering Requirement", "reserved": True},
+    {"code": "PC", "label": "Programme Core", "reserved": True},
+    {"code": "PE", "label": "Programme Elective", "reserved": True},
+    {"code": "HC", "label": "Humanities and Social Sciences core", "reserved": True},
+    {"code": "HE", "label": "Humanities and Social Sciences Electives", "reserved": True},
     {"code": "CP", "label": "Capstone Projects"},
     {"code": "CT", "label": "Industrial Internship and Comprehensive Viva"},
     {"code": "NN", "label": "Extra-curricular"},
-    {"code": "OC", "label": "Open Electives"},
+    {"code": "OC", "label": "Open Electives", "reserved": True},
 ]
 
 COURSE_SLOTS = [
@@ -216,12 +223,12 @@ COURSE_FREQS = [
     {"code": "E", "label": "Even Semester"},
     {"code": "O", "label": "Odd Semester"},
     {"code": "S", "label": "Summer break"},
-    {"code": "A", "label": "Any Semester"},
+    {"code": "A", "label": "Any Semester", "reserved": True},
 ]
 
 FORM_TYPES = [
-    {"code": "END_SEM_FB", "label": "End-semester feedback"},
-    {"code": "MID_SEM_FB", "label": "Mid-semester feedback"},
+    {"code": "END_SEM_FB", "label": "End-semester feedback", "reserved": True},
+    {"code": "MID_SEM_FB", "label": "Mid-semester feedback", "reserved": True},
 ]
 
 PERSON_CATEGORIES = [
@@ -242,14 +249,14 @@ DEGREE_TYPES = [
 ]
 
 PPR_STATUSES = [
-    {"code": "DRA", "label": "Draft"},
-    {"code": "RET", "label": "Returned to DC Member"},
-    {"code": "SUB", "label": "Submitted to DC Chair"},
-    {"code": "APP", "label": "Approved"},
+    {"code": "DRA", "label": "Draft", "reserved": True},
+    {"code": "RET", "label": "Returned to DC Member", "reserved": True},
+    {"code": "SUB", "label": "Submitted to DC Chair", "reserved": True},
+    {"code": "APP", "label": "Approved", "reserved": True},
 ]
 
 STUDENT_STATUSES = [
-    {"code": "REG", "label": "Registered"},
+    {"code": "REG", "label": "Registered", "reserved": True},
     {"code": "WTH", "label": "Withdrawan"},
     {"code": "MDL", "label": "Medical/Semster Break"},
 ]
@@ -297,29 +304,49 @@ MINOR_CONC_SPECIALIZATIONS = [
 # other controlled list, and lets dates_save (api_wflow.py) reject an
 # unknown code instead of silently storing it.
 ACAD_EVENT_CODES = [
-    {"code": "SESSION_S", "label": "Academic Session Start"},
-    {"code": "SESSION_E", "label": "Academic Session End"},
-    {"code": "COURSE_REG_S", "label": "Course Registration Start"},
-    {"code": "COURSE_REG_E", "label": "Course Registration End"},
-    {"code": "CLASSES_S", "label": "Classes Start"},
-    {"code": "CLASSES_E", "label": "Classes End"},
-    {"code": "ADD_DROP_S", "label": "Add/Drop Start"},
-    {"code": "ADD_DROP_E", "label": "Add/Drop End"},
-    {"code": "FEEDBACK_MID_S", "label": "Mid-Semester Feedback Start"},
-    {"code": "FEEDBACK_MID_E", "label": "Mid-Semester Feedback End"},
-    {"code": "MINOR_EXAM_S", "label": "Minor Exam Start"},
-    {"code": "MINOR_EXAM_E", "label": "Minor Exam End"},
-    {"code": "WITHDRAW_S", "label": "Withdraw Start"},
-    {"code": "WITHDRAW_E", "label": "Withdraw End"},
-    {"code": "MAJOR_EXAM_S", "label": "Major Exam Start"},
-    {"code": "MAJOR_EXAM_E", "label": "Major Exam End"},
-    {"code": "FEEDBACK_S", "label": "End-Semester Feedback Start"},
-    {"code": "FEEDBACK_E", "label": "End-Semester Feedback End"},
-    {"code": "GRADE_SUB_S", "label": "Grade Submission Start"},
-    {"code": "GRADE_SUB_E", "label": "Grade Submission End"},
-    {"code": "SHOW_MIDSEM_FB_S", "label": "Show Mid-Semester Feedback From"},
-    {"code": "SHOW_ENDSEM_FB_S", "label": "Show End-Semester Feedback From"},
-    {"code": "RESULT_DECLARATION", "label": "Result Declaration"},
+    {"code": "SESSION_S", "label": "Academic Session Start", "reserved": True},
+    {"code": "SESSION_E", "label": "Academic Session End", "reserved": True},
+    {"code": "COURSE_REG_S", "label": "Course Registration Start", "reserved": True},
+    {"code": "COURSE_REG_E", "label": "Course Registration End", "reserved": True},
+    {"code": "CLASSES_S", "label": "Classes Start", "reserved": True},
+    {"code": "CLASSES_E", "label": "Classes End", "reserved": True},
+    {"code": "ADD_DROP_S", "label": "Add/Drop Start", "reserved": True},
+    {"code": "ADD_DROP_E", "label": "Add/Drop End", "reserved": True},
+    {"code": "FEEDBACK_MID_S", "label": "Mid-Semester Feedback Start", "reserved": True},
+    {"code": "FEEDBACK_MID_E", "label": "Mid-Semester Feedback End", "reserved": True},
+    {"code": "MINOR_EXAM_S", "label": "Minor Exam Start", "reserved": True},
+    {"code": "MINOR_EXAM_E", "label": "Minor Exam End", "reserved": True},
+    {"code": "WITHDRAW_S", "label": "Withdraw Start", "reserved": True},
+    {"code": "WITHDRAW_E", "label": "Withdraw End", "reserved": True},
+    {"code": "MAJOR_EXAM_S", "label": "Major Exam Start", "reserved": True},
+    {"code": "MAJOR_EXAM_E", "label": "Major Exam End", "reserved": True},
+    {"code": "FEEDBACK_S", "label": "End-Semester Feedback Start", "reserved": True},
+    {"code": "FEEDBACK_E", "label": "End-Semester Feedback End", "reserved": True},
+    {"code": "GRADE_SUB_S", "label": "Grade Submission Start", "reserved": True},
+    {"code": "GRADE_SUB_E", "label": "Grade Submission End", "reserved": True},
+    {"code": "SHOW_MIDSEM_FB_S", "label": "Show Mid-Semester Feedback From", "reserved": True},
+    {"code": "SHOW_ENDSEM_FB_S", "label": "Show End-Semester Feedback From", "reserved": True},
+    {"code": "RESULT_DECLARATION", "label": "Result Declaration", "reserved": True},
+]
+
+# PhD (and other programme) milestone sequence: the codes an
+# AcademicMilestone row records (domain/milestones.py). ``sequence`` orders
+# them; ``applies_to`` is a degree code. DC_PROPOSED/DC_APPROVED are
+# recorded by the doctoral-committee workflow's effects.
+MILESTONES = [
+    {"code": "JOINING", "label": "Joining", "sequence": 10, "applies_to": "PHD"},
+    {"code": "DC_PROPOSED", "label": "DC Proposed", "sequence": 20, "applies_to": "PHD",
+     "reserved": True},
+    {"code": "DC_APPROVED", "label": "DC Approved", "sequence": 30, "applies_to": "PHD",
+     "reserved": True},
+    {"code": "COMPRE", "label": "Comprehensive Exam", "sequence": 40, "applies_to": "PHD"},
+    {"code": "TP", "label": "TP", "sequence": 50, "applies_to": "PHD"},
+    {"code": "OPEN_SEMINAR_1", "label": "Open Seminar 1", "sequence": 60, "applies_to": "PHD"},
+    {"code": "OPEN_SEMINAR_2", "label": "Open Seminar 2", "sequence": 70, "applies_to": "PHD"},
+    {"code": "SYNOPSIS", "label": "Synopsis", "sequence": 80, "applies_to": "PHD"},
+    {"code": "THESIS_SUBMITTED", "label": "Thesis Submitted", "sequence": 90, "applies_to": "PHD"},
+    {"code": "DEFENCE", "label": "Defence", "sequence": 100, "applies_to": "PHD"},
+    {"code": "AWARDED", "label": "Degree Awarded", "sequence": 110, "applies_to": "PHD"},
 ]
 
 # ===================== Registry =====================
@@ -347,6 +374,7 @@ ALL = {
     "student_statuses": STUDENT_STATUSES,
     "minor_conc_specializations": MINOR_CONC_SPECIALIZATIONS,
     "acad_event_codes": ACAD_EVENT_CODES,
+    "milestones": MILESTONES,
 }
 
 # Maps each vocabulary to the key it had in the old hand-maintained
@@ -378,6 +406,7 @@ STATIC_DATA_KEYS = {
     "minor_conc_specializations": ("MinorConcSpecialization", True),
     "student_statuses": ("StudentStatus", False),
     "acad_event_codes": ("AcadEventCodes", False),
+    "milestones": ("Milestones", False),
 }
 
 
@@ -390,3 +419,8 @@ def choices(name: str) -> list:
     """(code, label) tuples for one vocabulary, ready for a peewee
     ``choices=`` field argument."""
     return [(item["code"], item["label"]) for item in ALL[name]]
+
+
+def reserved_codes(name: str) -> set:
+    """Codes of one vocabulary that code depends on (see module doc)."""
+    return {item["code"] for item in ALL.get(name, []) if item.get("reserved")}

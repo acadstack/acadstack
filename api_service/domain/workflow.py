@@ -277,23 +277,11 @@ def load(name: str) -> Workflow:
         return base
     if wd is None:
         return base
-
-    rows = (M.WorkflowTransition.select()
-            .where((M.WorkflowTransition.workflow == name) &
-                   (M.WorkflowTransition.is_deleted == False))  # noqa: E712
-            .order_by(M.WorkflowTransition.priority))
-    return Workflow(
-        name=name, status_vocab=wd.status_vocab, match_on=wd.match_on,
-        locked_message=wd.locked_message, denied_message=wd.denied_message,
-        pre_checks=tuple(Step.of(s) for s in wd.pre_checks or ()),
-        checks=tuple(Step.of(s) for s in wd.checks or ()),
-        transitions=tuple(Transition(
-            priority=r.priority, from_status=r.from_status,
-            to_status=r.to_status, action=r.action, label=r.label,
-            permission=r.permission, guards=tuple(r.guards or ()),
-            checks=tuple(Step.of(s) for s in r.checks or ()),
-            effects=tuple(Step.of(s) for s in r.effects or ()),
-            is_active=r.is_active) for r in rows))
+    return Workflow.from_json({
+        "name": name, "status_vocab": wd.status_vocab,
+        "match_on": wd.match_on, "locked_message": wd.locked_message,
+        "denied_message": wd.denied_message, "pre_checks": wd.pre_checks,
+        "checks": wd.checks, "transitions": wd.transitions})
 
 
 # ============================== resolving ==============================
@@ -449,9 +437,8 @@ def problems(wf: Workflow) -> List[Tuple[Optional[int], str]]:
             if step.name not in _EFFECTS:
                 errors.append((i, f"{where}: unknown effect {step.name!r}."))
             elif step.name == "milestone.record":
-                from domain import milestones as MS
                 code = step.params.get("code")
-                if code not in MS.codes():
+                if code not in ST.vocab_codes("milestones"):
                     errors.append((i, f"{where}: unknown milestone {code!r}."))
     return errors
 
@@ -495,21 +482,18 @@ class InvalidWorkflow(DomainError):
 def store(wf: Workflow, login_id: str = "SYSTEM") -> None:
     """Writes ``wf`` as the stored definition, replacing any previous
     one. No validation or authorization -- see :func:`save_workflow`."""
-    with M.db.atomic():
-        M.WorkflowTransition.delete().where(
-            M.WorkflowTransition.workflow == wf.name).execute()
-        M.WorkflowDefinition.delete().where(
-            M.WorkflowDefinition.name == wf.name).execute()
-        M.WorkflowDefinition.create(
-            name=wf.name, status_vocab=wf.status_vocab, match_on=wf.match_on,
-            pre_checks=[s.to_json() for s in wf.pre_checks],
-            checks=[s.to_json() for s in wf.checks],
-            locked_message=wf.locked_message,
-            denied_message=wf.denied_message, txn_login_id=login_id)
-        for t in wf.transitions:
-            row = t.to_json()
-            M.WorkflowTransition.create(workflow=wf.name,
-                                        txn_login_id=login_id, **row)
+    row = wf.to_json()
+    (M.WorkflowDefinition
+     .insert(txn_login_id=login_id, **row)
+     .on_conflict(conflict_target=[M.WorkflowDefinition.name],
+                  update={**{getattr(M.WorkflowDefinition, k): v
+                             for k, v in row.items() if k != "name"},
+                          M.WorkflowDefinition.is_deleted: False,
+                          M.WorkflowDefinition.txn_login_id: login_id,
+                          M.WorkflowDefinition.txn_no:
+                              M.WorkflowDefinition.txn_no + 1,
+                          M.WorkflowDefinition.upd_ts: M.DT.now()})
+     .execute())
 
 
 def _parse(definition: dict) -> Workflow:
@@ -544,11 +528,20 @@ def _parse(definition: dict) -> Workflow:
 
 
 def save_workflow(actor: Actor, definition: dict) -> Workflow:
-    """Replaces a workflow's stored definition, after validating it and
-    refusing any edit that would strand records in a status they could
-    no longer leave."""
+    """:func:`replace_workflow`, for an actor holding
+    system.manage_workflows."""
     if not actor.can("system.manage_workflows"):
         raise PermissionDenied("You are not allowed to edit workflows.")
+    wf = replace_workflow(definition, login_id=actor.login_id)
+    logging.info(f"Workflow '{wf.name}' updated by {actor.describe()}.")
+    return wf
+
+
+def replace_workflow(definition: dict, login_id: str) -> Workflow:
+    """Replaces a workflow's stored definition, after validating it and
+    refusing any edit that would strand records in a status they could
+    no longer leave. No authorization: callers check it (save_workflow,
+    or config import's system.import_config)."""
     wf = _parse(definition)
     found = problems(wf)
     if found:
@@ -560,8 +553,7 @@ def save_workflow(actor: Actor, definition: dict) -> Workflow:
             f"Records would be left in a status they can no longer leave: "
             f"{detail}. Move them on first, or keep a transition out of "
             f"that status."], stranded=stranded)
-    store(wf, login_id=actor.login_id)
-    logging.info(f"Workflow '{wf.name}' updated by {actor.describe()}.")
+    store(wf, login_id=login_id)
     return load(wf.name)
 
 

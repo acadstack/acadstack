@@ -111,7 +111,12 @@ here rather than rejected by the server.
                         </div>
                         <div class="row row-striped mb-2" v-for="(row, idx) in formValues[it.key]" :key="idx">
                             <div class="col-md-3">
-                                <input type="text" class="form-control form-control-sm" v-model.trim="row.code">
+                                <input type="text" class="form-control form-control-sm" v-model.trim="row.code"
+                                    :readonly="row.reserved"
+                                    :title="row.reserved ? reservedHint : ''">
+                                <span v-if="row.reserved" class="badge bg-secondary" :title="reservedHint">
+                                    reserved
+                                </span>
                             </div>
                             <div class="col-md-3">
                                 <input type="text" class="form-control form-control-sm" v-model.trim="row.label">
@@ -126,6 +131,11 @@ here rather than rejected by the server.
                                                 :for="'vc_' + it.key + '_' + idx + '_' + k">{{ k }}</label>
                                         </div>
                                     </template>
+                                    <template v-else-if="typeof row[k] == 'number'">
+                                        {{ k }}:
+                                        <input type="number" class="form-control form-control-sm d-inline-block"
+                                            style="width: 6rem" v-model.number="row[k]">
+                                    </template>
                                     <template v-else>
                                         {{ k }}:
                                         <input type="text" class="form-control form-control-sm d-inline-block"
@@ -134,10 +144,13 @@ here rather than rejected by the server.
                                 </span>
                             </div>
                             <div class="col-md-1">
-                                <button class="btn btn-sm btn-outline-danger" type="button"
-                                    @click="removeVocabRow(it, idx)">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                                <!-- A disabled button gets no hover events, so the tooltip sits on a wrapper. -->
+                                <span :title="row.reserved ? reservedHint : 'Remove this item'">
+                                    <button class="btn btn-sm btn-outline-danger" type="button"
+                                        :disabled="row.reserved" @click="removeVocabRow(it, idx)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </span>
                             </div>
                         </div>
                         <div v-if="errors[it.key]" class="text-danger small mt-1">{{ errors[it.key] }}</div>
@@ -177,7 +190,9 @@ export default {
         return {
             items: [],
             formValues: {},
-            errors: {}
+            errors: {},
+            reservedHint: "The application depends on this code, so it cannot be "
+                + "removed or recoded. You can still change its label."
         };
     },
     computed: {
@@ -221,11 +236,18 @@ export default {
             return JSON.stringify(this.formValues[it.key]) !== JSON.stringify(it.value);
         },
         extraKeys(row) {
-            return Object.keys(row).filter(k => k != "code" && k != "label");
+            return Object.keys(row).filter(k => !["code", "label", "reserved"].includes(k));
         },
         addVocabRow(it) {
             if (!this.formValues[it.key]) this.formValues[it.key] = [];
-            this.formValues[it.key].push({ code: "", label: "" });
+            // New items take the same extra attributes as the existing ones.
+            const row = { code: "", label: "" };
+            const sample = this.formValues[it.key][0] || {};
+            for (const k of this.extraKeys(sample)) {
+                row[k] = typeof sample[k] == "boolean" ? false
+                    : typeof sample[k] == "number" ? 0 : "";
+            }
+            this.formValues[it.key].push(row);
         },
         removeVocabRow(it, idx) {
             this.formValues[it.key].splice(idx, 1);
@@ -291,6 +313,9 @@ export default {
                             if (!row.label || !row.label.trim()) errs.push("Every item needs a non-empty label.");
                             if (row.code && seen.has(row.code)) errs.push(`Duplicate code '${row.code}'.`);
                             if (row.code) seen.add(row.code);
+                        }
+                        for (const code of it.reserved_codes || []) {
+                            if (!seen.has(code)) errs.push(`'${code}' is reserved and cannot be removed.`);
                         }
                     } else if (it.choices) {
                         const bad = v.filter(x => !it.choices.includes(x));

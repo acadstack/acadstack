@@ -1,19 +1,26 @@
 """Export/import of an institution's full DB-backed configuration as one
 versioned JSON document.
 
-export_config() serializes both stores (settings_store, policy_store) as
-they are recorded. import_config() feeds a document back through the same
+export_config() serializes the settings (including every vocabulary, so
+the milestone sequence too), the approval workflows in force, and the
+policy history. import_config() feeds a document back through the same
 guarded write paths the admin screens use -- config_integrity's
 guarded_save_settings() (Spec validation plus the vocab-code-in-use
-check), permissions.save_permission_mapping() (plus its self-lockout
-guard) and policy_store.supersede() -- inside one transaction, so an
-imported document is held to exactly the rules a click in the admin
-screen is, and either all of it applies or none of it does.
+check; the permission mapping goes through it too, after
+permissions.check_no_self_lockout()), workflow.replace_workflow()
+(validation plus the stranded-records check) and policy_store.supersede()
+-- inside one transaction, so an imported document is held to exactly the
+rules a click in the admin screen is, and either all of it applies or
+none of it does.
 
 Uses: seeding a test fixture with an exact policy; cloning a configured
 institution onto another install; diffing two exports to review a change.
 
-Settings groups present in the document REPLACE this install's values.
+Settings groups and workflows present in the document REPLACE this
+install's. Settings are written before workflows, so a workflow may use a
+status code the same document adds; a document that removes a status code
+AND the transitions using it is refused (the code is still in use when
+the settings are checked) -- import the workflow change first.
 Policy is insert-only (see policy_store), so a policy group can only ADD
 versions: a version whose session already has policy recorded, or that
 lands at or before the seal line, is reported as skipped rather than
@@ -35,6 +42,7 @@ import permissions as PERM
 import policy_store as PS
 import settings_store as ST
 from common import AcadStackException
+from domain import workflow as WF
 from domain.context import Actor
 
 #: Bumped only if the document shape changes in a way that breaks reading
@@ -85,11 +93,12 @@ def export_config(*, include_permissions: bool = True,
         "acadstack_config_version": DOCUMENT_VERSION,
         "exported_at": M.DT.now().isoformat(),
         "settings": settings_out,
+        "workflows": {name: WF.load(name).to_json() for name in WF.names()},
         "policy": policy_out,
     }
 
 
-def _shape_errors(settings_in, policy_in) -> list:
+def _shape_errors(settings_in, policy_in, workflows_in) -> list:
     """Structural problems the write paths would trip over as a bare
     AttributeError/TypeError rather than report."""
     errors = []
@@ -100,6 +109,12 @@ def _shape_errors(settings_in, policy_in) -> list:
                    f"{{name: value}}."
                    for group, items in settings_in.items()
                    if not isinstance(items, dict)]
+    if not isinstance(workflows_in, dict):
+        errors.append("'workflows' must be an object of {name: definition}.")
+    else:
+        errors += [f"workflow {name!r}: expected an object."
+                   for name, wf in workflows_in.items()
+                   if not isinstance(wf, dict)]
     if not isinstance(policy_in, dict):
         errors.append("'policy' must be an object of {group: [version, ...]}.")
         return errors
@@ -122,15 +137,17 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
 
     Args:
         document: as produced by export_config(), or hand-written (e.g. a
-            test fixture); 'settings' and 'policy' are both optional.
+            test fixture); 'settings', 'workflows' and 'policy' are all
+            optional.
         actor: the importing user. Required when the document contains
-            the "permission" group, which is written through
-            save_permission_mapping() so its self-lockout guard applies.
+            the "permission" group, so the self-lockout guard
+            (permissions.check_no_self_lockout) can be applied.
         login_id: provenance for written rows. Defaults to
             actor.login_id, then the request's session user.
 
     Returns:
-        {"settings_applied": [key, ...], "policy": {group:
+        {"settings_applied": [key, ...], "workflows_applied": [name, ...],
+        "policy": {group:
         [{"effective_from_session", "status": "applied"|"skipped",
         "reason"?}, ...]}}.
 
@@ -147,8 +164,9 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
              f"install understands version {DOCUMENT_VERSION}."])
 
     settings_in = document.get("settings") or {}
+    workflows_in = document.get("workflows") or {}
     policy_in = document.get("policy") or {}
-    errors = _shape_errors(settings_in, policy_in)
+    errors = _shape_errors(settings_in, policy_in, workflows_in)
     if errors:
         raise ConfigImportError(errors)
 
@@ -166,20 +184,27 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
 
     try:
         with M.db.atomic():
-            applied = []
-            # Permissions first, so a document that stops granting a role
-            # and removes it from vocab.roles passes the in-use check.
+            # The permission mapping is saved in the same batch as the
+            # vocabularies, so a document may add a role and grant it, or
+            # stop granting a role and remove it.
             if permissions:
-                applied += PERM.save_permission_mapping(permissions, actor)
-            if values:
-                applied += CI.guarded_save_settings(values, login_id=login_id)
+                PERM.check_no_self_lockout(permissions, actor)
+                values.update(PERM.normalized(permissions))
+            applied = CI.guarded_save_settings(values, login_id=login_id) \
+                if values else []
+            workflows_applied = [
+                WF.replace_workflow(dict(definition, name=name),
+                                    login_id=login_id).name
+                for name, definition in sorted(workflows_in.items())]
             policy_report = {
                 group: [_supersede(group, v, login_id) for v in versions]
                 for group, versions in policy_in.items()
             }
     except AcadStackException as ex:
-        raise ConfigImportError(getattr(ex, "errors", None) or [str(ex)]) \
-            from ex
+        errors = getattr(ex, "errors", None) or [str(ex)]
+        if isinstance(ex, WF.InvalidWorkflow):
+            errors = [f"workflow: {e}" for e in errors]
+        raise ConfigImportError(errors) from ex
     finally:
         # The writes above invalidated the caches from inside the outer
         # transaction, before it committed or rolled back; a reload in that
@@ -189,9 +214,12 @@ def import_config(document: dict, *, actor: Optional[Actor] = None,
 
     logging.info(f"Imported configuration document by {login_id}: "
                  f"{len(applied)} setting(s), "
+                 f"{len(workflows_applied)} workflow(s), "
                  f"{sum(len(v) for v in policy_report.values())} policy "
                  f"version(s) attempted.")
-    return {"settings_applied": sorted(applied), "policy": policy_report}
+    return {"settings_applied": sorted(applied),
+            "workflows_applied": workflows_applied,
+            "policy": policy_report}
 
 
 def _supersede(group: str, version: dict, login_id: Optional[str]) -> dict:

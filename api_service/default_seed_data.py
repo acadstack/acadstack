@@ -31,7 +31,6 @@ import models as M
 import permissions as PERM
 import settings_store as ST
 import vocab_defaults as VD
-from domain import milestones as MS
 
 # List of (Model, [row_dict, ...]) pairs. Populated by later phases as
 # they introduce DB-backed defaults that must reach existing installs.
@@ -48,9 +47,6 @@ SEED_SPECS: list[tuple[Type[ORM.Model], list[dict]]] = [
         dict(group=PERM.GROUP, name=name, value=spec.default)
         for name, spec in ST.declared_groups()[PERM.GROUP].specs.items()
     ]),
-    # The academic milestone sequence (domain/milestones.py). Keyed on
-    # code, so an institution's edited sequence is left alone.
-    (M.MilestoneDefinition, MS.seed_rows()),
 ]
 
 
@@ -110,11 +106,10 @@ def seed_workflows() -> int:
     """Stores each approval workflow's baseline transition table if that
     workflow has no stored definition yet.
 
-    Not SEED_SPECS rows: a workflow is a definition row plus its
-    transitions, written together, and "seed missing rows" would merge
-    the baseline into an institution's edited table -- quietly putting
-    back an approval step they had removed. So it is all or nothing per
-    workflow. Returns the number of workflows stored.
+    Not a SEED_SPECS row: the row is built by workflow.store() from the
+    baseline in code rather than typed out here. Only a workflow with no
+    stored row is written, so an institution's edited table is never
+    touched. Returns the number of workflows stored.
     """
     from domain import workflow as WF
 
