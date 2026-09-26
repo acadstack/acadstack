@@ -31,7 +31,7 @@ async def course_view(my_id):
 
 @C.rbac(permissions=["course.save"])
 async def course_save():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     logging.debug("Saving course details: {}".format(fd))
     crs = CRS.save_course(apiVC.current_actor(), fd,
                           C.update_model_skip_unknown)
@@ -40,7 +40,7 @@ async def course_save():
 
 @C.rbac
 async def course_find():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     status, code = fd.get("status"), fd.get("code")
     ltp, title = fd.get("ltp"), fd.get("title")
     author_id, dept = fd.get("author"), fd.get("dept")
@@ -142,7 +142,7 @@ async def bulk_add_courses():
 @C.rbac(permissions=["course.manage_slot_timings"])
 async def save_course_slot_timings():
     try:
-        fd = await request.get_json(force=True)
+        fd = await apiVC.json_body()
         cst = DB.CourseSlotTiming()
         C.update_model_skip_unknown(cst, fd)
         if cst.id and cst.id > 0:

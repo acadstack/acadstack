@@ -39,7 +39,7 @@ async def config_export():
 
 @rbac(permissions=[_IMPORT_PERM])
 async def config_import():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     document = fd.get("document") if isinstance(fd, dict) else None
     if not isinstance(document, dict):
         return apiVC.error_json(

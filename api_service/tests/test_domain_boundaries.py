@@ -33,6 +33,24 @@ def imported_names(tree):
                 yield node.module.split(".")[0]
 
 
+def transitively_imported_modules(module_name, seen=None):
+    """Every local (api_service) module reachable from ``module_name``,
+    following imports recursively. Third-party/stdlib names that don't
+    resolve to a file here are leaves and stop the walk."""
+    if seen is None:
+        seen = set()
+    if module_name in seen:
+        return seen
+    seen.add(module_name)
+    path = API_SERVICE_DIR / f"{module_name}.py"
+    if not path.is_file():
+        return seen
+    tree = ast.parse(path.read_text())
+    for name in imported_names(tree):
+        transitively_imported_modules(name, seen)
+    return seen
+
+
 @pytest.mark.parametrize("path", DOMAIN_MODULES, ids=lambda p: p.name)
 def test_domain_module_does_not_import_the_http_layer(path):
     tree = ast.parse(path.read_text())
@@ -41,6 +59,32 @@ def test_domain_module_does_not_import_the_http_layer(path):
         f"{path.name} imports {sorted(offenders)}. Domain code must take "
         f"the acting user as an Actor argument instead of reading the "
         f"session; see domain/__init__.py.")
+
+
+#: Transitively walking "quart" itself would also flag common.py, which
+#: several domain modules import for non-session helpers (AcadStackException,
+#: sql_by_id, ...) and which happens to import quart for functions domain
+#: code never calls. That's pre-existing and out of scope here; api_common
+#: is the one specifically named by the service-layer boundary (it is the
+#: HTTP adapter's toolbox, built to read the session), so the transitive
+#: check is scoped to it.
+TRANSITIVE_FORBIDDEN_IMPORTS = {"api_common"}
+
+
+@pytest.mark.parametrize("path", DOMAIN_MODULES, ids=lambda p: p.name)
+def test_domain_module_does_not_transitively_import_the_http_layer(path):
+    """A domain module that imports a plain helper module which itself
+    imports api_common reintroduces the session dependency just as surely
+    as importing it directly -- see docs/architecture.md's service-layer
+    section."""
+    module_name = path.stem
+    reachable = transitively_imported_modules(module_name) - {module_name}
+    offenders = TRANSITIVE_FORBIDDEN_IMPORTS & reachable
+    assert not offenders, (
+        f"{path.name} transitively imports {sorted(offenders)} through "
+        f"one of its own imports. Domain code (and anything it imports) "
+        f"must take the acting user as an Actor argument instead of "
+        f"reading the session; see domain/__init__.py.")
 
 
 #: A subscript of a bare name `session` -- not acad_session[:4] and not

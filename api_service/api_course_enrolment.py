@@ -13,7 +13,6 @@ property of the endpoint. Resource-scoped checks ("is this *your*
 enrolment") live in the domain, where the data is. See the service-layer
 section of docs/architecture.md, and domain/__init__.py.
 """
-from io import BytesIO
 import logging
 from quart import Blueprint, request
 from quart.helpers import send_file
@@ -81,8 +80,9 @@ async def get_advisor_courses_enrol():
 
 @rbac
 async def get_passed_courses(user_id):
-    VAL.is_current_user_in_role_and_id("STU", "user_id", user_id, 
-        "Student attempted to access passed courses data for someone else.")
+    VAL.is_current_user_in_role_and_id("STU", "user_id", user_id,
+        "Student attempted to access passed courses data for someone else.",
+        actor=apiVC.current_actor())
 
     codes = ENR.passed_course_codes(user_id)
     if codes is None:
@@ -124,7 +124,7 @@ async def _enrolments_csv_response(co_id, is_grades):
     colnames, rows = ENR.enrolment_export_rows(
         co_id, is_grades, actor=apiVC.current_actor())
 
-    fp = _rows_to_csv_file(colnames, rows)
+    fp = apiVC.rows_to_csv(colnames, rows)
     return await send_file(fp, attachment_filename=f"{co.course.code}_students.csv",
                      as_attachment=True)
 
@@ -133,14 +133,12 @@ async def _enrolments_csv_response(co_id, is_grades):
 async def download_course_enrolments(dept_name, entry_year, acad_session):
     if not apiVC.has_permission("enrolment.download_csv"):
         return apiVC.error_json("Students cannot download!")
-    if dept_name == "-":
-        dept_name = ""
-    if entry_year == "-":
-        entry_year = ""
+    dept_name = apiVC.none_if_dash(dept_name)
+    entry_year = apiVC.none_if_dash(entry_year)
 
     colnames, rows = ENR.enrolments_by_dept_year_session(
         dept_name, entry_year, acad_session)
-    fp = _rows_to_csv_file(colnames, rows)
+    fp = apiVC.rows_to_csv(colnames, rows)
     return await send_file(fp,
                      attachment_filename="generate_course_enrolments.csv",
                      as_attachment=True)
@@ -148,8 +146,9 @@ async def download_course_enrolments(dept_name, entry_year, acad_session):
 
 @rbac
 async def get_student_academics(my_id):
-    VAL.is_current_user_in_role_and_id("STU", "user_id", my_id, 
-        "Student attempted to access other's academics details.")
+    VAL.is_current_user_in_role_and_id("STU", "user_id", my_id,
+        "Student attempted to access other's academics details.",
+        actor=apiVC.current_actor())
 
     stu = DB.User.get_or_none(my_id)
     if not stu:
@@ -169,7 +168,7 @@ async def get_course_enrollments(my_id):
 @rbac(permissions=["enrolment.request"])
 async def enroll_in_courses():
     try:
-        fd = await request.get_json(force=True)
+        fd = await apiVC.json_body()
         logging.debug("Enrolling student in courses: {}".format(fd))
         outcome = ENR.request_enrolment(
             apiVC.current_actor(), int(fd["user_id"]), fd["co_ids"],
@@ -192,7 +191,7 @@ async def enroll_in_courses():
 
 @rbac(permissions=["enrolment.change_status"])
 async def change_enroll_status():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     eids = fd.get("ids")
     status = fd.get("status")
     if len(eids) == 0:
@@ -217,20 +216,9 @@ async def course_enrollment_view(my_id):
 
 @rbac
 async def course_enrollment_save():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     logging.debug(f"Saving course enrollment details: {fd}")
     outcome = ENR.save_enrolment(apiVC.current_actor(), fd)
     if outcome.error:
         return apiVC.error_json(outcome.error)
     return await course_enrollment_view(outcome.enrolment_id)
-
-
-def _rows_to_csv_file(colnames, rows) -> BytesIO:
-    result = [','.join(colnames)]
-    for row in rows:
-        result.append(','.join(map(str, row)))
-    fp = BytesIO()
-    fp.write('\n'.join(result).encode('utf-8'))
-    fp.flush()
-    fp.seek(0)
-    return fp

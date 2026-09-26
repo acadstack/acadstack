@@ -122,7 +122,7 @@ def _is_course_approved(cour_dict):
 
 @C.rbac(permissions=["course_offering.save"])
 async def course_offering_save():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     logging.info("Saving course offering details: {}".format(fd))
     cid = int(fd.get("id") or 0)
 
@@ -132,7 +132,7 @@ async def course_offering_save():
             return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
 
         if not (apiVC.has_permission("course_offering.edit_any")
-                or VAL.validate_course_instructor(cid)):
+                or VAL.validate_course_instructor(cid, actor=apiVC.current_actor())):
             return apiVC.error_json("Only the course cordinator can make changes.")
 
     acad_session = (fd.get("acad_session") or "").upper()
@@ -150,7 +150,7 @@ async def course_offering_save():
         if cid:
             co = DB.CourseOffering.get_by_id(cid)
             old_status = co.status
-            VAL.validate_coff_status(co)
+            VAL.validate_coff_status(co, actor=apiVC.current_actor())
             C.update_model_skip_unknown(co, fd)
             if apiVC.update_entity(DB.CourseOffering, co) != 1:  # if rc != 1:
                 return apiVC.error_json("Could not update. Please try again.")
@@ -199,11 +199,11 @@ async def grades_upload():
         return apiVC.error_json("Grades upload is not open!")
     # Only the course instructor OR an academic-section/dean bypass may upload the course grades
     if not (apiVC.has_permission("grades.upload_any")
-            or VAL.validate_course_instructor(co_id)):
+            or VAL.validate_course_instructor(co_id, actor=apiVC.current_actor())):
         return apiVC.error_json("Only the course coordinator can upload grades for the course!")
 
     # Raises exception when change not allowed
-    VAL.validate_coff_status(co_id)
+    VAL.validate_coff_status(co_id, actor=apiVC.current_actor())
 
     grades_file = (await request.files)['grades_file']
     if grades_file.filename == '':
@@ -308,7 +308,7 @@ def __fill_co_search_result(row, enrol_count):
 
 @C.rbac
 async def course_offering_find():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     code, title, ltp, instructor, status, \
     instructor_id, dept, acad_session = \
         fd.get("code"), fd.get("title"), fd.get("ltp"), \

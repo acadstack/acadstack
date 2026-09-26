@@ -2,7 +2,7 @@ import logging
 import os
 from pathlib import Path
 import uuid
-from quart import Blueprint, request
+from quart import Blueprint
 from quart.helpers import send_file
 from quart.utils import run_sync
 from io import BytesIO
@@ -56,7 +56,7 @@ async def download_grade_status(grades_st, acad_session):
     cursor = DB.db.execute_sql(C.sql_by_id(sql_id),
                             [str(acad_session)])
 
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="download_grade_status.csv",
                      as_attachment=True)
@@ -151,7 +151,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
                         as_attachment=True)
 
 
-def _get_semester_grade_data(entry_no, acad_session, enrol_type, actor=None):
+def _get_semester_grade_data(entry_no, acad_session, enrol_type, actor):
     acad_session = acad_session.strip().upper()
     report_data = {}
     if acad_session and not apiVC.academic_session_valid(acad_session):
@@ -213,11 +213,12 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type, actor=None):
 
 @C.rbac(permissions=["grades.export"])
 async def generate_semester_grade():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     entry_no = fd.get("entry_no")
     acad_session = fd.get("acad_session")
     enrol_type = fd.get("enrol_type")
-    resp = _get_semester_grade_data(entry_no, acad_session, enrol_type)
+    resp = _get_semester_grade_data(entry_no, acad_session, enrol_type,
+                                     actor=apiVC.current_actor())
     # TODO: Update the UI for this change
     if resp:
         return apiVC.ok_json(resp)
@@ -227,7 +228,8 @@ async def generate_semester_grade():
 
 @C.rbac(permissions=["grades.export"])
 async def download_sem_grade(acad_session, entry_no, enrol_type):
-    data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
+    data = _get_semester_grade_data(entry_no, acad_session, enrol_type,
+                                     actor=apiVC.current_actor())
     data['enrol_type'] = enrol_type
     # TODO: Check the HTML and the data's structure
     html = C.fill_template("report_templates", "semester_grades.html", data)
@@ -295,7 +297,7 @@ def _bulk_download_sem_grade(form_data, job_key, upload_folder, actor):
 @C.rbac(permissions=["grades.export"])
 async def bulk_download_sem_grade():
     job_key = str(uuid.uuid4())
-    form_data = await request.get_json(force=True)
+    form_data = await apiVC.json_body()
     job_key = TH.create_task(_bulk_download_sem_grade, form_data, job_key,
                              apiVC.get_upload_folder(), apiVC.current_actor(),
                              task_id=job_key, owner=apiVC.current_login_id())
@@ -311,15 +313,13 @@ async def get_bulk_gradesheets(job_key):
 
 @C.rbac(permissions=["grades.view_distribution"])
 async def download_grade_distribution(acad_session, degree):
-    if degree == "-":
-        degree = ""
-    if acad_session == "-":
-        acad_session = ""
+    degree = apiVC.none_if_dash(degree)
+    acad_session = apiVC.none_if_dash(acad_session)
 
     cursor = DB.db.execute_sql(C.sql_by_id("generate_grade_distribution"),
                             [str(acad_session),
                              str(degree)])
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp,
                      attachment_filename="download_grade_distribution.csv",
                      as_attachment=True)
@@ -330,12 +330,11 @@ async def download_cgpa_sgpa(acad_session):
     if not apiVC.has_permission("grades.download_reports"):
         return apiVC.error_json("Students cannot download!")
 
-    if acad_session == "-":
-        acad_session = ""
+    acad_session = apiVC.none_if_dash(acad_session)
 
     cursor = DB.db.execute_sql(C.sql_by_id("generate_cgpa_sgpa"),
                             [str(acad_session)])
-    fp = apiVC.db_result_to_excel(cursor)
+    fp = apiVC.cursor_to_csv(cursor)
     return await send_file(fp, attachment_filename="download_cgpa_sgpa.csv",
                      as_attachment=True)
 
@@ -400,16 +399,11 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
     if not apiVC.has_permission("grades.download_reports"):
         return apiVC.error_json("Students cannot download!")
 
-    if dept_name == "ALL" or dept_name == "-":
-       dept_name = ""
-    if degree == "-":
-        degree = ""
-    if for_year == "-":
-        for_year = ""
-    if acad_session == "-":
-        acad_session = ""
-    if course_type == "-":
-        course_type = ""
+    dept_name = "" if dept_name == "ALL" else apiVC.none_if_dash(dept_name)
+    degree = apiVC.none_if_dash(degree)
+    for_year = apiVC.none_if_dash(for_year)
+    acad_session = apiVC.none_if_dash(acad_session)
+    course_type = apiVC.none_if_dash(course_type)
     min_credits, max_credits = CR.credit_bounds(min_credits, max_credits)
     # Each student's category totals, summed over the matching sessions.
     students, totals = {}, {}

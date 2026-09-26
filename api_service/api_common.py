@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import json, logging, os, re, uuid
+import csv, json, logging, os, re, uuid
 import numpy as np
 import acad_session as AS
 import common as C
@@ -20,9 +20,9 @@ from domain import persistence
 from domain.context import Actor
 from typing import Any, Dict, Type
 from pathlib import Path
-from io import BytesIO
+from io import BytesIO, StringIO
 from quart import current_app as APP
-from quart import (jsonify, session)
+from quart import (jsonify, request, session)
 from quart.blueprints import Blueprint
 from datetime import datetime as DT
 # Re-exported on purpose: several api_* modules call apiVC.model_to_dict().
@@ -42,7 +42,14 @@ def page_size() -> int:
 
 vbp = Blueprint('bp', __name__, template_folder='templates')
 
-# Face encodings are serialized using this encoder 
+
+def init_routes(bp: Blueprint):
+    bp.add_url_rule('/', view_func=index, methods=['GET'])
+    bp.add_url_rule('/auc', view_func=get_active_users, methods=['GET'])
+    bp.add_url_rule('/get_static_data', view_func=get_static_data, methods=['GET'])
+
+
+# Face encodings are serialized using this encoder
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
@@ -57,6 +64,17 @@ def json_to_np(json_str):
 
 def np_to_json(obj):
     return json.dumps({'obj': obj}, cls=NumpyEncoder)
+
+
+def none_if_dash(v):
+    """"-" is the frontend's "no filter selected" value for a dropdown;
+    callers treat that the same as an empty filter."""
+    return "" if v == "-" else v
+
+
+async def json_body():
+    """The request's JSON body, parsed the same way every route does."""
+    return await request.get_json(force=True)
 
 
 def entry_years_valid(years:str)->bool:
@@ -79,9 +97,7 @@ def entry_years_valid(years:str)->bool:
 
 
 def current_login_id():
-    if "user" in session:
-        u = session['user']
-        return u["login_id"]
+    return ST.current_login_id()
 
 
 def roll_number_valid(rollno:str)->bool:
@@ -173,13 +189,6 @@ def current_actor() -> Actor:
                  degree=person.degree if person else su.get("degree"),
                  dept_name=person.dept_name if person else su.get("dept"),
                  org_id=person.org_id if person else None)
-
-
-def actor_or_current(actor=None) -> Actor:
-    """Returns the actor passed in, or the session's actor when the
-    caller did not supply one. Lets a function serve both a domain
-    caller (explicit actor) and a not-yet-migrated HTTP caller."""
-    return actor if actor is not None else current_actor()
 
 
 async def get_current_user_and_nav():
@@ -458,17 +467,19 @@ def result_set_from_cursor(cursor):
     return results
 
 
-def db_result_to_excel(cursor):
+def cursor_to_csv(cursor):
     colnames = [d[0] for d in cursor.description]
     return rows_to_csv(colnames, cursor.fetchall())
 
 
 def rows_to_csv(colnames, rows):
-    """A CSV file object: a header row of ``colnames``, then ``rows``."""
-    result = [','.join(colnames)]
-    result.extend(','.join(map(str, row)) for row in rows)
-    fp = BytesIO()
-    fp.write('\n'.join(result).encode('utf-8'))
-    fp.flush()
+    """A CSV file object: a header row of ``colnames``, then ``rows``,
+    properly quoted (a plain ','.join broke on any value containing a
+    comma or newline)."""
+    text_fp = StringIO()
+    writer = csv.writer(text_fp)
+    writer.writerow(colnames)
+    writer.writerows(rows)
+    fp = BytesIO(text_fp.getvalue().encode('utf-8'))
     fp.seek(0)
     return fp

@@ -13,7 +13,6 @@ __status__ = "Development"
 """
 
 from quart import Blueprint
-from quart.views import request
 
 import api_common as apiVC
 import policy_store as PS
@@ -88,14 +87,14 @@ async def policy_versions(group):
 async def policy_validate():
     """Dry-runs a proposed ruleset through the group's builder/validator
     without storing it, so the UI can check a draft before superseding."""
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     PS.validate_payload(fd.get("group"), fd.get("payload"))
     return apiVC.ok_json("Payload is valid.")
 
 
 @rbac(permissions=[_PERM])
 async def policy_supersede():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     group = fd.get("group")
     effective_from_session = fd.get("effective_from_session")
     payload = fd.get("payload")
@@ -127,7 +126,7 @@ async def policy_close_session():
     as typed by the user, in ``confirm``: a request that merely names a
     session is not enough. Closing an already-closed session is a no-op.
     """
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     acad_session = (fd.get("acad_session") or "").strip()
     if not acad_session:
         return apiVC.error_json("Please supply the academic session to close.")

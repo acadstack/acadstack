@@ -10,7 +10,6 @@ __status__ = "Development"
 import logging
 
 from quart import Blueprint
-from quart.views import request
 import playhouse.shortcuts as PS
 
 import models as M
@@ -60,7 +59,7 @@ async def wfnote_save():
     """
     if not apiVC.has_permission("workflow_notes.manage"):
         return apiVC.error_json("Students not allowed to add workflow notes!")
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     logging.debug(f"Saving workflow note details: {fd}")
     wfn = M.WorkflowNote()
     C.update_model_skip_unknown(wfn, fd)
@@ -98,7 +97,7 @@ async def wfnote_delete(my_id):
 
 @C.rbac(permissions=["academic_calendar.manage_dates"])
 async def dates_save():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     logging.info(f"Saving academic dates : {fd}")
     session = fd.get("session")
     eventdates = fd.get("eventDates")
@@ -122,7 +121,7 @@ async def dates_save():
 
 @C.rbac
 async def dates_search():
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     res = M.AcademicCalendar.select().where(M.AcademicCalendar.acad_session
                                             == fd.get("session")).execute()
     if res:
@@ -175,7 +174,7 @@ async def workflow_save():
     row: {"message", "errors": [{"row": index into "transitions" or null,
     "message"}], "stranded": {status: record count}}.
     """
-    fd = await request.get_json(force=True)
+    fd = await apiVC.json_body()
     try:
         wf = WF.save_workflow(apiVC.current_actor(), fd)
     except WF.InvalidWorkflow as ex:

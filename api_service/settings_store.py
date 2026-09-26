@@ -512,7 +512,12 @@ def valid_audit_grade_codes() -> list:
 # ===================== Write =====================
 
 def current_login_id() -> Optional[str]:
-    """The logged-in user's id when called during a request, else None."""
+    """The logged-in user's id when called during a request, else None.
+
+    Canonical implementation; api_common.current_login_id() delegates
+    here rather than re-reading the session, so callers get the same
+    has_request_context() guard whichever name they call it by.
+    """
     try:
         if has_request_context() and "user" in session:
             return session["user"].get("login_id")

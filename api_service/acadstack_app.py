@@ -179,17 +179,9 @@ def create_app(is_testing=False):
     uploads = myapp.config['upload_folder']
     Path(uploads).mkdir(parents=True, exist_ok=True)
 
-    apiVC.vbp.add_url_rule('/', view_func=apiVC.index, methods=['GET'])
-    apiVC.vbp.add_url_rule('/auc', view_func=apiVC.get_active_users, methods=['GET'])
-    apiVC.vbp.add_url_rule('/get_static_data', view_func=apiVC.get_static_data, methods=['GET'])
-
-    # Attendance related
-    apiVC.vbp.add_url_rule('/kface_bulk_add', view_func=apiFC.kface_bulk_add, methods=['POST'])
-    apiVC.vbp.add_url_rule('/face_add', view_func=apiFC.kface_add, methods=['POST'])
-    apiVC.vbp.add_url_rule('/get_class_photo/<string:file_name>/<int:user_id>',
-                       view_func=apiFC.get_class_photo, methods=['GET'])
-
     # Initialize the routes defines in each module
+    apiVC.init_routes(apiVC.vbp)
+    apiFC.init_routes(apiVC.vbp)
     apiVF.init_routes(apiVC.vbp)
     apiAU.init_routes(apiVC.vbp)
     apiCE.init_routes(apiVC.vbp)
