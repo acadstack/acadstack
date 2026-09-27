@@ -1,0 +1,21 @@
+{
+    "host": "localhost",
+    "port": 5300,
+    "db_name": "acadstack_db",
+    "db_args": {
+        "user": "gtungi",
+        "password": "passw0rd.",
+        "host": "localhost",
+        "port": 3306
+    },
+    "demo_data": false,
+    "email": {
+        "dryrun": true,
+        "user": "****@gmail.com",
+        "password": "****",
+        "host": "smtp.gmail.com",
+        "port": 587
+    },
+    "hide_course_stats_from": ["STU"],
+    "upload_folder": "/home/auser/work/acadstack_uploads"
+}

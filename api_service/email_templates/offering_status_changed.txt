@@ -1,0 +1,9 @@
+Hello {{instructor}},
+ 
+Course offering of {{course}} ({{dept_name}}) for {{acad_session}} has been saved:
+Current status is {{new_status}}.
+
+Please contact the course instructor or the academic section if you did not intend this change.
+
+Thanks,
+AcadStack

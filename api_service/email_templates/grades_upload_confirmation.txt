@@ -1,0 +1,7 @@
+Hello,
+
+Grades for course {{title}} ({{code}}) have been successfully uploaded.
+Updated {{upd_count}} enrolment records.
+
+Thanks,
+AcadStack

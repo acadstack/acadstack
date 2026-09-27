@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:17
+    env_file:
+    # Must define POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DB_PORT
+      - ./app_env_vars_debug.env
+    container_name: acadstack_postgres
+    restart: always
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+      - ./scripts/initdb:/docker-entrypoint-initdb.d
+    ports:
+      - "${DB_PORT}:5432"
+
+  backend:
+    env_file:
+    # Must define APP_PORT
+      - ./app_env_vars_debug.env
+    build:
+      context: .
+      args:
+        - APP_PORT=${APP_PORT}
+        - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      dockerfile: api_service/Dockerfile
+    container_name: acadstack_backend
+    restart: always
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    depends_on:
+      - db
+
+  frec_service:
+    env_file:
+    # Must define FREC_PORT
+      - ./app_env_vars_debug.env
+    build:
+      context: .
+      dockerfile: frec_service/Dockerfile
+    container_name: frec_svc
+    restart: always
+    ports:
+      - "${FREC_PORT}:${FREC_PORT}"
+
+volumes:
+  pgdata:

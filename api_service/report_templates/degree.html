@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<meta charset="UTF-8">
+<html>
+ <head>
+<title>Degree Certificate</title>		
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<style>
+		@font-face {
+			font-family: 'CloisterBlack BT';
+			font-style: normal;
+			font-weight: 400;
+			src: local('CloisterBlack BT'), url('{{static_file_path}}/Tt0757m_.woff') format('woff');
+			}
+
+			@font-face {
+				    font-family: 'Simpler';
+				    font-style: normal;
+				    font-weight: 900;
+				    src: local('Simpler'), url('{{static_file_path}}/Simpler-Bold.woff') format('woff');
+				}
+
+			@font-face {
+				    font-family: 'Narad-Italic';
+				    font-style: normal;
+				    font-weight: 900;
+				    src: local('Narad-Italic'), url('{{static_file_path}}/Narad Italic.ttf') format('ttf');
+				}
+			@font-face {
+				    font-family: 'Nirmala';
+				    font-style: normal;
+				    font-weight: 900;
+				    src: local('Nirmala'), url('{{static_file_path}}/Nirmala.ttf') format('ttf');
+				}
+			.container {
+							position: relative;width: 100%;max-width: 960px;margin: 0 auto;padding: 2px;box-sizing: border-box; }
+							.column,.columns { width: 100%;float: left;box-sizing: border-box; padding:10px;}
+								/* For devices larger than 400px */
+							@media (min-width: 400px) {.container {width: 85%;padding: 0; }}
+									/* For devices larger than 550px */
+							@media (min-width: 550px) { .container {width: 80%; }.column,.columns {margin-left: 4%; }
+							.column:first-child,.columns:first-child { margin-left: 0; }
+
+							.one.column,
+							.one.columns                    { width: 4.66666666667%; }
+							.two.columns                    { width: 13.3333333333%; }
+							.three.columns                  { width: 22%;            }
+							.four.columns                   { width: 30.6666666667%; }
+							.five.columns                   { width: 39.3333333333%; }
+							.six.columns                    { width: 48%;            }
+							.seven.columns                  { width: 56.6666666667%; }
+							.eight.columns                  { width: 65.3333333333%; }
+							.nine.columns                   { width: 74.0%;          }
+							.ten.columns                    { width: 82.6666666667%; }
+							.eleven.columns                 { width: 91.3333333333%; }
+							.twelve.columns                 { width: 100%; margin-left: 0; }
+
+							.one-third.column               { width: 30.6666666667%; }
+							.two-thirds.column              { width: 65.3333333333%; }
+							.one-half.column                { width: 48%; }
+
+									  /* Offsets */
+							.offset-by-one.column,
+							.offset-by-one.columns          { margin-left: 8.66666666667%; }
+							.offset-by-two.column,
+							.offset-by-two.columns          { margin-left: 17.3333333333%; }
+							.offset-by-three.column,
+							.offset-by-three.columns        { margin-left: 26%;            }
+							.offset-by-four.column,
+							.offset-by-four.columns         { margin-left: 34.6666666667%; }
+							.offset-by-five.column,
+							.offset-by-five.columns         { margin-left: 43.3333333333%; }
+							.offset-by-six.column,
+							.offset-by-six.columns          { margin-left: 52%;            }
+							.offset-by-seven.column,
+							.offset-by-seven.columns        { margin-left: 60.6666666667%; }
+							.offset-by-eight.column,
+							.offset-by-eight.columns        { margin-left: 69.3333333333%; }
+							.offset-by-nine.column,
+							.offset-by-nine.columns         { margin-left: 78.0%;          }
+							.offset-by-ten.column,
+							.offset-by-ten.columns          { margin-left: 86.6666666667%; }
+							.offset-by-eleven.column,
+							.offset-by-eleven.columns       { margin-left: 95.3333333333%; }
+
+							.offset-by-one-third.column,
+							.offset-by-one-third.columns    { margin-left: 34.6666666667%; }
+							.offset-by-two-thirds.column,
+							.offset-by-two-thirds.columns   { margin-left: 69.3333333333%; }
+
+							.offset-by-one-half.column,
+							.offset-by-one-half.columns     { margin-left: 52%; }
+				}
+				
+					.blue {
+									color:#0470c7;font-size: 32px;font-family: 'CloisterBlack BT', Arial;
+								}
+					.red {
+									color:#db1207; font-size: 32px;font-family: 'CloisterBlack BT', Arial;
+								}
+					 .setmargin {margin-top: 5px;}
+					.hiblue {
+									color:#0470c7;font-size: 20px;font-family: 'Narad-Italic', Arial;
+								}
+					.hired {
+									color:#db1207; font-size: 25px;font-family: 'Nirmala', Arial;
+								}
+					.siblue {
+							color:#0470c7;font-size: 28px;
+						}
+					.sired {
+									color:#db1207; font-size: 28px;
+						}
+					.siblack {
+							color:#000000;font-size: 38px;font-family: 'Nirmala', Arial;
+						}
+		</style>
+		 <!-- <link href="http://fonts.cdnfonts.com/css/cloisterblack-bt" rel="stylesheet"> -->
+    </head>
+    <body>	
+		
+		<div class="container">
+			<div class="myContainer">
+				<div class="row top">
+					<div class="six columns" >
+						<h3  style="font-size: 18px;"><i>Sr. No. {{doc_sr_no}}  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							&nbsp;&nbsp;&nbsp;&nbsp;Entry No. {{entry_no.upper()}}</i></h3>
+					</div>
+				</div>
+				<div class="row">
+					<div class="twelve columns ">
+						  <center><img src="{{static_file_path}}/final-logo.jpg" width="180px" height="180px"/></center>
+					</div>
+
+				<div class="twelve columns ">
+						&nbsp;&nbsp;&nbsp;
+				  </div>
+				  <!--<div class="three columns ">
+					&nbsp;&nbsp;&nbsp;
+			  	</div>-->
+					
+					<div class="twelve columns">						
+							<center><h2 style="font-size: 32px;font-family: 'Simpler';margin-bottom: 10px;"><b>The Board of Governors</b></h2>
+								<h3 style="padding-top: 5px;font-size: 32px;font-family: 'CloisterBlack BT', Arial;margin-bottom: 10px;margin-top: 10px;">of the</h3>
+										<h1 style="font-size: 35px;padding-left: 10px;padding-right: 10px;padding-top: 5px;font-family: 'Simpler';margin-bottom: 10px;margin-top: 10px;"><b>INSTITUTE OF TECHNOLOGY [Place]</b></h1>
+										<p class="setmargin blue" style="color:#0470c7;font-size: 32px;">upon the recommendation of the Senate hereby confers on</p>
+										<h2 style="font-size: 33px;font-family: 'Simpler';"><b>{{name.upper() | replace("_", "") }} </b></h2>
+										{% set spec = "" %}
+										{% set specflag = False %}
+										{% set min_con_specializationflag = False %}
+										{% set phdflag = "" %}
+										{% if "B.Tech-M.Tech Dual" in degree %}
+											{% set printdegree = "Master of Technology"%}
+										{% elif "B.Tech" in degree %}
+											{% set printdegree = "Bachelor of Technology"%}
+										{% elif "PhD" in degree %}
+											{% set phdflag = degree %}
+											{% set printdegree = "Doctor of Philosophy" %}
+										{% elif "M.Sc" in degree %}
+											{% set printdegree = "Master of Science" %}
+										{% elif "M.Tech(Water Reso. & Envirn.)" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Master of Technology" %}
+											{% set spec = "Specialization in Water Resources and Environment" %}
+										{% elif "M.Tech(Signal Processing)" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Master of Technology" %}
+											{% set spec = "Specialization in Communication & Signal Processing" %}
+										{% elif "M.Tech(Micro. & VLSI)" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Master of Technology" %}
+											{% set spec = "Specialization in Microelectronics & VLSI Design" %}
+										{% elif "M.Tech(Power Engg.)" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Master of Technology" %}
+											{% set spec = "Specialization in Power Engineering" %}
+										{% elif "M.Tech(Thermal Engg.)" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Master of Technology" %}
+											{% set spec = "Specialization In Thermal & Fluids Engineering" %}
+										{% elif "M.Tech(Manufacturing)" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Master of Technology" %}
+											{% set spec = "Specialization in Manufacturing Engineering" %}
+										{% elif "M.Tech(Mechanics And Design)" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Master of Technology" %}
+											{% set spec = "Specialization in Mechanics & Design" %}
+										{% elif "Additional Internship" in degree %}
+											{% set specflag = True %}
+											{% set printdegree = "Bachelor of Technology" %}
+											{% set spec = "Additional Internship" %}
+										{% else %}
+										{% set printdegree = "Master of Technology" %}
+										{% endif %}
+										
+										{% if min_con_specialization %}
+											{% set min_con_specializationflag = True %}
+										{% endif %}
+
+										{% if "PhD" in degree %}
+											<p class="blue" >the Degree of </h3>
+											<p class="red" style="margin: 3px;">{{printdegree}}  </h3>
+											<p class="blue" style="margin: 3px;">for thesis entitled </h3>
+											<h3 class="sired" style="padding-left: 60px;padding-right: 60px;font-family: 'Simpler';font-weight: bold;font-size: 20px;text-indent:-40px;line-height:25px;"><b>{{thesis_title.upper()}}</b></h3>
+										{% else %}
+											<p class="blue" >the Degree of </h3>
+											<p class="red" style="margin: 3px;">{{printdegree}} </h3>
+											<p class="blue" style="margin: 3px;">in </h3>
+											<p class="red" style="margin: 3px;">{{dept_name}}</p>
+										{% if "Additional Internship" in degree %}
+											<p class="blue" style="margin: 3px;">with </h3>
+											<p class="red" style="margin: 3px;">{{spec}}</p>
+										{% elif specflag %}
+												<p class="red" style="margin: 3px;">({{spec}})</h3>
+										{% endif %}
+										{% if min_con_specialization %}
+											<p class="blue" style="margin: 3px;">with </h3><br>
+											<p class="red" style="margin: 3px;">{{min_con_specialization}}</h3>
+										{% endif %}
+										{% endif %}
+										<div class="twelve columns ">
+											&nbsp;&nbsp;&nbsp;
+									   </div><br/>
+										<p class="blue" style="line-height: 20px;">on having fulfilled the requirements.</p>
+										<p class="blue" style="line-height: 5px;">Given at Rupnagar in the Republic of India</p>
+										<p class="blue" style="line-height: 10px;font-size: 32px;">on the Thirtieth Day of December Two Thousand Twenty Two.</p>
+								</center>
+					</div>
+					 <!--<div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div>
+					<div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div> -->
+					{% if min_con_specializationflag == False and degree != "Additional Internship" %}
+							<div class="twelve columns ">
+								&nbsp;&nbsp;&nbsp;
+							</div>
+							<div class="twelve columns ">
+								&nbsp;&nbsp;&nbsp;
+							</div>
+							<!--<div class="twelve columns ">
+								&nbsp;&nbsp;&nbsp;
+							</div>-->
+					{% else %}
+							<!--<div class="twelve columns ">
+								&nbsp;&nbsp;&nbsp;
+							</div>-->
+							<!--<div class="twelve columns ">
+								&nbsp;&nbsp;&nbsp;
+							</div>-->
+					{% endif %}
+ 						<div class="twelve columns footer">
+						<img src="{{static_file_path}}/reg-sign1.png" style="Padding-left:90px;">
+						<img src="{{static_file_path}}/direct-sign.png" style="Padding-left:120px;">
+						<img src="{{static_file_path}}/bog-sign.jpg" style="Padding-left:220px;">
+						<center><p style="font-family: 'CloisterBlack BT', Arial;font-size: 30px;margin: none;margin-bottom: 10px;margin-top: 1px;">Registrar  
+						&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						Chairman, Senate &nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						Chairman, Board of Governors</p></center>
+						</div>
+				</div>
+				 
+				{% if "B.Tech-M.Tech Dual" in degree %}
+					<div class="twelve columns footer">
+							<center><p class="blue" style="margin: 5px;font-size: 28px;">M.Tech Degree Awarded under B.Tech-M.Tech Dual Degree Programme.</p></center>
+					</div>
+				{% elif specflag == True %}
+					<div class="one columns ">
+						&nbsp;&nbsp;&nbsp;
+			  		</div>
+					  <!-- <div class="three columns ">
+						&nbsp;&nbsp;&nbsp;caassd
+				   </div> -->
+				{% elif specflag == False and  min_con_specializationflag == False%}
+					<div class="twelve columns ">
+						&nbsp;&nbsp;&nbsp;
+					</div>
+			  {% endif %}
+			</div>
+			{% if min_con_specializationflag == True %}
+						<div class="six columns ">
+							&nbsp;&nbsp;&nbsp;
+					   </div>
+			{% endif %}
+			{% if "PhD" in degree %}
+						<div class="six columns ">
+							&nbsp;&nbsp;&nbsp;
+					   </div>
+			{% endif %}
+			<div class="twelve columns ">
+					&nbsp;&nbsp;&nbsp;
+		  	</div> 
+		</div>
+		
+<!--Hindi Version-->
+		<div class="container">
+			<div class="myContainer" >
+				<div class="row top">
+					 <!--<div class="twelve columns ">
+        	                                &nbsp;&nbsp;&nbsp;
+                	                </div>-->
+
+					{% if degree !="PhD" %}
+						<div class="twelve columns" style="text-align:right;">
+							&nbsp;&nbsp;
+						</div>
+					{% endif %}	
+					{% if specflag == False and min_con_specializationflag == False%}
+						<div class="twelve columns">&nbsp;&nbsp;</div>
+					{% endif %}	
+
+					<div class="six columns" style="text-align:left;">
+						<h3  style="font-size: 20px;"><i>क्रम संख्या {{doc_sr_no}} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							 &nbsp;&nbsp; &nbsp;&nbsp;&nbsp;अनुक्रमांक {{entry_no.upper()}}</i></h3>
+					</div>
+				</div>
+				<div class="row">
+					<div class="twelve columns ">
+						<center><img src="{{static_file_path}}/final-logo.jpg" width="180px" height="180px"/></center>
+					</div>
+				<!--<div class="twelve columns ">
+						&nbsp;&nbsp;&nbsp;
+				  </div>-->
+				  <div class="three columns ">
+					&nbsp;&nbsp;&nbsp;
+			  	</div>
+					<div class="twelve columns">
+							<center>
+								<!-- <p class="setmargin siblack" style="font-family: 'Nirmala';margin-bottom: 20px;">अधिशासी मंडल</p>
+								<h2 class="siblue" style="color:#057ad9;font-size: 30px;font-family: 'Nirmala';font-weight: bold;"><b>को</b></h2>
+								<p style="font-size: 40px;padding-left: 10px;padding-right: 10px;font-family: 'Nirmala';font-weight: bold;margin-bottom: 15px;margin-top: 20px;"><b><i>भारतीय प्रौद्योगिकी संस्थान रोपड़</i></b></p> -->
+								<!-- <h3 style="font-size: 35px;padding-left: 10px;padding-right: 10px;padding-top: 5px;font-family: 'Nirmala';font-weight: bold;"><i>भारतीय प्रौद्योगिकी संस्थान रोपड़</i></h3> -->
+								<!-- <p class="setmargin siblue" style="color:#057ad9;font-weight: bold;margin-bottom: 15px;margin-top: 20px;font-weight: bold;"><b>अभिषद् की अनुशंसा पर</b></p>
+								<h2 style="font-size: 35px;font-family: 'Nirmala';font-weight: bold;margin-bottom: 15px;margin-top: 20px;font-weight: bold;"><b>{{hi_name}}</b></h2>
+								<h2 class="siblue" style="color:#057ad9;font-size: 30px;font-family: 'Nirmala';font-weight: bold;"><b>को</b></h2> -->
+
+
+									<h2 class="siblack" style="font-family: 'Nirmala';font-weight: bold;line-height: 35px;color: #000000;font-size: 33px;"><i><b><strong>अधिशासी मंडल</strong></b></i></h2>
+									<h2 class="siblack" style="line-height: 30px;font-family: 'Nirmala';font-weight: 900;color: #000000;font-size: 40px;"><i><em>प्रौद्योगिकी संस्थान [स्थान]</em></i></h2>
+									<h2 class="siblack" style="line-height: 35px;font-family: 'Nirmala';font-weight: bold;font-size: 32px;color:#0470c7"><i><b>अभिषद् की अनुशंसा पर</b></i></h2>
+									<!-- <h2 style="line-height: 35px;font-family: 'Nirmala';font-weight: bold;color: #000000;font-size: 50px;"><b><i>{{hi_name}}</i></b></h2> -->
+									<h2 style="font-size: 35px;font-family: 'Nirmala';font-weight: bold;margin-bottom: 15px;margin-top: 20px;font-weight: bold;font-size: 40px;"><b>{{hi_name}}</b></h2>
+									<!--<img src="{{static_file_path}}/img/testuser.png" style="padding-top: 20px;">-->
+										{% if "PhD" in degree %}
+											<h2 class="siblack" style="line-height: 35px;font-family: 'Nirmala';font-weight: bold;font-size: 28px;color:#0470c7"><b><i>को शीर्षक</i></b></h2>
+										{% else %}	
+											<h2 class="siblack" style="line-height: 35px;font-family: 'Nirmala';font-weight: bold;font-size: 28px;color:#0470c7"><b><i>को</i></b></h2>
+										{% endif %}
+										{% set spec = "" %}
+										{% set specflag = False %}
+										{% if "B.Tech-M.Tech Dual" in degree %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात"%}
+										{% elif "B.Tech" in degree %}
+											{% set hiprintdegree = "प्रौद्योगिकी स्नातक"%}
+										{% elif "PhD" in degree %}
+											{% set hiprintdegree = "डॉक्टर ऑफ फिलॉसफी" %}
+										{% elif "M.Sc" in degree %}
+											{% set hiprintdegree = "विज्ञान निष्णात" %}
+										{% elif "M.Tech(Water Reso. & Envirn.)" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% set hispec = "जल संसाधन एवं पर्यावरण में विशेषज्ञता" %}
+										{% elif "M.Tech(Signal Processing)" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% set hispec = "संचार एवं संकेत प्रक्रमण में विशेषज्ञता" %}
+										{% elif "M.Tech(Micro. & VLSI)" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% set hispec = "सूक्ष्म इलेक्ट्रॉनिकी एवं वी.एल.एस.आई.<br> अभिकल्प में विशेषज्ञता" %}
+										{% elif "M.Tech(Power Engg.)" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% set hispec = "शक्ति अभियांत्रिकी में विशेषज्ञता" %}
+										{% elif "M.Tech(Thermal Engg.)" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% set hispec = "ऊष्मा एवं तरल अभियांत्रिकी में विशेषज्ञता" %}
+										{% elif "M.Tech(Manufacturing)" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% set hispec = "विनिर्माण अभियांत्रिकी में विशेषज्ञता" %}
+										{% elif "M.Tech(Mechanics And Design)" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% set hispec = "यांत्रिकी एवं अभिकल्प में विशेषज्ञता" %}
+										{% elif "Additional Internship" in degree %}
+											{% set specflag = True %}
+											{% set hiprintdegree = "प्रौद्योगिकी स्नातक" %}
+											{% set hispec = "अतिरिक्त प्रशिक्षुता" %}
+										{% else %}
+											{% set hiprintdegree = "प्रौद्योगिकी निष्णात" %}
+											{% endif %}
+									
+										{% if "Computer Science and Engineering" in dept_name %}
+											{% set hidept_name = "कंप्यूटर विज्ञान एवं  अभियांत्रिकी"%}
+										{% elif "Mathematics and Computing" in dept_name %}
+											{% set hidept_name = "गणित और कंप्यूटिंग"%}
+										{% elif "Artificial Intelligence" in dept_name %}
+											{% set hidept_name = "कृत्रिम बुद्धिमत्ता" %}
+										{% elif "Civil Engineering" in dept_name %}
+											{% set hidept_name = "सिविल अभियांत्रिकी" %}
+										{% elif "Chemical Engineering" in dept_name %}
+											{% set hidept_name = "रासायनिक अभियांत्रिकी" %}
+										{% elif "Electrical Engineering" in dept_name %}
+											{% set hidept_name = "विद्युत अभियांत्रिकी" %}
+										{% elif "Mechanical Engineering" in dept_name %}
+											{% set hidept_name = "यांत्रिकी अभियांत्रिकी" %}
+										{% elif "Biomedical Engineering" in dept_name %}
+											{% set hidept_name = "जैवचिकित्सा अभियांत्रिकी" %}
+										{% elif "Metallurgical and Materials Engineering" in dept_name %}
+											{% set hidept_name = "धातुकी एवं पदार्थ अभियांत्रिकी" %}
+										{% elif "Mathematics" in dept_name %}
+											{% set hidept_name = "गणित" %}
+										{% elif "Physics" in dept_name %}
+											{% set hidept_name = "भौतिक विज्ञान" %}
+										{% elif "Chemistry" in dept_name %}
+											{% set hidept_name = "रसायन विज्ञान" %}
+										{% elif "Humanities and Social Sciences" in dept_name %}
+											{% set dept_name = "मानविकी एवं सामाजिक विज्ञान" %}
+										{% else %}
+										{% set hidept_name = "सभी विभाग" %}
+										{% endif %}
+
+										{% set himin_con_specialization = "" %}
+										{% set himin_con_specialization_flag = False %}
+										{% if "Minor in Biomedical Engineering" in min_con_specialization %}
+											{% set himin_con_specialization_flag = True %}
+											{% set himin_con_specialization = "कंप्यूटर विज्ञान एवं अभियांत्रिकी में गौणत:"%}
+										{% elif "Minor in Chemistry" in min_con_specialization %}
+											{% set himin_con_specialization_flag = True %}
+											{% set himin_con_specialization = "कंप्यूटर विज्ञान एवं अभियांत्रिकी में गौणत:"%}
+										{% elif "Minor in Computer Science and Engineering" in min_con_specialization %}
+											{% set himin_con_specialization_flag = True %}
+											{% set himin_con_specialization = "कंप्यूटर विज्ञान एवं अभियांत्रिकी में गौणत:" %}
+										{% elif "Minor in Physics" in min_con_specialization %}
+											{% set himin_con_specialization_flag = True %}
+											{% set himin_con_specialization = "भौतिक विज्ञान में गौणत:" %}
+										{% elif "Minor in Electronics & Communication Engineering" in min_con_specialization %}
+											{% set himin_con_specialization_flag = True %}
+											{% set himin_con_specialization = "इलेक्ट्रॉनिक एवं संचार अभियांत्रिकी में गौणत:" %}
+										{% elif "Concentration in Artificial Intelligence" in min_con_specialization %}
+											{% set himin_con_specialization_flag = True %}
+											{% set himin_con_specialization = "कृत्रिम बुद्धिमत्ता में संकेन्द्रण" %}
+										{% elif "Concentration in Manufacturing" in min_con_specialization %}
+											{% set himin_con_specialization_flag = True %}
+											{% set himin_con_specialization = "विनिर्माण अभियांत्रिकी में संकेन्द्रण" %}
+										{% else %}
+											{% set himin_con_specialization = "प्रौद्योगिकी निष्णात" %}
+											{% endif %}
+																		
+										{% if "PhD" in degree %}											
+											<!-- <h3 class="sired" style="padding-left: 20px;padding-right: 20px;font-family: 'Nirmala';font-weight: bold;font-size: 18px;"><b>{{thesis_title.upper()}}</b></h3> -->
+											<h3 class="sired" style="padding-left: 60px;padding-right: 60px;font-family: 'Simpler';font-weight: bold;font-size: 20px;text-indent:-40px;line-height:25px;"><b>{{thesis_title.upper()}}</b></h3>
+											<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>में</i></b></h3>
+											<!-- <h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 35px;"><b><i>में</i></b></h3> -->
+											<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>विद्या वाचस्पति</i></b></h3><br>
+										{% else %}
+											<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>{{hidept_name}}</i></b></h3>
+											{% if "Additional Internship" in degree %}
+												<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>में</i></b></h3>
+												<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>({{hispec}})</i></b></h3>
+												<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>{{  hiprintdegree  }} </i></b></h3>
+											{% else %}
+												{% if specflag %}
+													<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>({{hispec}})</i></b></h3>
+												{% endif %}
+												<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 36px;"><b><i>में</i></b></h3>
+												{% if himin_con_specialization_flag %}
+													<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>({{  himin_con_specialization  }}) </i></b></h3>
+												{% endif %}
+												<!-- <h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 35px;"><b><i>में</i></b></h3> -->
+												<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>{{hiprintdegree}}</i></b></h3><br>
+											{% endif %}
+										{% endif %}
+
+										<h4 class="siblue" style="font-family: 'Nirmala';font-weight: bold;line-height: 10px;font-size: 28px;"><b><i>की उपाधि</i></h4></b>
+										<h4 class="siblue" style="line-height: 10px;font-family: 'Nirmala';font-weight: bold;font-size: 28px;"><b><i>विहित अपेक्षाओं को पूरा कर लेने पर</i></b></h4>
+										<h4 class="siblue" style="line-height: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 28px;"><b><i>तीस दिसंबर दो हज़ार बाईस को भारत गणराज्य </i></b></h4>
+										<h4 class="siblue" style="line-height: 10px;font-family: 'Nirmala';font-weight: bold;font-size: 28px;"><b><i>के रूपनगर में प्रदान करता है।</i></b></h4>
+								</center>
+					</div>
+					<!-- <div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div>
+					<div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div> -->
+					<!-- <div class="twelve columns ">
+						&nbsp;&nbsp;&nbsp;
+				   </div> -->
+
+				   {% if min_con_specializationflag == False %}
+				   		<div class="twelve columns ">
+					   		&nbsp;&nbsp;&nbsp;
+				   		</div>
+						   <div class="twelve columns ">
+							&nbsp;&nbsp;&nbsp;
+						</div>
+				   		<!--<div class="twelve columns ">
+					   		&nbsp;&nbsp;&nbsp;
+				   		</div>-->
+		   			{% else %}
+				   		<!--<div class="twelve columns ">
+					   		&nbsp;&nbsp;&nbsp;
+				   		</div>-->
+		   			{% endif %}	
+						<div class="twelve columns footer">
+						<img src="{{static_file_path}}/reg-sign1.png" style="Padding-left:50px;">
+                                                <img src="{{static_file_path}}/direct-sign.png" style="Padding-left:220px;">
+                                                <img src="{{static_file_path}}/bog-sign.jpg" style="Padding-left:250px;"> 
+						<center><p style="font-family: 'Nirmala', Arial;font-size: 26px;margin: none;margin-bottom: 10px;margin-top: 1px;"><b><i>कुलसचिव</i></b>
+						&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						<b><i>अध्यक्ष, अभिषद् </i></b>&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						<b><i>अध्यक्ष, अधिशासी मंडल</i></b></p></center>
+						</div>
+				</div>
+				 
+				{% if "B.Tech-M.Tech Dual" in degree %}
+					<div class="twelve columns footer">
+							<!-- <center><p class="blue" style="margin: 5px;font-size: 22px;font-family: 'Nirmala',Arial;font-weight: bold">प्रौद्योगिकी स्नातक-प्रौद्योगिकी निष्णात द्वि-उपाधि पाठ्यक्रम अन्तर्गत प्रौद्योगिकी निष्णात की उपाधि प्रधान प्रदान की गई.</p></center> -->
+							<center><h4 class="blue" style="margin: 5px;font-size: 20px;font-family:'Narad-Italic',Arial;font-weight: 900;"><i>प्रौद्योगिकी स्नातक-प्रौद्योगिकी निष्णात द्वि-उपाधि पाठ्यक्रम अन्तर्गत प्रौद्योगिकी निष्णात की उपाधि प्रधान प्रदान की गई.</i></h4></center>
+					</div>
+				{% endif %}
+			</div>
+			{% if "B.Tech-M.Tech Dual" in degree %}
+				<div class="twelve columns ">
+					&nbsp;&nbsp;&nbsp;
+		  		</div>
+		  {% endif %}
+		</div>
+		
+		{% if "B.Tech-M.Tech Dual" in degree %}
+		<div class="container">
+			<div class="myContainer">
+				<br><br>
+				<div class="row top">
+					<!-- <div class="six columns">&nbsp;&nbsp;</div> -->
+					<div class="six columns" style="text-align:right;">
+						<!-- <h3><i>Enter No. {{entry_no.upper()}}</i></h3> -->
+						<h3  style="font-size: 18px;"><i>Sr.No. {{doc_sr_no}}{{doc_sr_no}} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							&nbsp;Entry No. {{entry_no.upper()}}</i></h3>
+					</div>
+				</div>
+				<div class="row">
+					<div class="twelve columns ">
+						<center><img src="{{static_file_path}}/final-logo.jpg" width="180px" height="180px"/></center>
+				  </div>
+				  <div class="twelve columns ">
+					  &nbsp;&nbsp;&nbsp;
+				</div>
+				<div class="three columns ">
+				  &nbsp;&nbsp;&nbsp;
+				</div>
+					<div class="twelve columns">						
+							<center><h2 style="font-size: 35px;font-family: 'Simpler';margin-bottom: 10px;"><b>The Board of Governors</b></h2>
+								<h3 style="padding-top: 5px;font-size: 33px;font-family: 'CloisterBlack BT', Arial;margin-bottom: 10px;margin-top: 10px;">of the</h3>
+								<h1 style="font-size: 38px;padding-left: 10px;padding-right: 10px;padding-top: 5px;font-family: 'Simpler';margin-bottom: 10px;margin-top: 10px;"><b>INSTITUTE OF TECHNOLOGY [Place]</b></h1>
+								<p class="setmargin blue" style="color:#0470c7;font-size: 35px;">upon the recomandation of the Senate hereby confers on</p>
+								<h2 style="font-size: 30px;font-family: 'Simpler';"><b>{{name.upper() | replace("_", "") }}</b></h2>
+										{% set spec = "" %}
+										{% set specflag = False %}
+										{% if "B.Tech-M.Tech Dual" in degree %}
+											{% set printdegree = "Bachelor of Technology"%}
+										{% endif %}
+									
+										<p class="blue" >the Degree of </h3>
+										<p class="red" style="margin: 5px;">{{printdegree}} </h3>
+										{% if specflag %}
+											<p class="red" style="margin: 5px;">({{spec}})</h3>
+										{% endif %}
+										<p class="blue" style="margin: 5px;">in </h3>
+										<p class="red" style="margin: 5px;">{{dept_name}}</p><br>
+										<p class="blue" style="line-height: 10px;">on having fulfilled the requirements.</p>
+										<p class="blue" style="line-height: 5px;">Given at Rupnagar in the Republic of India</p>
+										<p class="blue" style="line-height: 10px;font-size: 35px;">on the Thirtieth Day of December Two Thousand Twenty Two.</p>
+								</center>
+					</div>
+					<!-- <div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div>
+					<div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div> -->
+					<div class="twelve columns ">
+						&nbsp;&nbsp;&nbsp;
+				   </div>
+						<div class="twelve columns footer">
+						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="{{static_file_path}}/reg-sign1.png" >
+						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="{{static_file_path}}/direct-sign.png">
+						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="{{static_file_path}}/bog-sign.jpg" >
+						<center><p style="font-family: 'CloisterBlack BT', Arial;font-size: 28px;margin: none;margin-bottom: 10px;">Registrar  
+						&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						Chairman, Senate &nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						Chairman, Board of Governors</p></center>
+						</div>
+				</div>
+				 
+				{% if "B.Tech-M.Tech Dual" in degree %}
+					<div class="twelve columns footer">
+							<center><p class="blue" style="margin: 5px;font-size: 28px;">B.Tech Degree Awarded under B.Tech-M.Tech Dual Degree Programme.</p></center>
+					</div>
+				{% endif %}
+				</div>
+				<!-- <div class="twelve columns ">
+					&nbsp;&nbsp;&nbsp;
+			  </div> -->
+		</div>
+		
+		<div class="container">
+			<div class="myContainer" >
+				<div class="row top">
+					<!-- <div class="six columns">&nbsp;&nbsp;</div> -->
+					<div class="six columns" style="text-align:left;">
+						<h3  style="font-size: 20px;"><i>क्रम संख्या {{doc_sr_no}}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+							&nbsp;अनुक्रमांक {{entry_no.upper()}}</i></h3>
+					</div>
+				</div>
+				<div class="row">
+					<div class="twelve columns ">
+						<center><img src="{{static_file_path}}/final-logo.jpg" width="150px" height="170px"/></center>
+				  </div>
+				  <div class="twelve columns ">
+					  &nbsp;&nbsp;&nbsp;
+				</div>
+				<div class="three columns ">
+				  &nbsp;&nbsp;&nbsp;
+				</div>
+					<div class="twelve columns">
+							<center>
+							<!-- <p class="setmargin siblack" style="font-family: 'Nirmala';margin-bottom: 20px;">अधिशासी मंडल</p>
+								<h2 class="siblue" style="color:#057ad9;font-size: 30px;font-family: 'Nirmala';font-weight: bold;"><b>को</b></h2>
+								<p style="font-size: 40px;padding-left: 10px;padding-right: 10px;font-family: 'Nirmala';font-weight: bold;margin-bottom: 15px;margin-top: 20px;"><b><i>भारतीय प्रौद्योगिकी संस्थान रोपड़</i></b></p> -->
+								<!-- <h3 style="font-size: 35px;padding-left: 10px;padding-right: 10px;padding-top: 5px;font-family: 'Nirmala';font-weight: bold;"><i>भारतीय प्रौद्योगिकी संस्थान रोपड़</i></h3> -->
+								<!-- <p class="setmargin siblue" style="color:#057ad9;font-weight: bold;margin-bottom: 15px;margin-top: 20px;font-weight: bold;"><b>अभिषद् की अनुशंसा पर</b></p>
+								<h2 style="font-size: 35px;font-family: 'Nirmala';font-weight: bold;margin-bottom: 15px;margin-top: 20px;font-weight: bold;"><b>{{hi_name}}</b></h2>
+								<h2 class="siblue" style="color:#057ad9;font-size: 30px;font-family: 'Nirmala';font-weight: bold;"><b>को</b></h2> -->
+
+
+								<h2 class="siblue" style="font-family: 'Nirmala';font-weight: bolder;line-height: 30px;color: #000000;font-size: 26px;"><b><i>अधिशासी मंडल</i></h4></b>
+								<h2 class="siblue" style="line-height: 25px;font-family: 'Nirmala';font-weight: bolder;color: #000000;font-size: 28px;"><b><i>भारतीय प्रौद्योगिकी संस्थान रोपड़</i></b></h4>
+								<h2 class="siblue" style="line-height: 30px;font-family: 'Nirmala';font-weight: bolder;font-size: 26px;"><b><i>अभिषद् की अनुशंसा पर</i></b></h4>
+								<h2 style="line-height: 30px;font-family: 'Nirmala';font-weight: bolder;color: #000000;font-size: 38px;"><b><i>{{hi_name}}</i></b></h4>
+								<h2 class="siblue" style="line-height: 30px;font-family: 'Nirmala';font-weight: bolder;font-size: 26px;"><b><i>को</i></b></h4>
+
+									{% set spec = "" %}
+									{% set specflag = False %}
+									{% if "B.Tech-M.Tech Dual" in degree %}
+									{% set hiprintdegree = "प्रौद्योगिकी स्नातक"%}
+									{% endif %}
+
+										{% if "Computer Science and Engineering" in dept_name %}
+											{% set hidept_name = "कंप्यूटर विज्ञान एवं अभियांत्रिकी"%}
+										{% elif "Mathematics and Computing" in dept_name %}
+											{% set hidept_name = "गणित और कंप्यूटिंग"%}
+										{% elif "Artificial Intelligence" in dept_name %}
+											{% set hidept_name = "कृत्रिम बुद्धिमत्ता" %}
+										{% elif "Civil Engineering" in dept_name %}
+											{% set hidept_name = "सिविल अभियांत्रिकी" %}
+										{% elif "Chemical Engineering" in dept_name %}
+											{% set hidept_name = "रासायनिक अभियांत्रिकी" %}
+										{% elif "Electrical Engineering" in dept_name %}
+											{% set hidept_name = "विधुत अभियांत्रिकी" %}
+										{% elif "Mechanical Engineering" in dept_name %}
+											{% set hidept_name = "यांत्रिक अभियांत्रिकी" %}
+										{% elif "Biomedical Engineering" in dept_name %}
+											{% set hidept_name = "जैवचिकित्सा अभियांत्रिकी" %}
+										{% elif "Metallurgical and Materials Engineering" in dept_name %}
+											{% set hidept_name = "धातुकर्म और सामग्री अभियांत्रिकी" %}
+										{% elif "Mathematics" in dept_name %}
+											{% set hidept_name = "गणित" %}
+										{% elif "Physics" in dept_name %}
+											{% set hidept_name = "भौतिक विज्ञान" %}
+										{% elif "Chemistry" in dept_name %}
+											{% set hidept_name = "रसायन विज्ञान" %}
+										{% elif "Humanities and Social Sciences" in dept_name %}
+											{% set dept_name = "मानविकी एवं सामाजिक विज्ञान" %}
+										{% else %}
+										{% set hidept_name = "सभी विभाग" %}
+										{% endif %}
+									
+										<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 33px;"><b><i>{{hidept_name}} </i></b></h3>
+										{% if specflag %}
+										<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 33px;"><b><i>({{hispec}})</i></b></h3>
+										{% endif %}
+										<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 38px;"><b><i>मे</i></b></h3>
+										<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 33px;"><b><i>{{hiprintdegree}}</i></b></h3><br><br>
+										<h4 class="siblue" style="font-family: 'Nirmala';font-weight: bold;line-height: 10px;font-size: 26px;"><b><i>की उपाधि</i></h4></b>
+										<h4 class="siblue" style="line-height: 10px;font-family: 'Nirmala';font-weight: bold;font-size: 26px;"><b><i>विहित अपेक्षाओं को पूरा कर लेने पर</i></b></h4>
+										<h4 class="siblue" style="line-height: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 26px;"><b><i>तीस दिसंबर दो हज़ार बाईस को भारत गणराज्य </i></b></h4>
+										<h4 class="siblue" style="line-height: 10px;font-family: 'Nirmala';font-weight: bold;font-size: 26px;"><b><i>के रूपनगर में प्रदान करता है।</i></b></h4>
+								</center>
+								
+					</div>
+					<!-- <div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div>
+					<div class="twelve columns ">
+						  &nbsp;&nbsp;&nbsp;
+					</div> -->
+					<div class="twelve columns ">
+						&nbsp;&nbsp;&nbsp;
+				  </div>
+					
+						<div class="twelve columns footer">
+						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="{{static_file_path}}/reg-sign1.png" >
+						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="{{static_file_path}}/direct-sign.png">
+						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img src="{{static_file_path}}/bog-sign.jpg" >
+						<center><p style="font-family: 'Nirmala', Arial;font-size: 26px;margin: none;margin-bottom: 10px;"><b><i>कुलसचिव</i></b>
+						&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						<b><i>अध्यक्ष, अभिषद् </i></b>&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						<b><i>अध्यक्ष, अधिशासी मंडल</i></b></p></center>
+						</div>
+				</div>
+				 
+				{% if "B.Tech-M.Tech Dual" in degree %}
+					<div class="twelve columns footer">
+							<!-- <center><p class="blue" style="margin: 5px;font-size: 22px;font-family: 'Nirmala',Arial;font-weight: bold">प्रौद्योगिकी स्नातक-प्रौद्योगिकी निष्णात द्वि-उपाधि पाठ्यक्रम अन्तर्गत प्रौद्योगिकी निष्णात की उपाधि प्रधान प्रदान की गई.</p></center> -->
+							<center><h4 class="blue" style="margin: 5px;font-size: 18px;font-family:'Narad-Italic',Arial;font-weight: 900;"><i>प्रौद्योगिकी स्नातक-प्रौद्योगिकी निष्णात द्वि-उपाधि पाठ्यक्रम अन्तर्गत प्रौद्योगिकी स्नातक की उपाधि प्रधान प्रदान की गई.</i></h4></center>
+					</div>
+				{% endif %}
+				
+			</div>
+		</div>
+
+{% endif %}
+
+    </body>
+  </html>

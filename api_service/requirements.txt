@@ -1,0 +1,14 @@
+gunicorn[gthread]
+psycopg2-binary
+cryptography
+quart
+passlib
+peewee
+apscheduler[asyncio]
+toml
+google-api-python-client
+WeasyPrint
+pdfkit
+pytest
+requests
+numpy

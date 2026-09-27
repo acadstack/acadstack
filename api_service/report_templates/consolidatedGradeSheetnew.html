@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Consolidate Grade List</title>
+    <style>
+        html {
+            height: 100%;
+        }
+
+        body {
+            position: relative;
+            height: 90%;
+            font-size: 13px;
+            font-family: Garamond, serif;
+        }
+
+        body:before {
+            content: '';
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: -1;
+            background: url("{{static_file_path}}/logobw3.jpg") 0 0 no-repeat;
+            background-position: center;
+            opacity: 0.3;
+        }
+
+        #watermark {
+            color: rgba(128, 128, 128, 0.3);
+            height: 10%;
+            left: 0;
+            line-height: 1;
+            margin: 0;
+            position: fixed;
+            top: 0;
+            transform: rotate(-30deg);
+            transform-origin: 0 100%;
+            width: 100%;
+            word-spacing: 5px;
+            z-index: 1;
+            -webkit-touch-callout: none;
+            /* iOS Safari */
+            -webkit-user-select: none;
+            /* Safari */
+            -khtml-user-select: none;
+            /* Konqueror HTML */
+            -moz-user-select: none;
+            /* Old versions of Firefox */
+            -ms-user-select: none;
+            /* Internet Explorer/Edge */
+            user-select: none;
+            /* Non-prefixed version, currently
+            supported by Chrome, Edge, Opera and Firefox */
+        }
+
+        table,
+        tr,
+        th,
+        td {
+            border: 0px solid;
+            border-collapse: collapse;
+        }
+
+        .header {
+            position: relative;
+            display: inline-block;
+            width: calc(100% - 17px);
+            width: -webkit-calc(100% - 17px);
+            width: -moz-calc(100% - 17px);
+        }
+
+        @font-face {
+            font-family: 'CloisterBlack BT';
+            font-style: normal;
+            font-weight: 400;
+            src: local('CloisterBlack BT'),
+            url('{{static_file_path}}/Tt0757m_.woff') format('woff');
+        }
+
+        .blue {
+            color: #057ad9;
+            font-size: 35px;
+            font-family: 'CloisterBlack BT', Arial;
+        }
+    </style>
+</head>
+
+<body style="width:95%;height:auto;margin-left: 20px;margin-right: 10px;margin-top:120px;">
+    <div class="container-fluid" id="bd">
+        <table class="table text-left" style="border: 0px solid black; border-collapse: collapse;" id="top"
+            width="100%">
+            <tbody>
+                <tr height="50">
+                    <td colspan="3">&nbsp;&nbsp;&nbsp;</td>
+                </tr>
+                </td>
+                {% set spec = "" %}
+                {% if "PHD" in degree %}
+                {% set degree = "Ph.D." %}
+                {% elif "M.SC" in degree %}
+                {% set degree = "M.Sc." %}
+                {% elif "B.TECH-M.TECH DUAL" in degree %}
+                {% set degree = "B.TECH.-M.TECH. (DUAL DEGREE)" + " " + "IN" %}
+                {% elif "M.TECH(AI)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% elif "M.TECH(SIGNAL PROCESSING)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% set specdegree = "(SPECIALIZATION IN COMMUNICATION AND SIGNAL PROCESSING)" %}
+                {% elif "M.TECH(MICRO. & VLSI)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% set specdegree = "(SPECIALIZATION IN MICROELECTRONICS AND VLSI DESIGN)" %}
+                {% elif "M.TECH(POWER ENGG.)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% set specdegree = "(SPECIALIZATION IN POWER ENGINEERING)" %}
+                {% elif "M.TECH(THERMAL ENGG.)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% set specdegree = "(SPECIALIZATION IN THERMAL & FLUIDS ENGINEERING)" %}
+                {% elif "M.TECH(MANUFACTURING)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% set specdegree = "(SPECIALIZATION IN MANUFACTURING ENGINEERING)" %}
+                {% elif "M.TECH(MECHANICS AND DESIGN)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% set specdegree = "(SPECIALIZATION IN MECHANICS AND DESIGN)" %}
+                {% elif "M.TECH(WATER RESO. & ENVIRN.)" in degree %}
+                {% set degree = "M.TECH." %}
+                {% set specdegree = "(SPECIALIZATION IN WATER RESOURCES AND ENVIRONMENT)" %}
+                {% elif "M.TECH" in degree %}
+                {% set degree = degree + '.' + " " %}
+                {% elif "B.TECH" in degree and "PHYSICS" in dept_name %}
+                {% set degree = degree + '.' + " " + "IN" + " " + "ENGINEERING" %}
+                {% elif "B.TECH(M&C)" in degree %}
+                {% set degree = "B.TECH." + " " + "IN" + " " + "MATHEMATICS AND COMPUTING"%}
+                {% set dept_name = " " %}
+                {% else %}
+                {% set degree = degree + '.' + " " + "IN" %}
+                {% endif %}
+                <tr>
+                    <td style='border: 0px solid black;font-size: 12px'>Entry No.:</td>
+                    <td style='border: 0px solid black;font-size: 12px'>
+                        <b>{{entry_no | upper}}</b>
+                    </td>
+                    <td style='border: 0px solid black;font-size: 12px;'>
+                        Program Name:</td>
+                    <td style='border: 0px solid black;font-size: 12px;'>
+                        <b> {{degree}} {{dept_name}} {{specdegree}}</b>
+                    </td>
+                </tr>
+                <tr>
+                    <td style='border: 0px solid black;font-size: 12px;'>Name:</td>
+                    <td style='border: 0px solid black;font-size: 12px;'><b>
+                            {{name.upper() | replace("_", "") }}</b></td>
+                    <td style='border: 0px solid black;font-size: 12px;'>
+                        Program Category:</td>
+                    <td style='border: 0px solid black;font-size: 12px;'>
+                        <b> {{ deg_type }}</b>
+                    </td>
+                </tr>
+
+            </tbody>
+        </table><br />
+        <table width="100%" style="border:1.5px solid;" id="toptable">
+
+        
+            <tr height="25">
+                <th width="10.2%" style="border-right:1.5px solid;">Academic Year & Semester</th>
+                <th width="10%" style="border-right:1.5px solid;padding-left: 10px; padding-right: 10px;">Course Code</th>
+                <th width="39.2%" style="border-right:1.5px solid;">Course Title</th>
+                <th width="5.3%" style="border-right:1.5px solid;">Cat.</th>
+                <th width="5%" style="border-right:1.5px solid;">Credit</th>
+                <th width="5%" style="border-right:1.5px solid;">Grade</th>
+                <th width="5%" style="border-right:1.5px solid;text-align:center;">EC</th>
+                <th width="5%" style="border-right:1.5px solid;text-align:center;">CEC</th>
+                <th width="5%" style="border-right:1.5px solid;text-align:center;">SGPA</th>
+                <th width="5%" style="border-right:1.5px solid;">CGPA</th>
+            </tr>
+        </table>
+        
+        <div style="width:100%;" style="border:1px solid;">
+            <table width="100%" style="border:0px solid;" id="bottomtable">
+
+                <tr>
+                    <td>
+                        {% set passingYear = [] %}
+                        {% for key, value in enrollments.items() %}
+                        {% set temp = passingYear.append(key) %}
+                        <table width="100%" style="border:1px solid;" id="bottomtable2">
+                            <tr>
+                                {% set acad_session_list = key.split('-') %}
+                                {% set acad_session_year = acad_session_list[0] %}
+                                {% set next_acad_session = acad_session_year | int + 1 %}
+                                {% set next_acad_session = next_acad_session | string %}
+                                {% set acad_session_type = acad_session_list[1] %}
+
+                                <td width="10.2%" style="border-right:1px solid;text-align:center;font-size: 11px;"> <b>{{
+                                        acad_session_year + "-" + next_acad_session[2:4] | string }} <br> <i>
+                                            Sem-{{acad_session_list[1]}}</i> </b></td>
+                                <td width="65%" colspan=5 style="border-right:2px solid;border-left:0px solid;">
+                                    <!-- <br> -->
+                                    <table width="100%">
+                                        {% for cdata in value['courses'] %}
+                                        {% if cdata['enrol_status'] == 'ENRO'%}
+                                        <tr>
+                                            {% if cdata['code'] == 'II302'%}
+                                            <td width="9.7%"
+                                                style="border-right:1px solid;padding-left: 10px;text-align: left;font-size: 11px;">
+                                                <b>{{cdata['code']}}</b>
+                                            </td>
+                                            {% else %}
+                                            <td width="9.7%"
+                                                style="border-right:1px solid;padding-left: 10px;text-align: left;font-size: 11px;">
+                                                <b>{{cdata['code']}}</b>
+                                            </td>
+                                            {% endif %}
+                                            <td width="39.2%"
+                                                style="border-right:1px solid;padding-left: 10px;text-align:left;font-size: 11px;">
+                                                <b>{{cdata['title'].upper() }}</b>
+                                            </td>
+                                            {% set credit = cdata['ltp'].split('-') %}
+                                            <td width="5%"
+                                                style="text-align: center; border-right:1.5px solid;font-size: 11px;">
+                                                <b>{{cdata['cc_category'] }}</b>
+                                            </td>
+                                            <td width="5%"
+                                                style="text-align: center; border-right:1.5px solid;font-size: 11px;">
+                                                <b>{{ credit[4] | replace(".00", "") | replace(".0", "") }}</b>
+                                            </td>
+                                            <td width="5%"
+                                                style="text-align: center;border-right:0px solid;font-size: 11px;">
+                                                <b>{{cdata['grade']}}</b>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </table>
+                                </td>
+                                <td width="5%" style="border-right:2px solid;text-align:center;font-size: 11px;">
+                                    <b>{{value['ec']}}</b>
+                                </td>
+                                <td width="5%" style="border-right:2px solid;text-align:center;font-size: 11px;">
+                                    <b>{{value['cec']}}</b>
+                                </td>
+                                <td width="5%" style="border-right:2px solid;text-align:center;font-size: 11px;">
+                                    <b>{{value['sgpa']}}</b>
+                                </td>
+                                <td width="5%" style="border-right:2px solid;text-align:center;font-size: 11px;">
+                                    <b>{{value['cgpa']}}</b>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+            </table>
+        </div>
+        <br>
+
+        <table class="table text-left" style="border: 0px solid black; border-collapse: collapse;" width="100%">
+            <tbody>
+                <tr height="20px" style="border: 0px solid black; border-collapse: collapse;">
+                    <td colspan="3">&nbsp;</td>
+                </tr>
+                {% set last = passingYear|last %}
+
+                {% set graduateYearlist = last.split('-') %}
+                {% set next_grad_acad_session = graduateYearlist[0] | int + 1 %}
+                {% set graduateYear = graduateYearlist[0] %}
+                {% set graduateSession = graduateYearlist[1] %}
+                {% if "II" in graduateSession %}
+                {% set gradsemtype = "2ND SEMESTER" %}
+                {% elif "I" in graduateSession %}
+                {% set gradsemtype = "1ST SEMESTER" %}
+                {% elif "T1" in graduateSession %}
+                {% set gradsemtype = "1ST SEMESTER" %}
+                {% elif "T2" in graduateSession %}
+                {% set gradsemtype = "2ND SEMESTER" %}
+                {% elif "T3" in graduateSession %}
+                {% set gradsemtype = "3RD SEMESTER" %}
+                {% elif "S" in graduateSession %}
+                {% set gradsemtype = "SUMMER SEMESTER" %}
+                {% endif %}
+                <tr height="10px">
+                    <td style='border:0px solid black;font-size:15px'><b>Note: </b></td>
+                    <td style='border: 0px solid black;text-align:left;font-size: 14px;' colspan="2" width="98%">
+                        &nbsp;&nbsp;1. GRADUATION REQUIREMENT COMPLETED AT THE END OF THE {{ gradsemtype }} OF THE
+                        ACADEMIC YEAR {{graduateYearlist[0] + "-" + next_grad_acad_session | string }} </td>
+                </tr>
+                <tr height="50px">
+                    <table class="table text-left" style="border: 0px solid black; border-collapse: collapse;" id="top"
+                        width="100%">
+                        <tr height="50px">
+                            <td style='border: 0px solid black;font-size:15px;'>&nbsp;Date of Issue: </td>
+                            <td style='border:none;border: 0px solid black;font-size:15px' width="40%">&nbsp;</td>
+                            <td style='border: 0px solid black;font-size:15px;'>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Assistant
+                                Registrar
+                                <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Academics)
+                            </td>
+                        </tr>
+                    </table>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        var textWatermark = 'INDIAN INSTITUTE OF TECHNOLOGY ROPAR';
+        /*var bd = document.getElementById('bd');*/
+        var table1 = document.getElementById('bottomtable');
+        var table2 = document.getElementById('bottomtable2');
+
+        var background = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' version='1.1' height='15px' width='288px'>" +
+            "<text transform='translate(12, 12) rotate(0)' fill='rgba(95,95,95, 0.4)' font-size='13' >" + textWatermark + "</text></svg>\")";
+
+        table1.style.backgroundImage = background
+        table2.style.backgroundImage = background
+        table3.style.backgroundImage = background
+    </script>
+</body>
+
+</html>

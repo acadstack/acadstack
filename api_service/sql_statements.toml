@@ -1,0 +1,1023 @@
+# This file contains the SQL queries which are used 
+# directly.
+
+current_acad_sessions="""
+    SELECT 
+    c1.acad_session, 
+    c1.event_value AS start_dt, 
+    c2.event_value AS end_dt
+    FROM 
+        public.academiccalendar c1
+    JOIN 
+        public.academiccalendar c2 ON c1.acad_session = c2.acad_session
+    WHERE 
+        (POSITION('-T' IN c1.acad_session) = 0 OR NOT %s)
+        AND c1.event_code = 'SESSION_S'
+        AND c2.event_code = 'SESSION_E'
+        AND CURRENT_DATE BETWEEN c1.event_value::date AND c2.event_value::date
+    ORDER BY 
+        c1.event_value;"""
+
+# Find course-offering wise lectures taken in a semester.
+# We find this by looking for how many times the attendance was uploaded.
+course_lectures = """
+    SELECT  COUNT(*) AS lectures, o.acad_session, c.code, c.title
+    FROM public.studentattendance a
+    JOIN public.courseenrollment e ON e.id = a.enrollment_id
+    JOIN public.courseoffering o ON o.id = e.course_offering_id
+    JOIN public.course c ON c.id = o.course_id
+    GROUP BY o.acad_session, o.course_id, c.code, c.title; """
+
+
+course_grades = """select grade, count(id) as count from 
+    public.courseenrollment where course_offering_id = %s 
+    AND enrol_status='ENRO' group by grade;
+    """
+
+session_start_week = """
+    SELECT c1.event_value AS start_dt
+    FROM public.academiccalendar c1
+    WHERE c1.event_code = 'SESSION_S' 
+    AND c1.acad_session=
+    (SELECT co.acad_session 
+    FROM public.courseoffering co WHERE co.id=%s);
+    """
+
+course_attendance = """
+    SELECT 
+        EXTRACT(WEEK FROM t.dates)::INT AS weeks, AVG(t.count) AS attendance
+    FROM (
+        SELECT sa.attend_dt AS dates,
+            SUM(CASE WHEN sa.attend = 'P' THEN 1 ELSE 0 END) AS count
+        FROM studentattendance sa
+        JOIN courseenrollment ce ON ce.id = sa.enrollment_id
+        WHERE ce.course_offering_id = %s
+        GROUP BY sa.attend_dt
+        ORDER BY sa.attend_dt
+    ) AS t
+    GROUP BY EXTRACT(WEEK FROM t.dates)
+    ORDER BY EXTRACT(WEEK FROM t.dates)::INT;"""
+
+student_cgpa = """SELECT ce.student_id, u.first_name, u.last_name,
+    (SUBSTRING(c.ltp FROM 1 FOR 1) || 
+    SUBSTRING(c.ltp FROM 5 FOR 1)::numeric / 2) AS credits,
+    ce.grade, u.email
+    FROM courseenrollment ce
+    JOIN courseoffering co ON ce.course_offering_id = co.id
+    JOIN course c ON c.id = co.course_id
+    JOIN "user" u ON u.id = ce.student_id
+    WHERE co.acad_session IN (
+            SELECT a.acad_session FROM acadsessions a WHERE a.end_date <= %s
+        )
+        AND ce.enrol_type = %s
+        AND ce.grade NOT IN (%s, %s, %s, %s, %s, %s);"""
+
+cgpa_decline = """SELECT t.acad_session from 
+    (select * from acadsessions where end_date <= %s 
+    order by end_date desc) as t WHERE %s <= 3 
+    order by t.end_date DESC;"""
+
+course_lectures_in_session = """SELECT count(*) as Lecture, 
+    lc.acad_session, lc.code, lc.title from
+    (SELECT count(*) as student, o.acad_session, c.code,
+    c.title FROM public.studentattendance a 
+    join public.courseenrollment e on e.id=a.enrollment_id 
+    join public.courseoffering o on o.id=e.course_offering_id 
+    join public.course c on c.id=o.course_id 
+    group by o.acad_session, o.course_id, a.attend_dt) as lc 
+    group by lc.code, lc.acad_session 
+    having lc.acad_session = %s ORDER BY lc.code;"""
+
+credits_earned_report = """
+    WITH student_credits AS (
+        SELECT u.first_name, u.last_name, u.email, o.acad_session,
+            ROUND(SUM(split_part(c.ltp, '-', 2)::numeric), 2) AS total_credits,
+            u.id,
+            p.org_id
+        FROM public.courseenrollment e
+        JOIN public.user u ON u.id = e.student_id
+        JOIN public.person p ON p.id = u.person_id
+        JOIN public.courseoffering o ON o.id = e.course_offering_id
+        JOIN public.course c ON c.id = o.course_id
+        WHERE e.enrol_status = 'ENRO'
+        AND e.enrol_type IN ('C', 'CM', 'CC')
+        AND c.code <> %s
+        AND (p.year_of_entry = %s OR %s = '')
+        AND (p.degree = %s OR %s = '')
+        AND (p.dept_name = %s OR %s = '')
+        GROUP BY 
+            u.first_name, u.last_name, u.email, o.acad_session, u.id, p.org_id
+    )
+    SELECT *
+    FROM student_credits
+    WHERE acad_session = %s
+    AND total_credits > %s
+    AND total_credits <= %s
+    ORDER BY first_name, last_name;
+"""
+
+credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role, 
+    SUM(
+        (2 * SUBSTR(c.ltp, 1, 1) - SUBSTR(c.ltp, 3, 1) + 
+        SUBSTR(c.ltp, 5, 1)::NUMERIC / 2) *
+        (SUBSTR(c.ltp, 1, 1)::NUMERIC + SUBSTR(c.ltp, 5, 1)::NUMERIC / 2)
+    ) AS hours, o.acad_session, p.dept_name
+    FROM
+    (SELECT * FROM public.courseoffering co WHERE co.acad_session = %s) o
+    JOIN public.courseinstructor i ON i.offering_id = o.id
+    RIGHT JOIN public.user u ON u.id = i.instructor_id
+    LEFT JOIN public.course c ON o.course_id = c.id
+    JOIN public.person p ON u.person_id = p.id
+    GROUP BY u.id, o.acad_session, p.dept_name
+    HAVING u.role = 'FAC';
+    """
+
+core_courses_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
+    count(*) as core,t.acad_session  from (Select u.id, u.first_name,
+    u.last_name, u.role,o.acad_session from public.user u 
+    join  public.courseinstructor i  on u.id = i.instructor_id
+    join public.courseoffering o on i.offering_id = o.id
+    left join public.coursecategory c on o.id=c.offering_id
+    Where c.category in ('SC','PC','HC')) t
+    group by t.id,t.acad_session having t.acad_session = %s;
+    """
+
+electives_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
+    count(*) as elective,t.acad_session from
+    (Select u.id, u.first_name,u.last_name,u.role,o.acad_session
+    from public.user u 
+    join public.courseinstructor i on u.id = i.instructor_id
+    join public.courseoffering o on i.offering_id = o.id
+    left join public.coursecategory c on o.id=c.offering_id
+    Where c.category in ('SE','PE','HE')) t
+    group by t.id,t.acad_session having t.acad_session= %s;
+    """
+
+lectures_taken = """SELECT count(*) as student, o.acad_session, o.id
+    FROM public.studentattendance a   
+    join public.courseenrollment e on e.id=a.enrollment_id
+    join public.courseoffering o on o.id=e.course_offering_id
+    group by o.id, a.attend_dt) lc 
+    join public.courseinstructor i on i.offering_id = lc.id 
+    group by i.instructor_id,lc.acad_session
+    having lc.acad_session = %s;
+    """
+
+student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
+    ci.id as course_instructor_id, c.title, c.code,
+    ins.first_name, ins.last_name
+    FROM public.courseenrollment ce
+    JOIN public.courseoffering co ON co.id=ce.course_offering_id
+    JOIN public.courseinstructor ci ON ci.offering_id=co.id
+    JOIN public.user ins ON ins.id=ci.instructor_id
+    JOIN public.course c ON c.id=co.course_id
+    JOIN public.user stu ON stu.id=ce.student_id
+    WHERE stu.login_id=%s
+    AND ce.enrol_status='ENRO'
+    AND ce.enrol_type IN ('C', 'CM', 'CC')
+    AND POSITION(co.acad_session IN %s) > 0
+    AND NOT EXISTS (
+        SELECT 1 FROM public.studentfeedbackstatus sfs
+        JOIN public.feedbackform ff on ff.id=sfs.feedback_form_id
+        WHERE sfs.course_instructor_id=ci.id
+        AND sfs.student_id=stu.id
+        AND sfs.is_submitted=1
+        AND ff.is_active=true
+        AND ff.form_type=%s
+        );"""
+
+dept_wise_course_load = """
+    SELECT count(*) class_size, p.dept_name,
+    u.first_name, u.last_name, c.title, c.code, c.ltp,
+    co.acad_session,
+    CASE 
+        WHEN EXISTS (SELECT 1 FROM public.coursecategory cc 
+            WHERE cc.offering_id=co.id AND cc.category IN ('PC', 'SC', 'GR', 'HC'))
+        THEN 'Core course' 
+        WHEN EXISTS (SELECT 1 FROM public.coursecategory cc 
+            WHERE cc.offering_id=co.id AND cc.category IN ('SE', 'PE', 'HE', 'OC'))
+        THEN 'Elective course' 
+        ELSE '--'
+    END AS course_type
+    FROM public.courseenrollment ce
+    JOIN public.courseoffering co on co.id=ce.course_offering_id
+    JOIN public.course c on c.id=co.course_id
+    JOIN public.courseinstructor ci on ci.offering_id=co.id
+    JOIN public.user u on u.id=ci.instructor_id
+    JOIN public.person p on p.id=u.person_id
+    LEFT OUTER JOIN public.coursecategory cc on cc.offering_id=co.id
+    WHERE co.acad_session=%s 
+    AND (%s IS NULL OR p.dept_name = %s)
+    GROUP BY co.id, p.dept_name, u.first_name, u.last_name, c.title, c.code, co.acad_session
+    ORDER BY p.dept_name, class_size;"""
+
+enrolment_info = """
+    SELECT (c.title || ' :: ' || c.code) as course, 
+    (ins.first_name ||  ' '  || ins.last_name) as instructor,
+    ins.email as instructor_email, 
+    (stu.first_name || ' ' || stu.last_name || ' (' || sp.org_id || ')') as student,
+    stu.email as student_email, ce.enrol_status,
+    co.acad_session, ce.grade, ce.enrol_type, ce.remarks
+    FROM public.courseenrollment ce
+    JOIN public.courseoffering co on co.id = ce.course_offering_id
+    JOIN public.course c on c.id = co.course_id
+    JOIN public.user stu on stu.id = ce.student_id
+    JOIN public.person sp on sp.id=stu.person_id
+    JOIN public.courseinstructor ci on ci.offering_id = co.id
+    JOIN public.user ins on ins.id = ci.instructor_id AND ci.is_coordinator=TRUE
+    WHERE ce.id=%s;"""
+
+course_offering_info = """
+    WITH dept_hod AS (
+        SELECT u.email, p.dept_name
+        FROM public.user u 
+        JOIN public.person p ON p.id = u.person_id
+        WHERE u.role = 'HOD'
+    )
+    SELECT 
+        (c.title || '::' || c.code) AS course,
+        (ins.first_name || ' ' || ins.last_name) AS instructor,
+        ins.email AS instructor_email,
+        co.status,
+        hod.email AS hod_email,
+        co.acad_session, 
+        co.dept_name
+    FROM public.courseoffering co
+    JOIN public.course c ON c.id = co.course_id
+    JOIN public.courseinstructor ci ON ci.offering_id = co.id
+    JOIN public.user ins ON ins.id = ci.instructor_id AND ci.is_coordinator = TRUE
+    LEFT OUTER JOIN dept_hod hod ON hod.dept_name = co.dept_name
+    WHERE co.id = %s;"""
+
+course_info = """
+    SELECT (c.title || ' :: ' || c.code) as course, 
+    (ins.first_name || ' ' || ins.last_name) as author,
+    ins.email as author_email, c.status
+    FROM public.course c
+    JOIN public.user ins on ins.id = c.author_id
+    WHERE c.id=%s;"""
+
+coordinator_for_enrolments = """
+    SELECT distinct ci.instructor_id 
+    FROM public.courseenrollment ce
+    JOIN public.courseinstructor ci on ci.offering_id=ce.course_offering_id AND ci.is_coordinator=TRUE
+    WHERE ce.id in (%s);"""
+
+batch_advisor_for_enrolments = """
+    WITH enrolled_student AS
+    (SELECT p.degree, p.dept_name, p.year_of_entry, ce.id as enrolment_id
+    FROM public.courseenrollment ce
+    JOIN public.user u on u.id=ce.student_id
+    JOIN public.person p on p.id=u.person_id),
+    advisor AS
+    (SELECT p.dept_name, ba.year_of_entry, ba.user_id, ba.for_degree
+    FROM public.batchadvisors ba
+    JOIN public.user u on u.id=ba.user_id
+    JOIN public.person p on p.id=u.person_id)
+
+    select a.user_id from advisor a
+    JOIN enrolled_student e on e.year_of_entry=a.year_of_entry 
+    AND e.dept_name=a.dept_name AND e.degree=a.for_degree
+    WHERE e.enrolment_id IN (%s);"""
+
+is_hod_for_course_offering = """
+    WITH dept_hod as (SELECT u.id as user_id, p.dept_name
+        FROM public.user u JOIN public.person p on p.id=u.person_id
+        WHERE u.role='HOD')
+    SELECT CASE WHEN EXISTS
+        (SELECT hod.user_id
+        FROM public.courseoffering co 
+        JOIN dept_hod hod on hod.dept_name=co.dept_name
+        WHERE co.id=%s AND hod.user_id=%s)
+        THEN TRUE ELSE FALSE
+        END AS is_hod_for_co;"""
+
+pending_enrolments_hod = """
+    SELECT 
+    ce.id, (c.title||' '||c.code) as course, stu.id as user_id,
+    (stu.first_name||' '||stu.last_name) as student,
+    pstu.org_id, ce.enrol_type, ce.enrol_status, pstu.dept_name,
+    pstu.year_of_entry, co.acad_session, 0 as attendance
+    FROM public.courseenrollment ce
+    JOIN public.courseoffering co on co.id=ce.course_offering_id
+    JOIN public.course c on c.id=co.course_id
+    JOIN public.user stu on stu.id=ce.student_id
+    JOIN public.person pstu on pstu.id=stu.person_id
+    WHERE pstu.degree='PHD' 
+    and pstu.dept_name=(select hp.dept_name from public.person hp 
+		join public.user hu on hu.person_id=hp.id where hu.id=%s)
+    AND co.status IN ('E', 'R')
+    and ce.enrol_status='APEN';"""
+
+pending_enrolments_advisor = """
+    SELECT 
+    ce.id, (c.title||' '||c.code) as course, stu.id as user_id,
+    (stu.first_name||' '||stu.last_name) as student,
+    pstu.org_id, ce.enrol_type, ce.enrol_status, pstu.dept_name,
+    ba.year_of_entry, co.acad_session, 0 as attendance
+    FROM public.courseenrollment ce
+    JOIN public.courseoffering co on co.id=ce.course_offering_id
+    JOIN public.course c on c.id=co.course_id
+    JOIN public.user stu on stu.id=ce.student_id
+    JOIN public.person pstu on pstu.id=stu.person_id
+    JOIN public.batchadvisors ba 
+        on ba.year_of_entry=pstu.year_of_entry AND ba.for_degree=pstu.degree
+    JOIN public.user adv on adv.id=ba.user_id
+    JOIN public.person padv on padv.id=adv.person_id and padv.dept_name=pstu.dept_name
+    WHERE 
+    ba.user_id=%s AND co.status IN ('E', 'R')
+    and ce.enrol_status='APEN';"""
+
+enrolled_students = """
+    SELECT stu.first_name, stu.last_name,
+    stu.email, p.org_id as roll_no, p.dept_name,
+    ce.enrol_type, ce.enrol_status
+    FROM public.courseoffering co
+    JOIN public.courseenrollment ce on 
+        co.id = ce.course_offering_id
+    JOIN public.course c on c.id = co.course_id
+    JOIN public.user stu on stu.id = ce.student_id
+    JOIN public.person p on stu.person_id = p.id
+    WHERE ce.enrol_status IN ('ENRO', 'IPEN', 'APEN') AND co.id=%s
+    ORDER BY p.org_id;"""
+
+enrolled_students_for_grades = """
+    SELECT 
+    UPPER(stu.first_name) AS FIRST_NAME, 
+    UPPER(stu.last_name) AS LAST_NAME,
+    UPPER(p.org_id) as ROLL_NO, '--' as GRADE
+    FROM public.courseoffering co
+    JOIN public.courseenrollment ce on 
+        co.id = ce.course_offering_id
+    JOIN public.course c on c.id = co.course_id
+    JOIN public.user stu on stu.id = ce.student_id
+    JOIN public.person p on stu.person_id = p.id
+    WHERE ce.enrol_status = 'ENRO' AND co.id=%s
+    ORDER BY p.org_id;"""
+
+filtered_categorized_credits_enrolled = """
+WITH category_credits AS (
+    SELECT 
+        SUM(split_part(c.ltp, '-', 5)::numeric) AS total_credits,
+        COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
+        u.email,
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.login_id,
+        co.acad_session
+    FROM public.courseenrollment ce
+    JOIN public.user u ON u.id = ce.student_id
+    JOIN public.person p ON p.id = u.person_id
+    JOIN public.courseoffering co ON co.id = ce.course_offering_id
+    JOIN public.course c ON c.id = co.course_id
+    LEFT JOIN public.coursecategory cc 
+        ON cc.offering_id = ce.course_offering_id
+        AND cc.degree = p.degree
+        AND (cc.dept = p.dept_name OR cc.dept = 'ALL')
+        AND (cc.for_entry_years ~ %s)
+    WHERE ce.enrol_status = 'ENRO'
+      AND ce.enrol_type IN ('C', 'CC', 'CM')
+      AND (p.year_of_entry = %s OR %s = '')
+      AND (p.degree = %s OR %s = '')
+      AND (p.dept_name = %s OR %s = '')
+      AND (co.acad_session = %s OR %s = '')
+      AND ce.grade IN ('A', 'A-', 'B', 'B-', 'C', 'C-', 'D', 'S', 'NP')
+    GROUP BY 
+        cc.category, u.email, u.id, u.first_name, 
+        u.last_name, u.login_id, co.acad_session
+),
+filtered AS (
+    SELECT *
+    FROM category_credits
+    WHERE (%s = '' OR c_category = %s)
+      AND total_credits BETWEEN %s AND %s
+)
+SELECT 
+    string_agg(
+        concat_ws('=', f.c_category, ROUND(f.total_credits, 2)), 
+        ','
+    ) AS cat_credits,
+    f.first_name,
+    f.last_name,
+    f.login_id,
+    f.acad_session,
+    f.email,
+    f.id AS user_id
+FROM filtered f
+GROUP BY 
+    f.first_name, f.last_name, f.login_id, f.acad_session, f.email, f.id
+ORDER BY 
+    f.login_id, f.acad_session;
+"""
+
+generate_semester_grade_query = """
+    select 
+        cf.acad_session,
+        ce.enrol_status,ce.enrol_type,ce.grade,ce.student_id,
+        co.code,co.title,
+        u.first_name,u.last_name,u.login_id,
+        p.dept_name,p.degree,p.year_of_entry,co.ltp
+        from courseoffering cf 
+        join course co on cf.course_id = co.id
+        join courseenrollment ce on cf.id= ce.course_offering_id
+        join user u on ce.student_id = u.id  
+        join person p on p.id = u.person_id
+        where u.login_id=%s AND acad_session=%s;"""
+
+get_instructor_feedback = """
+    SELECT 
+        x.question,
+        JSON_AGG(x.votes) votes,
+        JSON_AGG(x.feedback) feedback
+    FROM
+        (SELECT 
+            COUNT(*) votes,
+                ff.form_type,
+                fq.question,
+                cif.feedback,
+                cif.acad_session,
+                c.title,
+                c.code
+        FROM
+        public.courseinstructorfeedback cif
+        JOIN public.feedbackquestion fq ON fq.id = cif.question_id
+        JOIN public.feedbackform ff ON ff.id = fq.form_id
+        JOIN public.courseinstructor ci ON ci.id = cif.instructor_id
+        JOIN public.courseoffering co ON co.id = ci.offering_id
+        JOIN public.course c ON c.id = co.course_id
+        WHERE
+            fq.is_text = FALSE
+            AND cif.instructor_id = %s
+            AND ff.form_type = %s
+                
+        GROUP BY ff.form_type , fq.question , cif.feedback , cif.acad_session , c.title , c.code
+        ORDER BY fq.question) x
+    GROUP BY x.question;"""
+
+feedback_submission_data = """
+    SELECT COUNT(sfs.id) students_who_voted, X.crediting_students, 
+    ROUND(100*COUNT(sfs.id)/X.crediting_students, 2) pct_voted,
+    CONCAT(u.first_name, ' ', u.last_name) AS instructor, c.title, c.code, 
+    co.acad_session, co.id AS offering_id, ci.id AS instructor_id
+    FROM public.courseoffering co
+    JOIN public.course c ON c.id=co.course_id
+    JOIN public.courseinstructor ci ON ci.offering_id=co.id
+    JOIN public.user u ON u.id=ci.instructor_id
+    JOIN public.studentfeedbackstatus sfs ON sfs.course_instructor_id=ci.id
+    JOIN (SELECT COUNT(*) crediting_students, co.id AS offering_id, co.acad_session
+    FROM public.courseoffering co
+    JOIN public.courseenrollment ce ON ce.course_offering_id=co.id
+    WHERE ce.enrol_status='ENRO' AND ce.enrol_type IN ('C', 'CC', 'CM')
+    AND co.acad_session=%s
+    GROUP BY co.id, co.acad_session) X ON X.offering_id=co.id
+    GROUP BY co.acad_session, co.id, ci.id, c.title, c.code, u.first_name, u.last_name,X.crediting_students
+    ORDER BY pct_voted;"""
+
+fees_payment_report = """
+    SELECT ft.acad_session, ft.student_id, u.first_name, u.last_name, p.org_id, 
+    STRING_AGG(
+            json_build_object(
+                'txn_amt', ft.fees_txn_amt, 'txn_dt', ft.fees_txn_dt, 'txn_no', 
+                ft.fees_txn_no, 'bank', ft.fees_txn_bank, 'doc_file', ft.doc_file_name
+            )::text, ',') AS txn_info
+    FROM public.feestransaction ft
+    JOIN public.user u ON u.id = ft.student_id
+    JOIN public.person p ON p.id = u.person_id
+    WHERE(p.year_of_entry = %s OR %s = '')
+    AND (p.degree = %s OR %s = '')
+    AND (p.dept_name = %s OR %s = '')
+    AND (ft.acad_session = %s OR %s = '')
+    GROUP BY ft.acad_session, ft.student_id, u.id, p.id;"""
+
+generate_course_enrolments = """
+    SELECT stu.first_name, stu.last_name,
+            stu.email, p.org_id , p.year_of_entry,p.dept_name,c.code,
+            co.acad_session,
+            ce.enrol_type, ce.enrol_status,u.id,c.title
+            FROM courseoffering co
+        JOIN courseenrollment ce on co.id = ce.course_offering_id
+        JOIN course c on c.id = co.course_id
+        JOIN user stu on stu.id = ce.student_id
+        JOIN person p on stu.person_id = p.id
+        JOIN user u on p.id=u.person_id
+        WHERE ce.enrol_status IN ('ENRO', 'IPEN', 'APEN') 
+        AND (p.year_of_entry=%s OR %s = '')
+        AND (p.dept_name=%s OR %s = '')
+        AND co.acad_session=%s
+        order by c.code, p.org_id;"""
+
+generate_feedback_stats = """
+    with enroled_students as (select count(*) students_count, 
+    co.id as offering_id
+    from public.courseenrollment ce
+    join public.courseoffering co on co.id=ce.course_offering_id
+    where co.acad_session=%s and co.status IN ('R', 'F') 
+    and ce.enrol_status='ENRO' group by co.id)
+
+    SELECT es.students_count as students_enrolled, count(sf.id) no_of_students_voted,
+    ROUND(100*count(sf.id)/es.students_count, 2) as pct_students_voted,
+    c.code, c.title, c.ltp, co.dept_name as offering_department,co.acad_session, 
+    u.first_name, u.last_name
+    FROM public.studentfeedbackstatus sf
+    join public.courseinstructor ci on ci.id=sf.course_instructor_id
+    join public.user u on u.id = ci.instructor_id
+    join public.feedbackform ff on ff.id=sf.feedback_form_id
+    join public.courseoffering co on co.id=ci.offering_id
+    join public.course c on c.id=co.course_id
+    join enroled_students es on es.offering_id=co.id
+    where co.acad_session=%s and co.status IN ('R', 'F')
+    and ff.form_type=%s and NOT ff.is_deleted
+    group by c.ltp, c.code, c.title, co.acad_session,
+    u.first_name, u.last_name, es.students_count,co.dept_name
+    order by 3;"""
+
+slotwise_courses = """
+    SELECT co.slot, co.id as co_id, c.code, c.title, c.ltp, 
+    CONCAT(u.first_name, ' ', u.last_name) as instructor
+    FROM public.courseoffering co
+    join public.course c on c.id=co.course_id
+    join public.courseinstructor ci on ci.offering_id=co.id
+    join public.user u on u.id=ci.instructor_id
+    where
+    co.status not in ('D', 'C')
+    and co.acad_session=%s 
+    and ci.is_coordinator
+    and co.slot is not null
+    order by co.slot;"""
+
+get_course_grades = """
+    SELECT UPPER(u.first_name) AS FIRST_NAME,
+	UPPER(u.last_name) AS LAST_NAME, 
+	UPPER(p.org_id) AS ROLL_NO, UPPER(ce.grade) AS GRADE, c.code 
+    FROM public.courseenrollment ce
+    JOIN public.user u ON u.id=ce.student_id
+    JOIN public.person p ON p.id=u.person_id
+    JOIN public.courseoffering co ON co.id=ce.course_offering_id
+    JOIN public.course c ON c.id=co.course_id
+    WHERE co.id=%s
+    AND ce.enrol_status='ENRO'
+    ORDER BY p.org_id;"""
+
+get_students_having_enrolment = """
+    SELECT DISTINCT
+        u.id, UPPER(p.org_id) AS entry_no
+    FROM
+        public.courseenrollment ce,
+        public.user u,
+        public.person p,
+        (SELECT 
+            co.id, c.code, c.title
+        FROM
+            public.courseoffering co
+        JOIN public.course c ON c.id = co.course_id
+        WHERE
+            co.acad_session = %s
+                AND co.status NOT IN ('D', 'C')) AS cos
+    WHERE
+        ce.course_offering_id = cos.id
+            AND u.id = ce.student_id
+            AND p.id = u.person_id
+            AND ce.enrol_status = 'ENRO';"""
+
+
+move_running_co_to_finish = """
+    WITH running_courses AS (
+        SELECT DISTINCT co.id
+        FROM public.academiccalendar c
+        JOIN public.courseoffering co ON co.acad_session = c.acad_session
+        WHERE co.status = 'R'
+        AND c.event_code = 'GRADE_SUB_E'
+        AND TO_TIMESTAMP(c.event_value, %s) <= CURRENT_DATE
+    )
+    UPDATE public.courseoffering
+    SET status = 'F'
+    WHERE id IN (SELECT id FROM running_courses);"""
+
+move_enrolling_co_to_running = """
+    WITH enrolling_courses AS (SELECT DISTINCT co.id
+        FROM public.academiccalendar c
+        JOIN public.courseoffering co ON co.acad_session = c.acad_session
+        WHERE co.status = 'E'
+            AND c.event_code = 'CLASSES_S'
+            AND TO_TIMESTAMP(c.event_value, %s) <= CURRENT_DATE)
+    UPDATE public.courseoffering 
+    SET status = 'R'
+    WHERE id IN (select id from enrolling_courses);"""
+
+get_open_events = """
+    SELECT UPPER(ac1.acad_session) AS acad_session,
+        UPPER(SUBSTRING(ac1.event_code FROM 1 FOR LENGTH(ac1.event_code) - 2))
+            AS open_event
+    FROM public.academiccalendar ac1
+    JOIN public.academiccalendar ac2 ON ac1.acad_session = ac2.acad_session
+    WHERE
+        CURRENT_DATE BETWEEN ac1.event_value::date AND ac2.event_value::date
+        AND ac1.event_code <> ac2.event_code
+        AND SUBSTRING(ac1.event_code FROM 1 FOR LENGTH(ac1.event_code) - 2) 
+        = SUBSTRING(ac2.event_code FROM 1 FOR LENGTH(ac2.event_code) - 2);
+    """
+
+same_offering_exists = """
+    SELECT co.status
+    FROM public.courseoffering co
+    join public.courseinstructor ci on ci.offering_id=co.id
+    join public.user u on u.id=ci.instructor_id
+    where co.acad_session=%s
+    and co.course_id=%s
+    and u.login_id=%s;
+"""
+
+generate_grade_distribution = """
+    SELECT count(*) as no_of_students, co.dept_name, ce.grade,c.code
+    FROM public.courseenrollment ce
+    join public.courseoffering co on co.id=ce.course_offering_id
+    join public.course c on c.id = co.course_id
+    join public.user u on u.id = ce.student_id
+    join public.person p on p.id = u.person_id
+    where co.acad_session=%s and ce.enrol_status='ENRO' and p.degree =%s
+    group by co.dept_name, ce.grade,c.code;
+"""
+
+generate_cgpa_sgpa = """
+    SELECT UPPER(p.org_id) as roll_no, UPPER(u.first_name) AS FIRST_NAME,
+	UPPER(u.last_name) AS LAST_NAME, p.dept_name, sc.cgpa, sc.sgpa,
+    sc.cred_earned, sc.cred_registered, sc.cred_earned_total
+    FROM public.studentcredits sc
+    join public.user u on u.id=sc.student_id
+    join public.person p on p.id=u.person_id
+    where sc.sgpa > 0 and sc.cred_registered > 0 and sc.acad_session=%s
+    order by p.dept_name, sc.cgpa desc
+"""
+    
+generate_student_list = """
+    SELECT UPPER(p.org_id) as roll_no, UPPER(u.first_name) AS FIRST_NAME,
+	UPPER(u.last_name) AS LAST_NAME, p.dept_name, p.degree, p.gender , p.category,
+    sc.cgpa, sc.sgpa,sc.cred_earned, sc.cred_registered, sc.cred_earned_total
+    FROM public.studentcredits sc
+    join public.user u on u.id=sc.student_id
+    join public.person p on p.id=u.person_id
+    where p.degree=%s and p.year_of_entry=%s and p.dept_name=%s 
+    and sc.acad_session=%s and u.role='STU' 
+"""
+
+frag_pending_enrollments = """ 
+    with advisors as (
+    select ba.user_id, ba.for_degree, ba.year_of_entry,
+    bap.dept_name
+    from public.batchadvisors ba
+    join public.user bau on bau.id=ba.user_id
+    join public.person bap on bap.id=bau.person_id
+    where bau.role='FAC'
+    ),
+
+    enrolled_students as (
+    select stu.id as user_id, p.org_id, 
+    CONCAT(stu.first_name, ' ', stu.last_name) as student,
+    p.degree, p.dept_name as dep, p.year_of_entry as year
+    from public.user stu
+    join public.person p on p.id=stu.person_id
+    where stu.role='STU') 
+    """
+
+frag_ba_pending_enrollments = """
+    select ce.id, co.acad_session, ce.enrol_status, ce.enrol_type,
+    CONCAT(c.title, ' :: ', c.code) as course, s.*
+    from public.courseenrollment ce
+    join public.courseoffering co on co.id=ce.course_offering_id
+    join public.course c on c.id=co.course_id
+    join enrolled_students s on s.user_id=ce.student_id
+    join advisors a on a.for_degree=s.degree 
+        and a.year_of_entry=s.year
+        and a.dept_name=s.dep
+    where a.user_id=%s and ce.enrol_status='APEN';
+    """
+
+frag_ba_and_instructor="""
+    SELECT ce.id, ci.instructor_id, a.user_id AS batch_adv_id
+    FROM public.courseenrollment ce
+    LEFT JOIN public.courseinstructor ci ON
+    ci.offering_id = ce.course_offering_id
+    AND ci.is_coordinator = TRUE
+    JOIN enrolled_students s ON s.user_id = ce.student_id
+    LEFT JOIN advisors a ON a.for_degree = s.degree
+    AND a.year_of_entry = s.year
+    AND a.dept_name = s.dep
+    WHERE ce.id IN %s;
+    """
+
+events_tomorrow = """
+    SELECT c.acad_session, c.event_code, c.event_value
+    FROM public.academiccalendar c
+    WHERE CURRENT_DATE + INTERVAL '1 day' = c.event_value::date;
+    """
+
+events_today = """
+    select c.acad_session, c.event_code, c.event_value 
+    from public.academiccalendar c
+    where CURRENT_DATE = c.event_value::date;
+    """
+
+dept_wise_average = """
+     with fb_data(login_id, course_code, dept_name,
+                acad_session, question, q_score, total_votes)
+                as (SELECT u.login_id, x.code as course_code,p.dept_name, x.acad_session, x.question,
+                            sum(x.fbq_pts)/sum(x.votes) q_score,sum(x.votes) total_votes
+                            FROM 
+                        (SELECT COUNT(*) votes, 
+                                COUNT(*) * case 
+                                    when cif.feedback='strongly agree' then 5
+                                    when cif.feedback='agree' then 4
+                                    when cif.feedback='neither agree nor disagree' then 3
+                                    when cif.feedback='disagree' then 2
+                                    when cif.feedback='strongly disagree' then 1
+                                    else 0
+                        end as fbq_pts,
+                        ci.instructor_id as user_id,
+                        ff.form_type, fq.question, cif.feedback,
+                        cif.acad_session, c.title, c.code
+                        FROM public.courseinstructorfeedback cif
+                        JOIN public.feedbackquestion fq ON fq.id = cif.question_id
+                        JOIN public.feedbackform ff ON ff.id = fq.form_id
+                        JOIN public.courseinstructor ci ON ci.id = cif.instructor_id
+                        JOIN public.courseoffering co ON co.id = ci.offering_id
+                        JOIN public.course c ON c.id = co.course_id
+                        WHERE fq.is_text = FALSE
+                        AND ff.form_type = %s
+                        AND cif.acad_session=%s
+                        GROUP BY ci.instructor_id,
+                        ff.form_type , fq.question , cif.feedback , 
+                        cif.acad_session , c.title , c.code
+                        ORDER BY fq.question) x
+
+                        join public.user u on u.id=x.user_id
+                        join public.person p on p.id=u.person_id
+                        GROUP BY x.question, x.user_id, x.code, x.acad_session
+                        having q_score > 0
+                        ORDER BY x.question, dept_name, q_score
+                        )
+                    select dept_name, acad_session, question, 
+                    avg(q_score) as avg_score
+                    from fb_data 
+                    group by dept_name, acad_session, question
+                    order by question, avg_score;"""
+
+course_wise_faculty_score = """
+        with fb_data(login_id, first_name,last_name,course_code, dept_name,
+                acad_session, question, q_score, total_votes)
+                as (
+                    SELECT u.login_id,u.first_name,u.last_name, x.code as course_code,
+                    p.dept_name, x.acad_session, x.question,
+                    sum(x.fbq_pts)/sum(x.votes) q_score,
+                    sum(x.votes) total_votes
+                FROM (SELECT COUNT(*) votes, 
+                COUNT(*) * case 
+                when cif.feedback='strongly agree' then 5
+                when cif.feedback='agree' then 4
+                when cif.feedback='neither agree nor disagree' then 3
+                when cif.feedback='disagree' then 2
+                when cif.feedback='strongly disagree' then 1
+                else 0
+                end as fbq_pts,
+                ci.instructor_id as user_id,
+                ff.form_type, fq.question, cif.feedback,
+                cif.acad_session, c.title, c.code
+                FROM public.courseinstructorfeedback cif
+                JOIN public.feedbackquestion fq ON fq.id = cif.question_id
+                JOIN public.feedbackform ff ON ff.id = fq.form_id
+                JOIN public.courseinstructor ci ON ci.id = cif.instructor_id
+                JOIN public.courseoffering co ON co.id = ci.offering_id
+                JOIN public.course c ON c.id = co.course_id
+                        WHERE fq.is_text = FALSE
+                        AND ff.form_type = %s
+                        AND cif.acad_session=%s
+                GROUP BY ci.instructor_id,
+                    ff.form_type , fq.question , cif.feedback , 
+                    cif.acad_session , c.title , c.code
+                ORDER BY fq.question) x
+
+            join public.user u on u.id=x.user_id
+            join public.person p on p.id=u.person_id
+            GROUP BY x.question, x.user_id, x.code, x.acad_session
+            having q_score > 0
+            ORDER BY x.question, dept_name, q_score
+            )
+
+        select  first_name,last_name,acad_session, course_code,dept_name, 
+                ROUND(avg(q_score),4) as faculty_score, total_votes
+        from fb_data
+        group by login_id, acad_session, course_code, total_votes
+        order by dept_name,first_name,last_name,faculty_score;
+    """
+
+que_wise_facfeedbk_score ="""
+        SELECT u.first_name,u.last_name, x.code as course_code,
+            p.dept_name, x.acad_session, x.question,
+            sum(x.fbq_pts)/sum(x.votes) q_score,
+            sum(x.votes) total_votes
+            
+            FROM (SELECT COUNT(*) votes, 
+                    COUNT(*) * case 
+                        when cif.feedback='strongly agree' then 5
+                        when cif.feedback='agree' then 4
+                        when cif.feedback='neither agree nor disagree' then 3
+                        when cif.feedback='disagree' then 2
+                        when cif.feedback='strongly disagree' then 1
+                        else 0
+                    end as fbq_pts,
+                    ci.instructor_id as user_id,
+                    ff.form_type, fq.question, cif.feedback,
+                    cif.acad_session, c.title, c.code
+                FROM public.courseinstructorfeedback cif
+                JOIN public.feedbackquestion fq ON fq.id = cif.question_id
+                JOIN public.feedbackform ff ON ff.id = fq.form_id
+                JOIN public.courseinstructor ci ON ci.id = cif.instructor_id
+                JOIN public.courseoffering co ON co.id = ci.offering_id
+                JOIN public.course c ON c.id = co.course_id
+
+                WHERE fq.is_text = FALSE
+                    AND ff.form_type = %s
+                    AND cif.acad_session= %s
+                GROUP BY ci.instructor_id,
+                    ff.form_type , fq.question , cif.feedback , 
+                    cif.acad_session , c.title , c.code
+                ORDER BY fq.question) x
+
+            join public.user u on u.id=x.user_id
+            join public.person p on p.id=u.person_id
+            GROUP BY x.user_id, x.code, x.question,x.acad_session
+            having q_score > 0
+            ORDER BY  x.code,u.first_name,u.last_name,x.user_id,x.question, dept_name, q_score;
+        """
+degree_wise_students ="""
+        SELECT 
+            c.code,
+            c.title,
+            c.ltp,
+            co.dept_name AS offering_department,
+            co.acad_session,
+            p.degree,
+            COUNT(p.degree) AS no_of_students
+            FROM
+                public.courseenrollment ce
+                JOIN courseoffering co ON co.id = ce.course_offering_id
+                JOIN public.course c ON c.id = co.course_id
+                JOIN public.user cu ON cu.id = ce.student_id
+                JOIN public.person p ON p.id = cu.person_id
+                 WHERE 
+                     (c.code=%s OR %s = '')
+                     AND co.status IN ('R' , 'F')
+                     AND ce.enrol_status = 'ENRO'
+                     AND co.acad_session = %s
+            GROUP BY p.degree , c.code , c.title , co.id,c.ltp , co.dept_name;
+"""
+
+dc_details_view ="""
+        SELECT dcm.student_id,u.first_name,u.last_name,dcs.effective_from,dcs.effective_to,dcm.role
+            FROM public.dcforstudent dcs
+            JOIN public.dcmember dcm ON dcs.id = dcm.dc_id
+            JOIN public.user u ON u.id = dcm.member_id
+            where dcm.student_id =%s;"""
+
+grades_status_submitted = """
+            SELECT  ss.code,ss.acad_session, ss.title, 
+            ss.first_name, ss.last_name, ss.dept_name from 
+            ( 
+                SELECT ce.course_offering_id, ce.grade, co.acad_session,
+                c.code, co.dept_name, c.title, ins.first_name, ins.last_name  
+                FROM public.courseenrollment ce
+                JOIN public.courseoffering co ON co.id=ce.course_offering_id
+                JOIN public.course c ON c.id=co.course_id
+                JOIN public.courseinstructor ci ON ci.offering_id=co.id
+                JOIN public.user ins ON ins.id=ci.instructor_id
+                WHERE co.acad_session= %s and co.status ='R' and 
+                ce.grade NOT in ('NA')
+                and ce.enrol_status='ENRO' and ci.is_coordinator=TRUE) as ss
+                GROUP BY ss.code,ss.acad_session, ss.title, 
+                ss.first_name, ss.last_name, ss.dept_name;
+"""
+
+grades_status_pending = """
+            SELECT  ss.code,ss.acad_session, ss.title, 
+            ss.first_name, ss.last_name, ss.dept_name from 
+            ( 
+                SELECT ce.course_offering_id, ce.grade, co.acad_session,
+                c.code, co.dept_name, c.title, ins.first_name, ins.last_name  
+                FROM public.courseenrollment ce
+                JOIN public.courseoffering co ON co.id=ce.course_offering_id
+                JOIN public.course c ON c.id=co.course_id
+                JOIN public.courseinstructor ci ON ci.offering_id=co.id
+                JOIN public.user ins ON ins.id=ci.instructor_id
+                WHERE co.acad_session= %s and co.status ='R' and 
+                ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I ','W')
+                and ce.enrol_status='ENRO' and ci.is_coordinator=TRUE) as ss
+                GROUP BY ss.code,ss.acad_session, ss.title, 
+                ss.first_name, ss.last_name, ss.dept_name;
+"""
+
+get_dc_students = """
+    SELECT u.id, u.first_name, u.last_name, u.email, 
+    p.dept_name, p.year_of_entry, p.org_id
+    FROM public.dcmember m 
+    join public.dcforstudent d on d.id=m.dc_id
+    join public.user u on u.id=d.student_id
+    join public.person p on p.id=u.person_id
+    where m.member_id=%s;
+"""
+
+
+download_filtered_categorized_credits_enrolled = """
+WITH base_credits AS (
+    SELECT 
+        SUM(split_part(c.ltp, '-', 3)::numeric) AS total_credits,
+        COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
+        u.email,
+        u.id,
+        u.first_name,
+        u.last_name,
+        u.login_id,
+        co.acad_session,
+        p.dept_name
+    FROM public.courseenrollment ce
+    JOIN public.user u ON u.id = ce.student_id
+    JOIN public.person p ON p.id = u.person_id
+    JOIN public.courseoffering co ON co.id = ce.course_offering_id
+    JOIN public.course c ON c.id = co.course_id
+    LEFT JOIN public.coursecategory cc 
+      ON cc.offering_id = ce.course_offering_id
+      AND cc.degree = p.degree
+      AND (cc.dept = p.dept_name OR cc.dept = 'ALL')
+      AND (cc.for_entry_years ~ %s)
+    WHERE ce.enrol_status = 'ENRO'
+      AND ce.enrol_type IN ('C', 'CC', 'CM')
+      AND (p.year_of_entry = %s OR %s = '')
+      AND (p.degree = %s OR %s = '')
+      AND (p.dept_name = %s OR %s = '')
+      AND (co.acad_session = %s OR %s = '')
+      AND ce.grade IN ('A','A-','B','B-','C','C-','D','S','NP')
+    GROUP BY 
+        cc.category, u.email, u.id, u.first_name, 
+        u.last_name, u.login_id, co.acad_session, p.dept_name
+),
+filtered AS (
+    SELECT *
+    FROM base_credits
+    WHERE (%s = '' OR c_category = %s)
+      AND total_credits BETWEEN %s AND %s
+),
+category_totals AS (
+    SELECT 
+        c_category,
+        SUM(total_credits) AS cat_total,
+        first_name,
+        last_name,
+        login_id,
+        email,
+        id AS user_id,
+        dept_name
+    FROM filtered
+    GROUP BY 
+        c_category, login_id, first_name, last_name, email, id, dept_name
+)
+SELECT 
+    STRING_AGG(CONCAT_WS('=', c.c_category, ROUND(c.cat_total, 2)), ' | ') AS cat_credits,
+    SUM(c.cat_total) AS Earned_Credit_Total,
+    c.first_name,
+    c.last_name,
+    c.login_id,
+    c.email,
+    c.dept_name
+FROM category_totals c
+GROUP BY 
+    c.first_name, c.last_name, c.login_id, c.email, c.dept_name
+ORDER BY 
+    c.login_id;
+"""
+
+credits_enrolled_by_student = """
+    SELECT ROUND(sum(split_part(c.ltp, '-', -1)::numeric), 2) as total_credits
+    FROM public.courseenrollment ce
+    join public.user u on u.id=ce.student_id
+    join public.courseoffering co on co.id=ce.course_offering_id
+    join public.course c on c.id=co.course_id
+    where u.id=%s
+    and co.status in ('R', 'E')
+    and ce.enrol_status in ('ENRO', 'IPEN', 'APEN') 
+    and ce.enrol_type in ('C', 'CC', 'CM')
+    and co.acad_session=%s;"""
+
+daywise_attendance = """
+    WITH enrolment_count(total, co_id) AS (
+    SELECT count(*) total, ce.course_offering_id 
+    FROM public.courseenrollment ce
+    WHERE ce.enrol_status='ENRO' GROUP BY ce.course_offering_id)
+
+    SELECT COUNT(*) present, f.total, sa.attend_dt, co.acad_session,
+    c.title, c.code
+    FROM public.studentattendance sa
+    JOIN public.courseenrollment ce ON ce.id=sa.enrollment_id
+    JOIN public.courseoffering co ON co.id=ce.course_offering_id
+    JOIN public.course c ON c.id=co.course_id
+    JOIN enrolment_count f on f.co_id=co.id
+    WHERE co.id=%s AND sa.attend='P'
+    GROUP BY sa.attend_dt, co.id, c.id;"""

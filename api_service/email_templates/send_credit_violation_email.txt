@@ -1,0 +1,16 @@
+Dear {{first_name}},
+
+The total credits for your enrolled courses in academic session {{acad_session}} are outside the allowed limits:
+Name: {{first_name}} {{last_name}}
+Entry No.: {{entry_no}}
+Academic session: {{acad_session}}
+Credits enrolled: {{credits}}
+
+For details about the allowed credit limits, please see the following document: http://bit.ly/AllowedCredits
+
+You are requested to make necessary changes to your enrollments by visiting your AcadStack login. If you do not bring your enrolled credits to within limits, then the system will drop your last enrolled courses as necessary to comply with the credit limits.
+
+Please contact the academic section if you face any issues.
+
+Thanks,
+AcadStack
