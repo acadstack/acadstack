@@ -132,7 +132,7 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
                "remarks": se.remarks}
         
         # Fetch the student's user/profile info
-        stud = DB.User.select().join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)\
+        stud = DB.User.select(DB.User, DB.Person).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)\
             .where(DB.User.id == se.student_id)
 
         if stud:

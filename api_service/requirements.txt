@@ -1,14 +1,15 @@
-gunicorn[gthread]
+# Runtime dependencies. Exact versions are pinned in constraints.txt:
+#   pip install -r requirements.txt -c constraints.txt
 psycopg2-binary
 cryptography
 quart
-passlib
-peewee
-apscheduler[asyncio]
+hypercorn
+argon2-cffi
+peewee>=4
+# APScheduler 4.x is pre-release and has a different API.
+apscheduler>=3.11,<4
 toml
 google-api-python-client
 WeasyPrint
-pdfkit
-pytest
 requests
 numpy

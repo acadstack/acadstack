@@ -23,7 +23,6 @@ from quart import Blueprint, request, current_app as APP
 from quart.helpers import send_file
 from google.auth.transport import requests
 from google.oauth2 import id_token
-from passlib.handlers.pbkdf2 import pbkdf2_sha256
 from werkzeug.utils import secure_filename
 from peewee import IntegrityError
 
@@ -127,7 +126,7 @@ async def reset_password():
                 -DB.PasswordResetKey.id).execute()
 
             if res and res[0].prk == key_code:
-                u.password_hashed = pbkdf2_sha256.hash(new_password)
+                u.password_hashed = C.hash_password(new_password)
                 apiVC.save_entity(u)
                 DB.PasswordResetKey.delete().where(DB.PasswordResetKey.login_id == login_id).execute()
                 CM.send_password_changed_alert(u.email, u.first_name)
@@ -174,7 +173,10 @@ async def login():
             if u.is_locked:
                 return apiVC.error_json("DB.User is locked! Please contact admin.")
             logging.info("Got user: {0}, {1}".format(u.login_id, u.first_name))
-            valid = pbkdf2_sha256.verify(plain_pass, u.password_hashed)
+            valid = C.verify_password(plain_pass, u.password_hashed)
+            if valid and C.password_needs_rehash(u.password_hashed):
+                DB.User.update(password_hashed=C.hash_password(plain_pass)).where(
+                    DB.User.id == u.id).execute()
 
         if not valid:
             return apiVC.error_json("Invalid user/password.")
@@ -250,7 +252,7 @@ async def user_view(my_id):
         if (apiVC.is_user_in_role(["STU"])) and my_id != cu.id:
             return apiVC.error_json("You cannot access other users' information!")
 
-        res = DB.User.select().join(DB.Person, DB.ORM.JOIN.LEFT_OUTER).where(DB.User.id == my_id)
+        res = DB.User.select(DB.User, DB.Person).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER).where(DB.User.id == my_id)
         if res:
             user = res[0]
             res1 = DB.BatchAdvisors.select().where(DB.BatchAdvisors.user == my_id)
@@ -306,7 +308,7 @@ async def user_save():
                 apiVC.save_entity(per)
                 logging.debug("Inserted Person: {}".format(per))
                 user_mod.person = per
-                user_mod.password_hashed = pbkdf2_sha256.hash(C.get_rand_str())
+                user_mod.password_hashed = C.hash_password(C.get_rand_str())
                 C.update_model_skip_unknown(user_mod, fd)
                 CM.send_user_creation_email(fd.get("email"), fd.get("login_id"))
                 apiVC.save_entity(user_mod)
@@ -402,7 +404,7 @@ async def bulk_add_users():
                             u = user_qry.execute()[0]
                         else:
                             # Generate random password, user will reset it later
-                            u.password_hashed = pbkdf2_sha256.hash(C.get_rand_str(8))
+                            u.password_hashed = C.hash_password(C.get_rand_str(8))
                             creating = True
 
                         p.org_id = row["org_id"]

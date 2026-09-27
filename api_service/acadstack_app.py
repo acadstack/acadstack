@@ -149,5 +149,3 @@ def create_app(is_testing=False):
     myapp.config['EXECUTOR_PROPAGATE_EXCEPTIONS'] = True
     return myapp
 
-
-app = create_app()

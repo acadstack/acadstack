@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging, re, random, string, toml
+import base64, hashlib, hmac, logging, re, random, string, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -16,6 +16,8 @@ from quart import current_app
 from quart import (jsonify, session)
 
 from jinja2 import Environment, FileSystemLoader
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 from playhouse.shortcuts import update_model_from_dict
 
 from json import JSONEncoder
@@ -36,6 +38,7 @@ class JSONEncoderWithDate(JSONEncoder):
         return JSONEncoder.default(self, obj)
 
 emailer = Emailer()
+_password_hasher = PasswordHasher()
 
 TS_FORMAT = "%Y%m%d_%H%M%S"
 WEEK_DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -143,6 +146,35 @@ def get_rand_str(size=10):
         str: Random alphanumeric ASCII string.
     """
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=size))
+
+
+def hash_password(plain: str) -> str:
+    return _password_hasher.hash(plain)
+
+
+def _ab64_decode(data: str) -> bytes:
+    # passlib's "adapted base64": '.' instead of '+', no padding.
+    data = data.replace(".", "+")
+    return base64.b64decode(data + "=" * (-len(data) % 4))
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Checks a password against an argon2 hash, or against a
+    ``$pbkdf2-sha256$rounds$salt$checksum`` hash written by passlib."""
+    if hashed.startswith("$pbkdf2-sha256$"):
+        _, _, rounds, salt, checksum = hashed.split("$")
+        dk = hashlib.pbkdf2_hmac("sha256", plain.encode("utf-8"),
+                                 _ab64_decode(salt), int(rounds))
+        return hmac.compare_digest(dk, _ab64_decode(checksum))
+    try:
+        return _password_hasher.verify(hashed, plain)
+    except (VerificationError, InvalidHashError):
+        return False
+
+
+def password_needs_rehash(hashed: str) -> bool:
+    return (not hashed.startswith("$argon2")
+            or _password_hasher.check_needs_rehash(hashed))
 
 
 def update_model_skip_unknown(mod, form_data):

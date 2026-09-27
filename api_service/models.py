@@ -11,8 +11,7 @@ import logging
 from datetime import datetime as DT
 
 import peewee as ORM
-from playhouse.postgres_ext import JSONField
-from playhouse.pool import PooledPostgresqlExtDatabase
+from playhouse.postgres_ext import JSONField, PooledPostgresqlExtDatabase
 
 # Deferred initialization
 # db = ORM.PostgresqlDatabase(None)

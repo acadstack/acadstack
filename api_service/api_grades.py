@@ -12,12 +12,33 @@ from api_course_enrolment import get_student_courses_perf_filtered
 
 import datetime
 import shutil
-import pdfkit
 
 import api_common as apiVC
 import common as C
 import models as DB
 import tasks_helper as TH
+
+# The report templates are sized for a canvas about 4/3 wider than the paper,
+# so pages are laid out 4/3 larger than the paper and then zoomed out by 3/4.
+_PDF_ZOOM = 0.75
+
+
+def _html_to_pdf(html, target=None, size_mm=(210, 297), margin_mm=10):
+    """Renders the HTML as a PDF on paper of ``size_mm`` (A4 by default):
+    returns the bytes, or writes them to the file ``target``. Relative file
+    paths in the HTML resolve against the working directory."""
+    # Imported here so the app runs without WeasyPrint's system libraries
+    # (Pango) when no PDF is rendered.
+    from weasyprint import CSS, HTML
+
+    width, height = (d / _PDF_ZOOM for d in size_mm)
+    page_css = (f"@page {{ size: {width:.2f}mm {height:.2f}mm; "
+                f"margin: {margin_mm / _PDF_ZOOM:.2f}mm }}")
+    # presentational_hints: honour HTML layout attributes (width, align, ...)
+    return HTML(string=html, base_url=os.getcwd()).write_pdf(
+        target, stylesheets=[CSS(string=page_css)], zoom=_PDF_ZOOM,
+        presentational_hints=True)
+
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/download_grade_distribution/<string:acad_session>/<string:degree>',
@@ -132,21 +153,8 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
 
             html = C.fill_template("report_templates", 
                     "consolidatedGradeSheetnew.html", report_data)
-            options = {
-                'page-size': 'Legal',
-                'orientation': 'Portrait',
-                'encoding': "UTF-8",
-                'margin-top': '0.1in',
-                'margin-right': '0.1in',
-                'margin-bottom': '0.1in',
-                'margin-left': '0.1in',
-                'custom-header': [
-                    ('Accept-Encoding', 'gzip')
-                ],
-                'no-outline': None,
-                "enable-local-file-access": ""
-            }
-            pdf_str = pdfkit.from_string(html, False, options=options)
+            # US Legal paper with 0.1in margins
+            pdf_str = _html_to_pdf(html, size_mm=(215.9, 355.6), margin_mm=2.54)
             fp = BytesIO()
             fp.write(pdf_str)
             fp.flush()
@@ -248,7 +256,7 @@ async def download_sem_grade(acad_session, entry_no, enrol_type):
         # TODO: Check the HTML and the data's structure
         html = C.fill_template("report_templates", "semester_grades.html", data)
 
-        pdf_str = pdfkit.from_string(html, False, options={"enable-local-file-access": ""})
+        pdf_str = _html_to_pdf(html)
         fp = BytesIO()
         fp.write(pdf_str)
         fp.flush()
@@ -302,8 +310,7 @@ def _bulk_download_sem_grade(form_data, job_key):
                 data['enrol_type'] = enrol_type
                 html = C.fill_template("report_templates", "semester_grades.html", data)
                 out_pdf = f"{file_folder}/grades_{entry_no}_{acad_session}.pdf"
-                pdfkit.from_string(html, out_pdf, \
-                                    options={"enable-local-file-access": ""})
+                _html_to_pdf(html, out_pdf)
             else:
                 missing_stu_enrol.append(entry_no)
                 continue
@@ -431,7 +438,7 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
             report_data["static_file_path"] = file_folder
 
             html = C.fill_template("report_templates", "degree.html", report_data)
-            pdf_str = pdfkit.from_string(html, False, options={"enable-local-file-access": ""})
+            pdf_str = _html_to_pdf(html)
             fp = BytesIO()
             fp.write(pdf_str)
             fp.flush()

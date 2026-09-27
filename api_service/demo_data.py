@@ -16,7 +16,6 @@ import psycopg2 as pg
 from psycopg2 import sql
 
 from datetime import timedelta
-from passlib.handlers.pbkdf2 import pbkdf2_sha256
 
 import common as C
 import models as M
@@ -93,7 +92,7 @@ def setup_prod_db(config):
     u = M.User()
     u.login_id = "acad.user"
     u.role = "ACA"
-    u.password_hashed = pbkdf2_sha256.hash("abcd1234")
+    u.password_hashed = C.hash_password("abcd1234")
     u.first_name, u.last_name = "Academic", "Section"
     u.email = "acad.user@iitrpr.ac.in"
     u.person = p
@@ -124,7 +123,7 @@ def _create_users():
         p.save()
         u = M.User()
         u.login_id = ".".join(item).lower()
-        u.password_hashed = pbkdf2_sha256.hash("abcd1234")
+        u.password_hashed = C.hash_password("abcd1234")
         u.first_name, u.last_name = item
         u.email = "{0}@{1}.com".format(item[0], item[1])
         u.person = p
