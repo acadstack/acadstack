@@ -249,10 +249,14 @@ Component for user details.
                 <i class="bi bi-key"></i>
               </button>
               <div class="alert alert-info mt-2" v-if="resetKeyInfo">
-                Reset key for <strong>{{resetKeyInfo.login_id}}</strong>:
-                <strong>{{resetKeyInfo.key_code}}</strong> (valid 30 minutes).
-                Share it with the user; they can enter it on the Password Reset screen
-                along with their login ID and email to set a new password.
+                <div>Reset key for <strong>{{resetKeyInfo.login_id}}</strong> (valid 30 minutes):</div>
+                <input type="text" class="form-control mt-1" style="max-width: 200px; font-family: monospace;"
+                  :value="resetKeyInfo.key_code" readonly @focus="$event.target.select()">
+                <div class="mt-1">
+                  Click the key above to select it, then copy it. Share it with the user;
+                  they can enter it on the Password Reset screen along with their login ID
+                  and email to set a new password.
+                </div>
               </div>
             </div>
           </div>
