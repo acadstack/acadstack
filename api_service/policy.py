@@ -87,9 +87,11 @@ def current_actor():
     return Actor(u["id"], u["login_id"], u["role"], u.get("dept"), perms_of(u["role"]))
 
 
-def require(perm: str):
+def require(perm: str, alert: bool = False):
     """Decorator for views: the request needs a logged-in user who holds
-    ``perm`` at some scope."""
+    ``perm`` at some scope. With ``alert``, a refusal is reported as an
+    access violation, which also locks the account of a user who may act
+    only on their own records (a student)."""
     def decor(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -101,6 +103,12 @@ def require(perm: str):
             if not actor.can(perm):
                 msg = "You do not have required permissions to access."
                 logging.warning(f"{actor.login_id} lacks {perm}.")
+                if alert:
+                    # Imported here: create_email imports this module.
+                    from create_email import send_access_violation_alert
+                    send_access_violation_alert(f"User {actor.login_id} attempted "
+                                                f"{func.__name__} without {perm}.")
+                    msg += " This incident has been reported."
                 return jsonify({"status": "ERROR", "body": msg})
             # Some views are plain functions; their result is not awaitable.
             result = func(*args, **kwargs)

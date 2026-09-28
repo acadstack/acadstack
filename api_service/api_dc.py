@@ -730,7 +730,7 @@ def __ppr_exists(stu_id, acad_sess, dcm_id):
     return q1.exists()
 
 
-@P.require("ppr.edit")
+@P.require("ppr.edit", alert=True)
 async def save_progress_report():
     try:
         actor = P.current_actor()
@@ -774,7 +774,7 @@ async def save_progress_report():
         return apiVC.error_json("Error occurred when saving progress report.")
 
 
-@P.require("ppr.view")
+@P.require("ppr.view", alert=True)
 async def get_ppr(myid):
     try:
         actor = P.current_actor()
@@ -791,7 +791,7 @@ async def get_ppr(myid):
         return apiVC.error_json("Error occurred when fetching progress report.")
 
 
-@P.require("ppr.view")
+@P.require("ppr.view", alert=True)
 async def get_pprs_for_student(myid):
     try:
         actor = P.current_actor()

@@ -433,3 +433,40 @@ async def test_hod_edits_offerings_of_own_department(client, auth, hod_dept, ok)
     else:
         assert body == {"status": "ERROR", "body": "Only the HoD of the offering "
                         "department can make changes to the course offering."}
+
+
+# ---- refusals reported as access violations ----
+
+@pytest.fixture
+def alerts(monkeypatch):
+    import create_email
+    sent = []
+    monkeypatch.setattr(create_email.emailer, "send_mail",
+                        lambda to, subject, body: sent.append((to, subject)))
+    return sent
+
+
+async def test_student_submitting_progress_report_is_reported_and_locked(client, auth, alerts):
+    stu = make_user("stu", role="STU")
+    await auth.login("stu")
+    body = await _post(client, "ppr_save", {"student": stu.id})
+    assert body["status"] == "ERROR" and "reported" in body["body"]
+    assert [s for _, s in alerts] == ["AcadStack access violation alert"]
+    assert M.User.get_by_id(stu.id).is_locked
+
+
+async def test_staff_submitting_feedback_is_reported_but_not_locked(client, auth, alerts):
+    aca = make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await _post(client, "save_course_instructor_feedback", {})
+    assert body["status"] == "ERROR"
+    assert [s for _, s in alerts] == ["AcadStack access violation alert"]
+    assert not M.User.get_by_id(aca.id).is_locked
+
+
+async def test_other_refusals_are_not_reported(client, auth, alerts):
+    stu = make_user("stu", role="STU")
+    await auth.login("stu")
+    assert (await _post(client, "user_find", {}))["status"] == "ERROR"
+    assert alerts == []
+    assert not M.User.get_by_id(stu.id).is_locked

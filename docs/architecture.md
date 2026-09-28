@@ -135,6 +135,8 @@ if not actor.allowed("offerings.edit",
                      dept=lambda: VAL.is_offering_in_actor_dept(cid, actor)):
     return apiVC.error_json("...")
 ```
+`@P.require(perm, alert=True)` also reports a refusal as an access violation,
+which locks the account of a user who may act only on their own records.
 `actor.has("fees.view:any")` checks an exact code, for example to decide
 whether a query is limited to the user's own rows.
 

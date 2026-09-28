@@ -158,7 +158,7 @@ def student_enrolments_for_fb(form_type):
         return apiVC.error_json(msg)
 
 
-@P.require("feedback.submit")
+@P.require("feedback.submit", alert=True)
 async def save_course_instructor_feedback():
     try:
         fd = await request.get_json(force=True)
