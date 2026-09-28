@@ -69,7 +69,7 @@
         <button class="btn btn-outline-danger me-2 mt-3" @click="reset" type="reset">
           <i class="bi bi-eraser"></i>
         </button>        
-        <button v-if="isAcad || isDean" class="btn btn-outline-info mt-3" @click="email_students" type="button">  
+        <button v-if="hasPermission('credits.notify_violation')" class="btn btn-outline-info mt-3" @click="email_students" type="button">  
           <i class="bi bi-envelope"></i>
         </button>
       </div>
@@ -83,7 +83,7 @@
           <div class="col-md-2">Name</div>
           <div class="col">Email</div>
           <div class="col-md-2">Total Credits</div>
-          <div v-if="isAcad || isDean" class="col-md-1">
+          <div v-if="hasPermission('credits.notify_violation')" class="col-md-1">
             <div class="form-check form-check-inline">
               <input type="radio" id="rb1" value="include" 
                 v-model="search_crit.mark_type"
@@ -111,7 +111,7 @@
           <div class="col-md-2">{{ s.first_name }} {{s.last_name}}</div>
           <div class="col">{{s.email}}</div>
           <div class="col-md-2">{{s.credits}}</div>
-          <div v-if="isAcad || isDean" class="col-md-1">
+          <div v-if="hasPermission('credits.notify_violation')" class="col-md-1">
             <input class="form-check-input" type="checkbox" 
               v-model="search_crit.marked_items" :value="s.user_id"/>
           </div>

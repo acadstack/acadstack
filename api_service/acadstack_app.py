@@ -14,12 +14,15 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import api_attendance as apiAT
 import api_auth as apiAU
 import api_course_enrolment as apiCE
 import api_course_offering as apiCO
 import api_course as apiCR
 import api_dc as apiDC
+import api_documents as apiDO
 import api_faces as apiFC
+import api_fees as apiFE
 import api_feedback as apiVF
 import api_grades as apiVG
 import api_reports as apiRP
@@ -134,11 +137,14 @@ def create_app(is_testing=False):
                        view_func=apiFC.get_class_photo, methods=['GET'])
 
     # Initialize the routes defines in each module
+    apiAT.init_routes(apiVC.vbp)
     apiAU.init_routes(apiVC.vbp)
     apiCE.init_routes(apiVC.vbp)
     apiCO.init_routes(apiVC.vbp)
     apiCR.init_routes(apiVC.vbp)
     apiDC.init_routes(apiVC.vbp)
+    apiDO.init_routes(apiVC.vbp)
+    apiFE.init_routes(apiVC.vbp)
     apiRP.init_routes(apiVC.vbp)
     apiVF.init_routes(apiVC.vbp)
     apiVG.init_routes(apiVC.vbp)

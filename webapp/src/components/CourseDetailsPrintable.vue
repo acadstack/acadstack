@@ -15,7 +15,7 @@ Component for showing printable details of a course.
         v-bind:print="true"/>
         <CourseTKP v-bind:tkp="course.tkp" v-bind:error="v$"/>
         <CourseTGAP v-bind:tgap="course.tgap" v-bind:error="v$"/>
-        <WorkflowNotes v-if="!isStudent" v-bind:ent_name="'course'"
+        <WorkflowNotes v-if="hasPermission('wfnotes.edit')" v-bind:ent_name="'course'"
         v-bind:print="true" v-bind:ent_key="course.id" />
       </div>
   </div>

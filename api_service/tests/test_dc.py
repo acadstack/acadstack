@@ -137,6 +137,41 @@ async def test_c9_approving_dc_adds_milestone(client, auth, people):
     assert [m.milestone for m in dc.acad_milestones] == ["DC Approved"]
 
 
+def dc_members_payload(dc):
+    return [{"id": m.id, "txn_no": m.txn_no, "role": m.role, "user_id": m.member_id}
+            for m in dc.dc_members]
+
+
+@pytest.mark.parametrize("status", ["APP", "FTD"])
+async def test_supervisor_cannot_approve_own_draft_dc(client, auth, people, status):
+    dc = make_dc(people)
+    await auth.login("sup")
+    _, body = await dc_save(client, dc_payload(people, id=dc.id, txn_no=1, status=status,
+                                               members=dc_members_payload(dc)))
+    assert body == {"status": "ERROR",
+                    "body": f"Cannot change the DC status from DRA to {status}!"}
+    assert M.DcForStudent.get_by_id(dc.id).status == "DRA"
+
+
+async def test_supervisor_submits_draft_dc(client, auth, people):
+    dc = make_dc(people)
+    await auth.login("sup")
+    _, body = await dc_save(client, dc_payload(people, id=dc.id, txn_no=1, status="SUB",
+                                               members=dc_members_payload(dc)))
+    assert body["body"]["status"] == "SUB"
+
+
+@pytest.mark.parametrize("status,allowed", [("FTD", True), ("RTS", True), ("APP", False)])
+async def test_hod_forwards_or_returns_submitted_dc(client, auth, people, status, allowed):
+    dc = make_dc(people, status="SUB")
+    make_user("hod", role="HOD")
+    await auth.login("hod")
+    _, body = await dc_save(client, dc_payload(people, id=dc.id, txn_no=1, status=status,
+                                               members=dc_members_payload(dc)))
+    assert (body["status"] == "OK") == allowed
+    assert M.DcForStudent.get_by_id(dc.id).status == (status if allowed else "SUB")
+
+
 # ---- progress reports (/ppr_save) ----
 
 async def ppr_save(client, payload):

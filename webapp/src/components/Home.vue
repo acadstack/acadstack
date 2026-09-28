@@ -12,7 +12,7 @@
     <B>Before contacting @acadstack_help for any issues, 
       please check the <a href="https://bit.ly/AcadStackGuide" target="_blank">User Guide</a> for solution.</B>
     </p>
-    <div class="card" v-if="isAcad||isSuperuser">
+    <div class="card" v-if="hasPermission('users.view_active')">
       <div class="card-header">Online Users <b>({{active_users.length}})</b></div>
       <ul class="list-group list-group-flush">
         <li class="list-group-item" v-for="(u, idx) in active_users" :key="u">{{idx+1}}) {{u}}</li>
@@ -38,7 +38,7 @@ export default {
   mounted() {
     // Alias 'this' for accessing in promises
     var vm = this;
-    if (!vm.isSuperuser && !vm.isAcad) return;
+    if (!vm.hasPermission('users.view_active')) return;
 
     return vm.$http.get('./auc')
       .then(function (res) {

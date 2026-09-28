@@ -177,7 +177,8 @@ NARROWED = {
     "is_dc_chair": _but("STU"),
 }
 
-NEW_ROUTES = {"get_permissions": ["SUP"], "save_role_permissions": ["SUP"]}
+NEW_ROUTES = {"get_permissions": ["SUP"], "save_role_permissions": ["SUP"],
+              "close_session": ["ACA"]}
 
 EXPECTED = {**ROLE_CHECKS, **INLINE_GATES, **NARROWED, **NEW_ROUTES}
 

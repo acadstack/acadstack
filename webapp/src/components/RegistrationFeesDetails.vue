@@ -123,7 +123,7 @@ export default {
     let vm = this;
     if (vm.isStudent) {
       vm.student_id = vm.currentUser.id;
-    } else if (vm.isAcad || vm.isDean) {
+    } else if (vm.hasPermission('fees.view:any')) {
       vm.student_id = vm.$route.params.user_id;
     } else {
       const msg = "You are not allowed to access this screen!";

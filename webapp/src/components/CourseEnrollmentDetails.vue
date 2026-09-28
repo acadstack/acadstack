@@ -21,7 +21,7 @@ Component for course enrollment details.
       </div>
       <div class="col">
         <label for="coe_status">Status</label>
-        <select class="form-select" id="coe_status" v-model="coe.enrol_status" :disabled="isStudent">
+        <select class="form-select" id="coe_status" v-model="coe.enrol_status" :disabled="!hasPermission('enrolments.edit')">
           <option v-for="x in SD.EnrolStatuses" v-bind:value="x.id" :key="x.id">{{ x.value }}</option>
         </select>
       </div>
@@ -29,7 +29,7 @@ Component for course enrollment details.
     <div class="row mb-2">
       <div class="col">
         <label for="coe_grade">Grade</label>
-        <select class="form-select" id="coe_grade" v-model="coe.grade" :disabled="isStudent">
+        <select class="form-select" id="coe_grade" v-model="coe.grade" :disabled="!hasPermission('enrolments.edit')">
           <option v-for="x in SD.CourseGrades" v-bind:value="x.id" :key="x.id">{{ x.value }}</option>
         </select>
       </div>
@@ -41,13 +41,18 @@ Component for course enrollment details.
           max="100"
           class="form-control"
           id="coe_score"
-          :disabled="isStudent"
+          :disabled="!hasPermission('enrolments.edit')"
           v-model="coe.current_score"
         />
       </div>
       <div class="col">
         <label for="coe_remarks">Remarks</label>
-        <textarea rows="2" class="form-control" id="coe_remarks" v-model="coe.remarks" :disabled="isStudent"></textarea>
+        <textarea rows="2" class="form-control" id="coe_remarks" v-model="coe.remarks" :disabled="!hasPermission('enrolments.edit')"></textarea>
+      </div>
+      <!-- Credits are frozen when the session is closed; a grade change then needs a reason. -->
+      <div class="col" v-if="coe.credits != null && hasPermission('enrolments.edit')">
+        <label for="coe_grade_reason">Reason for grade change (session closed)</label>
+        <textarea rows="2" class="form-control" id="coe_grade_reason" v-model="coe.grade_change_reason"></textarea>
       </div>
     </div>
     <div class="row mb-2">

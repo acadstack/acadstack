@@ -47,6 +47,15 @@ async def test_current_user(client, auth):
     body = await res.get_json()
     assert body["status"] == "OK"
     assert body["body"]["user"]["login_id"] == "test"
+    # The permissions come from the stored grants, not from the session.
+    assert "students.academics:own" in body["body"]["user"]["perms"]
+
+
+async def test_login_returns_permissions(client, auth):
+    make_user("fac", role="FAC")
+    body = await (await auth.login("fac")).get_json()
+    perms = body["body"]["user"]["perms"]
+    assert "grades.upload:own" in perms and "grades.upload:any" not in perms
 
 
 # Hash of "abcd1234" as written by passlib's pbkdf2_sha256.

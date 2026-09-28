@@ -285,6 +285,9 @@ class CourseEnrollment(BaseModel):
     grade = ORM.CharField(max_length=2, default="NA")
     current_score = ORM.FloatField(null=True)
     remarks = ORM.TextField(null=True)
+    # The course's credits, copied when the session is closed; NULL while
+    # it is open, when they are read from the course's L-T-P-S-C.
+    credits = ORM.DecimalField(max_digits=6, decimal_places=2, null=True)
 
     def get_status_label(self):
         return dict(self.ENROL_STATUSES)[self.enrol_status]
@@ -294,6 +297,17 @@ class CourseEnrollment(BaseModel):
             # Unique index
             (('student', 'course_offering'), True),
         )
+
+
+class GradeChange(BaseModel):
+    """A change of an enrolment's grade; ins_ts is when it was made."""
+    enrolment = ORM.ForeignKeyField(CourseEnrollment, backref='grade_changes',
+                                    on_delete='CASCADE')
+    old_grade = ORM.CharField(max_length=2)
+    new_grade = ORM.CharField(max_length=2)
+    changed_by = ORM.CharField(max_length=40)
+    # Required once the session is closed
+    reason = ORM.TextField(null=True)
 
 
 class StudentAttendance(BaseModel):

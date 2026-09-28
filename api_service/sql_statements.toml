@@ -72,7 +72,7 @@ course_lectures_in_session = """SELECT count(*) as Lecture,
 credits_earned_report = """
     WITH student_credits AS (
         SELECT u.first_name, u.last_name, u.email, o.acad_session,
-            ROUND(SUM(split_part(c.ltp, '-', 5)::numeric), 2) AS total_credits,
+            ROUND(SUM(COALESCE(e.credits, split_part(c.ltp, '-', 5)::numeric)), 2) AS total_credits,
             u.id,
             p.org_id
         FROM public.courseenrollment e
@@ -327,7 +327,7 @@ enrolled_students_for_grades = """
 filtered_categorized_credits_enrolled = """
 WITH category_credits AS (
     SELECT 
-        SUM(split_part(c.ltp, '-', 5)::numeric) AS total_credits,
+        SUM(COALESCE(ce.credits, split_part(c.ltp, '-', 5)::numeric)) AS total_credits,
         COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
         u.email,
         u.id,
@@ -898,7 +898,7 @@ get_dc_students = """
 download_filtered_categorized_credits_enrolled = """
 WITH base_credits AS (
     SELECT 
-        SUM(split_part(c.ltp, '-', 5)::numeric) AS total_credits,
+        SUM(COALESCE(ce.credits, split_part(c.ltp, '-', 5)::numeric)) AS total_credits,
         COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
         u.email,
         u.id,
@@ -961,6 +961,14 @@ GROUP BY
     c.first_name, c.last_name, c.login_id, c.email, c.dept_name
 ORDER BY 
     c.login_id;
+"""
+
+freeze_session_credits = """
+    UPDATE public.courseenrollment ce
+    SET credits = split_part(c.ltp, '-', 5)::numeric
+    FROM public.courseoffering co
+    JOIN public.course c ON c.id = co.course_id
+    WHERE co.id = ce.course_offering_id AND co.acad_session = %s;
 """
 
 credits_enrolled_by_student = """

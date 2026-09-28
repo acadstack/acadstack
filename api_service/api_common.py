@@ -102,8 +102,9 @@ def logged_in_user():
 def get_current_user_and_nav():
     if "user" in session:
         u = session['user']
-        nav = init_navbar_items(P.current_actor(), u["degree"])
-        return ok_json({"user": u, "nav": nav})
+        actor = P.current_actor()
+        nav = init_navbar_items(actor, u["degree"])
+        return ok_json({"user": {**u, "perms": sorted(actor.perms)}, "nav": nav})
     else:
         return error_json("User not logged in.")
 

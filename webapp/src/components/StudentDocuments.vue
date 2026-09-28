@@ -1,6 +1,6 @@
 <template>
   <div class="container-fluid">
-    <div v-if="!isStudent">
+    <div v-if="hasPermission('student_docs.upload')">
       <p class="h6">Upload Student Documents</p>
       <div class="row mb-2">
         <div class="col-md-4">
@@ -21,7 +21,7 @@
       </div>
     </div>
     <div class="card">
-      <h6 v-if="!isStudent" class="card-header">Documents (Delete the old one to upload a new version)</h6>
+      <h6 v-if="hasPermission('student_docs.upload')" class="card-header">Documents (Delete the old one to upload a new version)</h6>
       <h6 v-else class="card-header">Documents</h6>
       <div class="card-body">
         <div class="row hdr-row border-bottom border-info">

@@ -49,7 +49,7 @@ export default {
   },
   created: function() {
     console.log("Creating CourseTGAP");
-    this.viewOnly = this.isStudent;
+    this.viewOnly = !this.hasPermission('courses.edit');
     let l = this.tgap.length;
     if (l < 12) {
       for (let x=0; x < 12-l; x++) this.tgap.push(false);

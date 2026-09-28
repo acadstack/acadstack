@@ -97,6 +97,10 @@ async def dates_save():
         eventdates = fd.get("eventDates")
         ac = M.AcademicCalendar()
         for x in eventdates:
+            # Only closing the session marks it closed, as that also freezes
+            # its credits.
+            if x == "SESSION_CLOSED":
+                continue
             (ac.insert(acad_session=session, event_code=x, \
                        event_value=eventdates[x]) \
             .on_conflict(

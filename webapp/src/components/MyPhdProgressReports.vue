@@ -10,7 +10,7 @@ Component for PhD progress reports
       <div class="col-md-6">
         <span class="float-start h4">Progress reports</span>
       </div>
-      <div v-if="!isStudent" class="col-md-6 float-end">
+      <div v-if="hasPermission('ppr.edit')" class="col-md-6 float-end">
         <my-dc-students v-on:student-selected="onStudentSelect" label="For student:" />
       </div>
     </div>
@@ -22,7 +22,7 @@ Component for PhD progress reports
           <span class="me-2"><b>Status: </b> {{labelFor(SD.PPRStatuses, r.status)}} <b>As on</b> {{r.upd_ts}}</span>
           <span class="me-2"><b>Academic session: </b> {{r.acad_session}}</span>
           <span :class="{'badge bg-danger': !r.is_satisfactory, 'badge bg-success': r.is_satisfactory}">{{r.is_satisfactory ? "Satisfactory" : "Unsatisfactory"}}</span>
-          <span class="ms-2" v-if="!isStudent">[<a :href="'#/ppr/'+r.id">Edit</a>]</span>
+          <span class="ms-2" v-if="hasPermission('ppr.edit')">[<a :href="'#/ppr/'+r.id">Edit</a>]</span>
         </div>
         <div class="card-body">
           <p class="card-text">{{r.note}}</p>
@@ -44,11 +44,6 @@ export default {
     return {
       reports: []
     };
-  },
-  computed: {
-    actions() {
-      return this.actionsMap[this.userRole];
-    }
   },
   async mounted() {
     console.log("Mounted MyPhdProgressReports");

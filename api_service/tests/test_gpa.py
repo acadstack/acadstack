@@ -1,18 +1,18 @@
 """Characterization tests for SGPA/CGPA/earned-credit computation.
 
-These pin the current behaviour of ``__compute_cgpa_sgpa_ec`` and of the
+These pin the current behaviour of ``transcript.session_gpa`` and of the
 cumulative CGPA built on top of it. Tests whose name starts with a bug code
 (C4, C12, C13, ...) pin behaviour that looks wrong; flip them when fixing it.
 """
 
 import pytest
 
-import api_course_enrolment as apiCE
 import common as C
 import models as M
+import transcript as TR
 from conftest import enrol, make_offering, make_user
 
-compute = getattr(apiCE, "__compute_cgpa_sgpa_ec")
+compute = TR.session_gpa
 
 
 def course(grade, credits=4, enrol_type="C", enrol_status="ENRO",
@@ -169,6 +169,29 @@ def test_ltp_without_five_parts_is_rejected():
 def test_c13_malformed_ltp_raises_index_error():
     with pytest.raises(IndexError):
         compute([course("A", ltp="3-1")], "BTE")
+
+
+def test_empty_grade_earns_no_credit():
+    # Grades were once matched by substring of "A,A-,...", which matched "".
+    assert compute([course("")], "BTE")["ec"] == 0
+
+
+def test_frozen_credits_are_used_instead_of_ltp():
+    frozen = dict(course("A", 4), credits=3)
+    assert compute([frozen], "BTE")["creg"] == 3
+
+
+def test_cumulative_gpa_carries_earned_credits_and_points():
+    r = TR.cumulative_gpa([[course("A", 4)], [course("B", 4, acad_session="2024-II")]],
+                          "BTE")
+    assert [x["cec"] for x in r] == [4, 8]
+    assert [x["cgpa"] for x in r] == [10, 9]
+    assert [x["sgpa"] for x in r] == [10, 8]
+
+
+def test_sessions_sort_chronologically():
+    assert sorted(["2024-II", "2023-S", "2024-I", "2024-T1"], key=TR.session_sort_key) \
+        == ["2023-S", "2024-T1", "2024-I", "2024-II"]
 
 
 def test_empty_course_list():

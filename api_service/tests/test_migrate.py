@@ -3,6 +3,10 @@ import pytest
 import migrate
 import models as M
 
+# The versions of the real migration files, all applied by the test setup.
+APPLIED = sorted(migrate._migration_files())
+NEXT = APPLIED[-1] + 1
+
 
 def _versions():
     return [r[0] for r in M.db.execute_sql("SELECT version FROM public.schema_migrations ORDER BY 1")]
@@ -21,7 +25,7 @@ def test_every_model_column_exists_in_migrated_schema(db):
 
 def test_rerun_applies_nothing(db):
     assert migrate.migrate() == []
-    assert _versions() == [1]
+    assert _versions() == APPLIED
 
 
 async def test_empty_database_gets_superuser_who_can_log_in(client, auth, capsys):
@@ -44,21 +48,21 @@ def test_superuser_not_seeded_when_users_exist(db):
 def migrations_dir(db, tmp_path, monkeypatch):
     monkeypatch.setattr(migrate, "MIGRATIONS_DIR", tmp_path)
     yield tmp_path
-    db.execute_sql("DELETE FROM public.schema_migrations WHERE version > 1")
+    db.execute_sql(f"DELETE FROM public.schema_migrations WHERE version > {APPLIED[-1]}")
     db.execute_sql("DROP TABLE IF EXISTS public.mig_probe")
 
 
 def test_pending_files_applied_in_order_and_failed_file_rolled_back(migrations_dir):
     (migrations_dir / "0001_baseline.sql").write_text("SELECT 1/0;")  # already applied
-    (migrations_dir / "0002_probe.sql").write_text("CREATE TABLE public.mig_probe (n int);")
-    (migrations_dir / "0003_insert.sql").write_text("INSERT INTO public.mig_probe VALUES (3);")
-    (migrations_dir / "0004_broken.sql").write_text(
+    (migrations_dir / f"{NEXT:04d}_probe.sql").write_text("CREATE TABLE public.mig_probe (n int);")
+    (migrations_dir / f"{NEXT + 1:04d}_insert.sql").write_text("INSERT INTO public.mig_probe VALUES (3);")
+    (migrations_dir / f"{NEXT + 2:04d}_broken.sql").write_text(
         "INSERT INTO public.mig_probe VALUES (4); SELECT * FROM no_such_table;")
 
     with pytest.raises(Exception, match="no_such_table"):
         migrate.migrate()
 
-    assert _versions() == [1, 2, 3]
+    assert _versions() == APPLIED + [NEXT, NEXT + 1]
     assert [r[0] for r in M.db.execute_sql("SELECT n FROM public.mig_probe")] == [3]
 
 
@@ -71,4 +75,4 @@ def test_bad_file_names_rejected(migrations_dir, names, error):
         (migrations_dir / name).write_text("SELECT 1;")
     with pytest.raises(ValueError, match=error):
         migrate.migrate()
-    assert _versions() == [1]
+    assert _versions() == APPLIED

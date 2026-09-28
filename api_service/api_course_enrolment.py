@@ -13,9 +13,13 @@ import validation_checks as VAL
 import models as DB
 import common as C
 import policy as P
+import transcript as TR
+import workflows as WF
 
 
-def __get_ce_ownership(eids):
+def __get_ce_ownership(eids, actor):
+    """For each enrolment ID: (the actor is its course coordinator, the actor
+    is its student's batch advisor)."""
     sql1 = sql_by_id("frag_pending_enrollments")
     sql2 = sql_by_id("frag_ba_and_instructor")
     sql = "{0} {1}".format(sql1, sql2)
@@ -23,13 +27,24 @@ def __get_ce_ownership(eids):
     cursor = DB.db.execute_sql(sql, [param])
 
     ba_instr = apiVC.result_set_from_cursor(cursor)
-    cuid = apiVC.logged_in_user().id
     data = {}
     for obj in ba_instr:
-        is_instr = obj["instructor_id"] == cuid
-        is_advisor = obj["batch_adv_id"] == cuid
-        data[obj["id"]] = [is_instr, is_advisor]
+        is_instr = obj["instructor_id"] == actor.id
+        is_advisor = obj["batch_adv_id"] == actor.id
+        data[obj["id"]] = (is_instr, is_advisor)
     return data
+
+
+def record_grade_change(ce, old_grade, actor, reason=None):
+    """Logs the change of the enrolment's grade to ``ce.grade``. Call it in
+    the transaction that saves the grade. Once the session is closed, a
+    change needs a reason."""
+    if VAL.is_session_closed(ce.course_offering.acad_session) and not reason:
+        raise AcadStackException("The session is closed. Please give a reason "
+                                 "for changing the grade.")
+    apiVC.save_entity(DB.GradeChange(enrolment=ce, old_grade=old_grade,
+                                     new_grade=ce.grade, changed_by=actor.login_id,
+                                     reason=reason))
 
 
 def __get_existing_enrolment(co_id, student_id):
@@ -133,6 +148,7 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
                "enrol_type": se.enrol_type.strip().upper(),
                "enrol_status": se.enrol_status.strip().upper(),
                "grade": se.grade.strip().upper(),
+               "credits": se.credits,
                "remarks": se.remarks}
         
         # Fetch the student's user/profile info
@@ -187,14 +203,8 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
 
         enrol_data[acad_sess_key]["courses"].append(my_course)
     
-    # We use these suffixies for academic sessions. Change them as needed.
-    # T1, T2 etc. are for trimesters, I, II and S are for regular semesters.
-    suffixes = ['T1', 'T2', 'T3', 'T4', 'I', 'II', 'S']
-
     # Sort by academic session. Needed for cgpa calculations
-    acad_sess_list = list(enrol_data.keys())
-    acad_sess_list = sorted(acad_sess_list,
-        key=lambda item: "{0}{1}".format(item[:4], suffixes.index(item[5:])))
+    acad_sess_list = sorted(enrol_data.keys(), key=TR.session_sort_key)
     
     # We return the enrolment data per academic session, sorted in reverse
     # chronological order of academic sessions (2025-II, 2025-I, 2024-II ...).
@@ -204,111 +214,6 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
 
     logging.debug(f"Sorted acad sessions: {acad_sess_list}")
     return acad_sess_list, enrol_data_sorted
-
-
-def __compute_cgpa_sgpa_ec(courses, degree):
-
-    # Mapping of grade letter to points
-    gpm = {"A": 10, "A-": 9, "B": 8, "B-": 7, "C": 6, "C-": 5, 
-           "D": 4, "E": 2, "F": 0}
-
-    # Grades counted for earned credits for UG students
-    ug_ec_grades = "A,A-,B,B-,C,C-,D,S,NP"
-
-    # Grades counted for earned credits for PG students
-    pg_ec_grades = "A,A-,B,B-,C,C-,D,S"
-
-    # Passing grades (UG+PG) used in CGPA calculation
-    pass_grades = "A,A-,B,B-,C,C-,D"
-
-
-    # Temp variables used for calculations
-    ec, s_ec, pts_sgpa, pts_cgpa,u_ec = 0, 0, 0, 0, 0
-    creg, creg_wo_audit, sgpa, cgpa = 0, 0, 0, 0
-    try:
-        for c in courses:
-
-            # Take only confirmed enrolments in finished courses
-            if c["enrol_status"] != "ENRO":
-                continue
-
-            # Default grades counted for earned credits for PhD students
-            phd_ec_pass_grades = "A,A-,B,B-,C,C-"
-            phd_ec_grades = "A,A-,B,B-,C"
-
-            academic_session = c['acad_session']
-            academic_session_year = int(academic_session[:4])
-            academic_session_sem = academic_session[5:] # I, II, S, T1, T2, etc.
-
-            # Adjustment for PhD passing grades introduced in 2021
-            if academic_session_year > 2021:
-                phd_ec_grades = "A,A-,B,B-,C,C-"
-            elif academic_session_year < 2021:
-                phd_ec_pass_grades = "A,A-,B,B-,C"
-            else: # Year 2021
-                if academic_session_sem == "I":
-                    phd_ec_pass_grades = "A,A-,B,B-,C"
-                    phd_ec_grades = "A,A-,B,B-,C,C-"
-                elif academic_session_sem in ["II", "S", "T1", "T2"]:
-                    phd_ec_grades = "A,A-,B,B-,C,C-"
-                else:
-                    logging.warning(
-                        f"Unknown academic semester: '{academic_session_sem}'")
-
-            # L-T-P-S-C
-            ltp = c["ltp"].strip().split("-")
-            if len(ltp) < 2 or not (ltp[0] and ltp[2]):
-                raise AcadStackException(f"LTP data missing for course {c["code"]}")
-            if len(ltp) == 5:
-                cc = round(C.parse_number(ltp[-1]), 2)
-            else:
-                raise AcadStackException(
-                    f"LTP data not in L-T-P-S-C format for course {c["code"]}")
-
-            is_credit_course = c["enrol_type"] in ("C", "CM", "CC")
-            # Total registered credits
-            creg += cc
-            if is_credit_course:
-                creg_wo_audit += cc
-
-            # Grades that are counted towards earned credits
-            if degree == "BTE":
-                 ec_grades = ug_ec_grades
-            elif degree == "PHD":
-                 ec_grades = phd_ec_grades
-                 pass_grades = phd_ec_pass_grades
-            else:
-                 ec_grades = pg_ec_grades
-
-
-            # Grade secured in this course
-            grade = c["grade"]
-
-            if grade == "S":
-                s_ec += cc
-            if grade == "U" or grade == "I" or grade == "W":
-                u_ec += cc
-            if grade in ec_grades and is_credit_course:
-                ec += cc
-
-            if grade in gpm and is_credit_course:
-                pts_sgpa += gpm[grade] * cc
-                if grade in pass_grades and is_credit_course:
-                    pts_cgpa += gpm[grade] * cc
-            else:
-                logging.debug(f"Points not mapped for grade {grade}!")
-
-        creg_sgpa = (creg_wo_audit - s_ec) - u_ec
-        ec_cgpa = (ec - s_ec)
-        sgpa = round(pts_sgpa / creg_sgpa, 2) if creg_sgpa > 0 else 0
-        cgpa = round(pts_cgpa / ec_cgpa, 2) if ec_cgpa > 0 else 0
-
-    except Exception as ex:
-        logging.error(ex)
-        raise ex
-
-    return {"sgpa": sgpa, "ec": ec, "s_ec": s_ec,
-            "creg": creg, "cgpa": cgpa, "pts_cgpa": pts_cgpa}
 
 
 def __get_student_courses_perf(stu, include_attendance):
@@ -375,21 +280,11 @@ def get_student_courses_perf_filtered(stu, include_attendance,
     
     acad_sessions, enrol_data = __fetch_student_enrollments_data(
         enrols, include_attendance)
-    ec, pts_cgpa, s_ec = 0, 0, 0
-    
     # acad_sessions is already in properly sorted chronology
-    for ad in acad_sessions:
-        cg_data = __compute_cgpa_sgpa_ec(enrol_data[ad]["courses"], 
-                                         stu.person.degree)
-        enrol_data[ad]["sgpa"] = cg_data["sgpa"]
-        enrol_data[ad]["ec"] = cg_data["ec"]
-        enrol_data[ad]["creg"] = cg_data["creg"]
-        pts_cgpa += cg_data["pts_cgpa"]
-        s_ec += cg_data["s_ec"]
-        ec += cg_data["ec"]
-
-        enrol_data[ad]["cec"] = ec
-        enrol_data[ad]["cgpa"] =round(pts_cgpa /(ec - s_ec), 2) if (ec - s_ec) > 0 else 0
+    gpas = TR.cumulative_gpa([enrol_data[ad]["courses"] for ad in acad_sessions],
+                             stu.person.degree)
+    for ad, gpa in zip(acad_sessions, gpas):
+        enrol_data[ad].update(gpa)
 
     return {"enrollments": enrol_data, "acad_sessions": acad_sessions}
 
@@ -401,9 +296,10 @@ async def drop_withdraw_course(my_id, status):
             return apiVC.error_json(f"Invalid status {status}! Only drop/withdraw allowed!")
 
         # Raises AcadStackException
-        VAL.validate_enrolment_change(my_id, status)
+        actor = P.current_actor()
+        VAL.validate_enrolment_change(my_id, status, actor)
 
-        if P.current_actor().has("enrolments.edit:any"):
+        if actor.has("enrolments.edit:any"):
             status = "ASREJ"
 
         ce = DB.CourseEnrollment.get_by_id(my_id)
@@ -749,38 +645,15 @@ async def change_enroll_status():
         if len(eids) == 0:
             return apiVC.error_json("Select students to enrol first!")
         actor = P.current_actor()
-        # Instructors and batch advisors approve their step through
-        # enrolments.approve:own.
-        own = actor.has("enrolments.approve:own")
-        ce_ownership = __get_ce_ownership(eids)
+        ce_ownership = __get_ce_ownership(eids, actor)
         changed_ids = []
         with DB.db.atomic() as txn:
             for eid in eids:
                 ce = DB.CourseEnrollment.get_by_id(eid)
-                enrol_status = ce.enrol_status
-                new_status = ""
-                if actor.has("enrolments.edit:any"):
-                    new_status = "ENRO" if status == "approve" else "ASREJ"
-                else:
-                    ceos = ce_ownership[eid]
-                    # User is course instructor
-                    if own and ceos[0] and not(ceos[1]):
-                        new_status = "APEN" if status == "approve" else "IREJ"
-                    # User is batch advisor
-                    elif own and ceos[1] and not(ceos[0]):
-                        new_status = "ENRO" if status == "approve" else "AREJ"
-                    # User is both instrcutor and batch advisor
-                    elif own and ceos[0] and ceos[1] and enrol_status =="IPEN":
-                        new_status = "APEN" if status == "approve" else "AREJ"
-                    elif own and ceos[0] and ceos[1] and enrol_status =="APEN":
-                        new_status = "ENRO" if status == "approve" else "AREJ"
-                    # Advisor's step for any enrolment
-                    elif actor.has("enrolments.approve:any") and enrol_status =="APEN":
-                        new_status = "ENRO" if status == "approve" else "AREJ"
-                    else:
-                        raise AcadStackException("You do not have privileges to change one or more enrollments!")
-
-                VAL.validate_enrolment_change(ce, new_status)
+                is_instr, is_advisor = ce_ownership.get(eid, (False, False))
+                new_status = WF.enrolment_next_status(actor, ce.enrol_status, status,
+                                                      is_instr, is_advisor)
+                VAL.validate_enrolment_change(ce, new_status, actor)
 
                 ce.enrol_status = new_status
                 if apiVC.update_entity(DB.CourseEnrollment, ce) == 1:
@@ -841,10 +714,11 @@ async def course_enrollment_save():
             old_data = {}
             if cid:
                 coe = DB.CourseEnrollment.get_by_id(cid)
+                old_grade = coe.grade
                 old_data = model_to_dict(coe)
                 old_data["enrol_status"] = dict(DB.CourseEnrollment.ENROL_STATUSES)[old_data["enrol_status"]]
                 # Raises AcadStackException
-                VAL.validate_enrolment_change(coe, fd.get("enrol_status"))
+                VAL.validate_enrolment_change(coe, fd.get("enrol_status"), P.current_actor())
 
                 access = VAL.is_enrollment_owner_valid(coe)
                 if not access:
@@ -857,6 +731,9 @@ async def course_enrollment_save():
                 else:
                     allowed = COE_EDIT_FIELDS
                 C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})
+                if coe.grade != old_grade:
+                    record_grade_change(coe, old_grade, P.current_actor(),
+                                        fd.get("grade_change_reason"))
                 if apiVC.update_entity(DB.CourseEnrollment, coe) != 1:  # if rc != 1:
                     return apiVC.error_json("Could not update. Please try again.")
                 logging.debug(f"Updated DB.CourseEnrollment details: {coe}")

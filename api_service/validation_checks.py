@@ -98,7 +98,7 @@ def is_course_withdraw_open(for_acad_session):
             "WITHDRAW_E", for_acad_session)
 
 
-def validate_enrolment_change(enrl, status):
+def validate_enrolment_change(enrl, status, actor):
     """Checks if the supplied status can be assigned to the given enrollment
     record. The checks take into consideration the permissions of the current
     user, the status of the course offerring (i.e., whether the course has finished
@@ -110,6 +110,7 @@ def validate_enrolment_change(enrl, status):
     Args:
         enrl (`DB.CourseEnrollment`): Model object for CourseEnrollment.
         status (str): New status to be assigned.
+        actor (`P.Actor`): The user making the change.
 
     Raises:
         AcadStackException: When the assignment is not possible/allowed.
@@ -120,7 +121,6 @@ def validate_enrolment_change(enrl, status):
     if not any(s[0] == status for s in DB.CourseEnrollment.ENROL_STATUSES):
         raise AcadStackException("Unknown enrolment status: "+status)
     
-    actor = P.current_actor()
     if actor.has("enrolments.edit:any"):
         return True
 
@@ -141,7 +141,7 @@ def validate_enrolment_change(enrl, status):
         # Student can drop/withdraw only their own enrollment
         if (not actor.has("enrolments.change:any") and ce.student.id != actor.id):
             
-            logging.error(f"User {apiVC.current_login_id()} attempted changing"
+            logging.error(f"User {actor.login_id} attempted changing"
                           f" enrolment of user {ce.student.login_id}.")
             raise AcadStackException("Cannot change others' enrolment. Your attempt to do so has been reported.")
 
@@ -154,7 +154,7 @@ def validate_enrolment_change(enrl, status):
             raise AcadStackException(f"Course add/drop not open for {acad_sess}")
         # Student can drop/withdraw only their own enrollment
         if (not actor.has("enrolments.change:any") and ce.student.id != actor.id):
-            logging.error(f"User {apiVC.current_login_id()} attempted to drop"
+            logging.error(f"User {actor.login_id} attempted to drop"
                           f" courses of user {ce.student.login_id}")
             raise AcadStackException("Cannot change others' enrolment. Your "
                                 "attempt to do so has been reported.")
@@ -177,6 +177,13 @@ def is_today_between_events(event1, event2, for_acad_session=None):
         if res1[0].event_value <= now_str <= res2[0].event_value:
             return True
     return False
+
+
+def is_session_closed(acad_session):
+    """The session has been closed: its credits are frozen on the enrolments."""
+    return DB.AcademicCalendar.select().where(
+        (DB.AcademicCalendar.acad_session == acad_session) &
+        (DB.AcademicCalendar.event_code == "SESSION_CLOSED")).exists()
 
 
 def get_event_date(event_code, for_acad_session=None):

@@ -1,3 +1,4 @@
+import csv
 import logging
 import os
 from pathlib import Path
@@ -5,10 +6,12 @@ import uuid
 from quart import Blueprint, request
 from quart.helpers import send_file
 from io import BytesIO
+from werkzeug.utils import secure_filename
+from create_email import send_grades_submission_email
 
 import policy as P
 from api_auth import get_user_by_org_id
-from api_course_enrolment import get_student_courses_perf_filtered
+from api_course_enrolment import get_student_courses_perf_filtered, record_grade_change
 
 import datetime
 import shutil
@@ -17,6 +20,7 @@ import api_common as apiVC
 import common as C
 import models as DB
 import tasks_helper as TH
+import validation_checks as VAL
 
 # The report templates are sized for a canvas about 4/3 wider than the paper,
 # so pages are laid out 4/3 larger than the paper and then zoomed out by 3/4.
@@ -63,6 +67,8 @@ def init_routes(bp: Blueprint):
                        view_func=download_degree_certifcate, methods=['GET'])
     bp.add_url_rule('/download_consolidated_grade_sheet/<string:entry_no>/<string:enrol_type>',
                        view_func=download_consolidated_grade_sheet, methods=['GET'])
+    bp.add_url_rule('/grades_upload', view_func=grades_upload, methods=['POST'])
+    bp.add_url_rule('/close_session', view_func=close_session, methods=['POST'])
 
 
 @P.require("grades.reports")
@@ -482,5 +488,171 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
                          as_attachment=True)
     except Exception as ex:
         msg = "Error when download_filtered categorized credits enrolled CSV."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+@P.require("grades.upload")
+async def grades_upload():
+    try:
+        form = await request.form
+        co_id = form.get('course_offering')
+        if not (co_id and co_id.isdigit()):
+            return apiVC.error_json("It seems you have not selected the course for which you want to upload grades. Please retry after selecting the course.")
+        co_id = int(co_id)
+        co_obj = DB.CourseOffering.get_or_none(co_id)
+        if not co_obj:
+            return apiVC.error_json("DB.Course offering not found. Please make sure that you have selected a course when uploading grades.")
+
+        if not VAL.is_today_between_events("GRADE_SUB_S", "GRADE_SUB_E",
+                co_obj.acad_session):
+            return apiVC.error_json("Grades upload is not open!")
+        # Only the course instructor OR dean may upload the course grades            
+        if not P.current_actor().allowed("grades.upload",
+                                         own=lambda: VAL.validate_course_instructor(co_id)):
+            return apiVC.error_json("Only the course coordinator can upload grades for the course!")
+
+        # Raises exception when change not allowed
+        VAL.validate_coff_status(co_id)
+
+        grades_file = (await request.files)['grades_file']
+        if grades_file.filename == '':
+            return apiVC.error_json("No grades .csv file supplied!")
+        filename = secure_filename(grades_file.filename)
+        file_path = os.path.join(apiVC.get_upload_folder_for_user(), filename)
+        await grades_file.save(file_path)
+
+        # Convert all text to uppercase in the grades file
+        with open(file_path, 'r') as inp:
+            y = inp.read().upper().strip()
+            lines = y.splitlines()
+            if len(lines) < 2:
+                return apiVC.error_json("No grades found in the CSV file you uploaded. Please upload a non-empty CSV file!")
+
+            if not lines[0].replace(' ', '').startswith("FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"):
+                return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
+
+            invalid_rows = []
+            for ll in lines[1:]:
+                if ll.split(',')[3].strip() not in C.VALID_GRADES:
+                    invalid_rows.append(ll)
+
+            if invalid_rows:
+                return apiVC.error_json(f"Found invalid grades in rows: {invalid_rows}. "
+                                     f"Allowed grades values are: {C.VALID_GRADES}")
+
+
+        with open(file_path, 'w') as out:
+            out.write(y)
+
+        # Check the uploaded roll numbers against what we have in the DB
+        with open(file_path, newline='') as csvfile:
+            reader = csv.DictReader(csvfile)
+            rolls = [row["ROLL_NO"].upper().strip() for row in reader]
+
+        coe = DB.CourseEnrollment.select().where(
+            (DB.CourseEnrollment.course_offering == co_id) &
+            (DB.CourseEnrollment.enrol_status == "ENRO"))
+        rolls_indb = [x.student.person.org_id.upper().strip() for x in coe]
+        missing = set(rolls_indb) - set(rolls)
+        if bool(missing):
+            return apiVC.error_json(
+                "Grades can be submitted only for enrolled students in "
+                "this course. Following roll numbers are missing in the "
+                f"uploaded .csv file: {missing}")
+        extra = set(rolls) - set(rolls_indb)
+        if bool(extra):
+            return apiVC.error_json(
+                "Grades can be submitted only for enrolled students in this "
+                "course. Following roll numbers are supplied, but not "
+                f"enrolled: {extra}")
+
+        # If all is OK, then update the grades in DB
+        upd_count = 0
+        with DB.db.atomic() as txn:
+            with open(file_path, newline='') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    roll_no = row["ROLL_NO"].upper().strip()
+                    grade = row["GRADE"].upper().strip()
+                    stu = DB.User.select(DB.User.id).join(DB.Person)\
+                        .where(DB.Person.org_id == roll_no)[0]
+                    coe = DB.CourseEnrollment.select().where(
+                        (DB.CourseEnrollment.course_offering == co_id) &
+                        (DB.CourseEnrollment.student == stu.id)
+                    )[0]
+
+                    if coe.enrol_type == "A" and grade not in C.VALID_AUDIT_GRADES:
+                        raise C.AcadStackException(f"Invalid grade {grade} assigned "
+                                f"to {roll_no} for audited course. "
+                                f"Allowed audit grades are: {C.VALID_AUDIT_GRADES}")
+
+                    if coe.grade == grade:
+                        logging.debug("Grade unchanged, skipping the update.")
+                        continue
+
+                    old_grade = coe.grade
+                    coe.grade = grade
+                    record_grade_change(coe, old_grade, P.current_actor())
+                    apiVC.update_entity(DB.CourseEnrollment, coe)
+                    upd_count += 1
+
+            txn.commit()
+        if(apiVC.logged_in_user().role != "ACA"):
+            send_grades_submission_email(co_id, upd_count)
+        return apiVC.ok_json(f"Grades processed successfully! Added/updated {
+            upd_count} records.")
+
+    except C.AcadStackException as ae:
+        logging.exception(ae)
+        return apiVC.error_json(str(ae))
+    except Exception as ex:
+        msg = "Error when handling grades upload request."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@P.require("sessions.close")
+async def close_session():
+    """Closes an academic session: copies each enrolment's credits onto the
+    enrolment, so later changes to courses don't change transcripts. Grades
+    of the session's (finished) offerings stay locked to offerings.edit_closed,
+    and changing one needs a reason from then on."""
+    try:
+        fd = await request.get_json(force=True)
+        acad_session = fd.get("acad_session")
+        if not (acad_session and apiVC.academic_session_valid(acad_session)):
+            return apiVC.error_json("Please supply a valid academic session!")
+        if VAL.is_session_closed(acad_session):
+            return apiVC.error_json(f"Session {acad_session} is already closed.")
+
+        offerings = DB.CourseOffering.select(DB.CourseOffering, DB.Course)\
+            .join(DB.Course).where(DB.CourseOffering.acad_session == acad_session)
+        running = sorted({co.course.code for co in offerings if co.status in ("E", "R")})
+        if running:
+            return apiVC.error_json("These courses are still enrolling or running: "
+                                    f"{', '.join(running)}")
+        pending = DB.CourseEnrollment.select(DB.CourseEnrollment, DB.CourseOffering, DB.Course)\
+            .join(DB.CourseOffering).join(DB.Course).where(
+                (DB.CourseOffering.acad_session == acad_session) &
+                (DB.CourseOffering.status.not_in(["C", "D"])) &
+                (DB.CourseEnrollment.enrol_status == "ENRO") &
+                (DB.CourseEnrollment.grade == "NA"))
+        pending = sorted({ce.course_offering.course.code for ce in pending})
+        if pending:
+            return apiVC.error_json("Grades are pending in these courses: "
+                                    f"{', '.join(pending)}")
+
+        with DB.db.atomic():
+            cursor = DB.db.execute_sql(C.sql_by_id("freeze_session_credits"), [acad_session])
+            frozen = cursor.rowcount
+            apiVC.save_entity(DB.AcademicCalendar(acad_session=acad_session,
+                                                  event_code="SESSION_CLOSED",
+                                                  event_value=C.current_dt_str()))
+        return apiVC.ok_json(f"Closed session {acad_session}: froze the credits "
+                             f"of {frozen} enrolments.")
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception:
+        msg = "Error when closing the session."
         logging.exception(msg)
         return apiVC.error_json(msg)

@@ -75,18 +75,6 @@ Component for searching the existing courses.
           <div class="col-md-1">S#</div>
           <div class="col">Course</div>
           <div class="col-md-2">Status</div>
-          <div class="col-md-1" v-if="actions">
-            <div class="dropdown me-2">
-              <button type="button" class="btn btn-primary dropdown-toggle"
-                data-bs-toggle="dropdown" aria-expanded="false">
-                Action
-              </button>
-              <div class="dropdown-menu">
-                <a class="dropdown-item" @click.prevent="onAction(act)"
-                  v-for="act in actions" :key="act">{{act.label}}</a>
-              </div>
-            </div>
-          </div>
         </div>
         <p v-if="results.courses.length == 0">Nothing to show yet!</p>
         <div class="row row-striped mt-4" v-for="(r, i) in results.courses" :key="r.id">
@@ -95,9 +83,6 @@ Component for searching the existing courses.
             <a :href="'#/cour.detail/'+r.id">{{r.code + " :: " + r.title + " :: "+ r.ltp}}</a>
           </div>
           <div class="col-md-2">{{labelFor(SD.CourseStatuses, r.status)}}</div>
-          <div class="col-md-1" v-if="actions">
-            <input class="form-check-input" :value="r.id" type="checkbox" v-model="markedItems" />
-          </div>
         </div>
       </div>
     </div>
@@ -120,19 +105,7 @@ export default {
       },
       results: { courses: [], has_next: false },
       markedItems: [],
-      /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label.
-       */
-      actionsMap: {
-        // "FAC": [{label: "Offer"}]
-      }
     };
-  },
-  computed: {
-    actions() {
-      return this.actionsMap[this.userRole];
-    }
   },
   beforeRouteUpdate(to, from, next) {
     console.log("CourseSearch.beforeRouteUpdate");

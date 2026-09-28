@@ -8,7 +8,7 @@
             <label for="st_org_id">Roll No.</label>
             <input type="text" class="form-control" id="st_org_id" v-model="student.org_id"/>
           </div>
-          <div v-if="isPlacement">
+          <div v-if="hasPermission('reports.students_list')">
             <label for="st_email">Session</label>
             <input type="text" class="form-control" id="st_year" v-model="student.acad_session"/>
           </div>
@@ -18,7 +18,7 @@
             <label for="st_firstnm">First Name</label>
             <input type="text" class="form-control" id="st_firstnm" v-model="student.first_name"/>
           </div>
-           <div v-if="isPlacement" class="col">
+           <div v-if="hasPermission('reports.students_list')" class="col">
           <div>
             <label for="st_email">Year</label>
             <input type="text" class="form-control" id="st_year" v-model="student.year_of_entry"/>
@@ -46,7 +46,7 @@
           </div>
         </div>
        
-         <div v-if="isPlacement" class="col">
+         <div v-if="hasPermission('reports.students_list')" class="col">
           <div>
             <label for="st_email">Department</label>
              <select id="dept" class="form-select" v-model.trim="student.dept_name">
@@ -55,12 +55,12 @@
             </option>
           </select>
           </div>
-           <div v-if="isPlacement" class="col">
+           <div v-if="hasPermission('reports.students_list')" class="col">
         </div>
         </div>
         <div class="col-md-2">
           <div class="mt-4">
-             <a v-if="isPlacement" style="margin-left:10px; margin-right:10px" class="btn btn-outline-success" :href="`download_students_list/${student.degree}/${student.year_of_entry}/${student.dept_name}/${student.acad_session}`">Download</a>
+             <a v-if="hasPermission('reports.students_list')" style="margin-left:10px; margin-right:10px" class="btn btn-outline-success" :href="`download_students_list/${student.degree}/${student.year_of_entry}/${student.dept_name}/${student.acad_session}`">Download</a>
             <button class="btn btn-outline-success me-2" type="submit"><i class="bi bi-search"></i></button>
             <button class="btn btn-outline-danger" @click="reset" type="reset"><i class="bi bi-eraser"></i></button>
           </div>

@@ -182,8 +182,10 @@ the permission of the endpoint its page opens:
 A plain name must be held at some scope; a scoped name such as
 `students.academics:own` must be held exactly, so pages about the user's own
 records show only to users who act on their own records.
-The frontend still checks roles in places (`webapp/src/main.js`); those move
-to permissions separately.
+The frontend follows the same rule: `/login` and `/current_user` send the
+user's permissions, and components call `hasPermission(perm)` (in
+`webapp/src/main.js`) to decide what to show, using the permission of the
+endpoint a control calls. The server remains the enforcement point.
 
 ## Data access layer (DAL)
 The DAL code makes use of the [PeeWee](https://docs.peewee-orm.com/en/latest/) ORM.

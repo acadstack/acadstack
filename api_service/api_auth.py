@@ -13,7 +13,6 @@ import csv
 import hmac
 import logging
 import os
-from pathlib import Path
 import create_email as CM
 import models as DB
 import common as C
@@ -28,7 +27,6 @@ from quart.helpers import send_file
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from werkzeug.utils import secure_filename
-from peewee import IntegrityError
 
 def init_routes(bp:Blueprint):
     bp.add_url_rule('/oauth/<string:token>', view_func=oauth_verify, methods=['GET'])
@@ -46,16 +44,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/student_lookup/<string:query_str>', view_func=student_lookup, methods=['GET'])
     bp.add_url_rule('/students_find', view_func=find_students, methods=['POST'])
     bp.add_url_rule('/my_photo', view_func=get_my_photo, methods=['GET'])
-
-    bp.add_url_rule('/get_student_docs/<int:stu_id>', view_func=get_student_docs, methods=['GET'])
-    bp.add_url_rule('/upload_student_doc', view_func=upload_student_doc, methods=['POST'])
-    bp.add_url_rule('/get_doc/<int:doc_id>', view_func=get_doc, methods=['GET'])
-    bp.add_url_rule('/delete_doc/<int:doc_id>', view_func=delete_doc, methods=['POST'])
     bp.add_url_rule('/get_image/<string:file_name>', view_func=get_image, methods=['GET'])
-    bp.add_url_rule('/get_fees_txn_file/<string:file_name>', view_func=get_fees_txn_image, methods=['GET'])
-    bp.add_url_rule('/delete_fees_txn_data/<int:fee_id>', view_func=delete_student_reg_fees_data, methods=['POST'])
-    bp.add_url_rule('/get_reg_fees_data/<int:stu_id>', view_func=get_student_reg_fees_data, methods=['GET'])
-    bp.add_url_rule('/save_reg_fees_data', view_func=save_registration_fees_txn_info, methods=['POST'])
     bp.add_url_rule('/find_advisor', view_func=find_advisor, methods=['POST'])
     bp.add_url_rule('/assign_advisor', view_func=assign_advisor, methods=['POST'])
 
@@ -233,9 +222,11 @@ async def login():
                         "deg_type_spec": u.person.deg_type_spec, 
                         "current_status": u.person.current_status}
             apiVC.session['user'] = user_obj
-            nav = apiVC.init_navbar_items(P.current_actor(), u.person.degree)
+            actor = P.current_actor()
+            nav = apiVC.init_navbar_items(actor, u.person.degree)
             APP.active_users[C.this_user_name_login_id()] = DT.now()
-            return apiVC.ok_json({"user": user_obj, "nav": nav})
+            return apiVC.ok_json({"user": {**user_obj, "perms": sorted(actor.perms)},
+                                  "nav": nav})
     except Exception as ex:
         msg = "Error when authenticating."
         logging.exception(msg)
@@ -513,112 +504,6 @@ async def bulk_add_users():
         return apiVC.error_json(msg)
 
 
-@P.require("student_docs.upload")
-async def upload_student_doc():
-    try:
-        form = await request.form
-        stu_id = form['student_id']
-        doc_desc = form['description']
-        files = await request.files
-        docf = files['doc_file']
-        if docf.filename == '':
-            return apiVC.error_json("No file supplied!")
-
-        u = DB.User.get_by_id(int(stu_id))
-        if not u:
-            return apiVC.error_json("Student record not found!")
-
-        filename = secure_filename(docf.filename)
-        ud = DB.UserDoc(description=doc_desc, category="STU",
-                     user=u, file_name=filename)
-        ud.doc = apiVC.save_file_to_uploads_folder("docs", docf.stream.read())
-
-        apiVC.save_entity(ud)
-        return apiVC.ok_json(apiVC.model_to_dict(ud, exclude=[DB.UserDoc.doc, DB.UserDoc.user]))
-    except Exception as ex:
-        msg = "Error when handling document upload."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-def __is_doc_access_allowed(stu_id):
-    actor = P.current_actor()
-    return actor.allowed("student_docs.access", own=lambda: int(stu_id) == actor.id)
-
-
-@P.require("student_docs.access")
-async def get_student_docs(stu_id):
-    try:
-        if __is_doc_access_allowed(stu_id):
-            u = DB.UserDoc.select().where(DB.UserDoc.user == int(stu_id))
-            serialized = [apiVC.model_to_dict(r, exclude=[DB.UserDoc.user]) for r in u]
-            return apiVC.ok_json(serialized)
-        else:
-            return apiVC.error_json("Student documents cannot be displayed.")
-    except Exception as ex:
-        msg = "Error when fetching student documents."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-@P.require("student_docs.access")
-async def delete_doc(doc_id):
-    try:
-        doc = DB.UserDoc.get_by_id(int(doc_id))
-        if __is_doc_access_allowed(doc.user.id):
-            DB.UserDoc.delete_by_id(doc.id)
-            # Remove file from disk
-            if doc.doc:
-                fp = os.path.join(apiVC.get_upload_folder(), "docs", doc.doc)
-                p = Path(fp)
-                p.unlink(missing_ok=True)
-            return apiVC.ok_json("Deleted")
-        else:
-            return apiVC.error_json("Access to documents not allowed!")
-    except Exception as ex:
-        msg = "Error when deleting the documents."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-@P.require("student_docs.access")
-async def get_doc(doc_id):
-    try:
-        u_doc = DB.UserDoc.get_or_none(DB.UserDoc.id == int(doc_id))
-        if u_doc.category == 'FEETXN':
-            docs_folder="FEETXN"
-        else:
-            docs_folder="docs"
-        
-        if u_doc and u_doc.doc:
-            if __is_doc_access_allowed(u_doc.user.id):
-                fp = os.path.join(apiVC.get_upload_folder(),
-                                  docs_folder, secure_filename(u_doc.doc))
-                return await send_file(fp,
-                                 attachment_filename=u_doc.file_name,
-                                 as_attachment=True)
-            else:
-                return apiVC.error_json("Access to documents not allowed!")
-        else:
-            return apiVC.error_json("Document not found!")
-    except Exception as ex:
-        msg = "Error when loading the documents."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-@P.require("fees.view")
-async def get_fees_txn_image(file_name):
-    try:
-        fp = os.path.join(apiVC.get_upload_folder(),
-                          "FEETXN", secure_filename(file_name))
-        return await send_file(fp, attachment_filename="{}.jpg".format(file_name))
-    except Exception as ex:
-        msg = "Error when loading fees transaction proof image."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
-
-
 @P.require("users.view")
 async def get_image(file_name):
     try:
@@ -719,119 +604,6 @@ async def user_delete():
     else:
         return apiVC.error_json("No user specified! Nothing to delete.")
 
-
-@P.require("fees.submit")
-async def save_registration_fees_txn_info():
-    try:
-        form = await request.form
-        stu_id = int(form['student_id'])
-        actor = P.current_actor()
-        if not actor.allowed("fees.submit", own=lambda: stu_id == actor.id):
-            logging.error(
-                "DB.User {0} attempted to submit fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
-            return apiVC.error_json("You are not allowed to submit data for others! This incident has been reported.")
-
-        acadSession = form['acadSession']
-        feesTxnAmt = form['feesTxnAmt']
-        feesTxnNo = form['feesTxnNo']
-        feesTxnDt = form['feesTxnDt']
-        feesTxnBank = form['feesTxnBank']
-        files = await request.files 
-        docf = files['doc_file']
-
-        if not (apiVC.academic_session_valid(acadSession)
-                and feesTxnNo and feesTxnDt and feesTxnBank
-                and docf.filename and feesTxnAmt):
-            return apiVC.error_json("Please supply valid academic session and other inputs!")
-
-        u = DB.User.get_by_id(int(stu_id))
-        if not u:
-            return apiVC.error_json("Student record not found!")
-
-        filename = secure_filename(docf.filename)
-        ud = DB.UserDoc(description="{0}/{1}/{2}/{3}".format(
-            acadSession, feesTxnNo, feesTxnDt, feesTxnBank),
-            category="FEETXN", user=u, file_name=filename)
-        ud.doc = apiVC.save_file_to_uploads_folder(ud.category, docf.stream.read())
-
-        fee_txn = DB.FeesTransaction()
-        fee_txn.student = u
-        fee_txn.acad_session = acadSession
-        fee_txn.fees_txn_amt = feesTxnAmt
-        fee_txn.fees_txn_no = feesTxnNo
-        fee_txn.fees_txn_dt = feesTxnDt
-        fee_txn.fees_txn_bank = feesTxnBank
-        fee_txn.doc_file_name = ud.doc
-
-        with DB.db.atomic() as txn:
-            apiVC.save_entity(ud)
-            apiVC.save_entity(fee_txn)
-
-        return apiVC.ok_json(apiVC.model_to_dict(fee_txn,
-                                     exclude=[DB.FeesTransaction.student]))
-    except IntegrityError as ie:
-        logging.exception(ie)
-        return apiVC.error_json("An old record with same transaction information exists!")
-    except Exception as ex:
-        msg = "Error when handling registration fee details upload."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
-
-
-@P.require("fees.view")
-async def get_student_reg_fees_data(stu_id):
-    try:
-        actor = P.current_actor()
-        if not actor.allowed("fees.view", own=lambda: stu_id == actor.id):
-            logging.error(
-                "DB.User {0} attempted to fetch fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
-            return apiVC.error_json("You are not allowed to access others' data! This incident has been reported.")
-
-        qry = DB.FeesTransaction.select().where(
-            (DB.FeesTransaction.student == stu_id) &
-            (DB.FeesTransaction.is_deleted != True))
-        data = [apiVC.model_to_dict(x,
-                              exclude=[DB.FeesTransaction.student])
-                for x in qry]
-        return apiVC.ok_json(data)
-
-    except Exception as ex:
-        msg = "Error when fetching registration fee records."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
-
-
-@P.require("fees.delete")
-async def delete_student_reg_fees_data(fee_id):
-    try:
-        ftxn = DB.FeesTransaction.get_or_none(int(fee_id))
-        if not ftxn:
-            return apiVC.error_json("Invalid transaction details!")
-
-        actor = P.current_actor()
-        if not actor.allowed("fees.delete", own=lambda: ftxn.student.id == actor.id):
-            logging.error("DB.User {0} attempted to delete fees transaction data for user {1}."
-                          .format(apiVC.current_login_id(), ftxn.student.login_id))
-            return apiVC.error_json("You are not allowed to delete others' data! "+
-                                 "This incident has been reported.")
-
-        ftxn.is_deleted = True
-        rc = apiVC.update_entity(DB.FeesTransaction, ftxn)
-        if rc == 1:
-            return apiVC.ok_json("Fees record deleted!")
-        else:
-            return apiVC.error_json("Fees record could not be deleted! "+
-                                 "Please try again, or contact the admin.")
-
-    except IntegrityError as ie:
-        logging.exception(ie)
-        return apiVC.error_json("An old deleted record with same transaction "+
-                             "details for a student exists!")
-
-    except Exception as ex:
-        msg = "Error when deleting registration fee record."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
 
 @P.require("students.find")
 async def find_students():

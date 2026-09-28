@@ -9,19 +9,19 @@ Component for searching the existing courses.
     <div class="clearfix">
       <div class="float-start">
         <ul class="nav nav-tabs">
-          <li class="nav-item" v-if="isFaculty">
+          <li class="nav-item" v-if="courseStage == 'author'">
             <a class="nav-link" :class="{active: tab === 'enrollments'}" 
               @click="tab='enrollments'">Enrollments (for instructor)</a>
           </li>
-          <li class="nav-item" v-if="isHod||isFaculty">
+          <li class="nav-item" v-if="['hod', 'author'].includes(courseStage)">
             <a class="nav-link" :class="{active: tab === 'ba-enrollments'}" 
               @click="tab='ba-enrollments'">Enrollments (for advisor)</a>
           </li>
-          <li class="nav-item" v-if="(isHod||isDean||isFaculty)">
+          <li class="nav-item" v-if="courseStage">
             <a class="nav-link" :class="{active: tab === 'created'}" 
               @click="tab='created'">New Courses Created</a>
           </li>
-          <li class="nav-item" v-if="isHod||isFaculty">
+          <li class="nav-item" v-if="['hod', 'author'].includes(courseStage)">
             <a
               class="nav-link"
               :class="{active: tab === 'offered'}"
@@ -31,7 +31,7 @@ Component for searching the existing courses.
         </ul>
       </div>
     </div>
-    <div v-if="tab=='created'&&(isHod||isDean||isFaculty)">
+    <div v-if="tab=='created' && courseStage">
       <div class="card">
         <div class="card-header">
           Results
@@ -79,7 +79,7 @@ Component for searching the existing courses.
         </div>
       </div>
     </div>
-    <div v-if="tab=='offered'&&(isHod||isFaculty)">
+    <div v-if="tab=='offered' && ['hod', 'author'].includes(courseStage)">
       <div class="card">
         <div class="card-header">
           Results
@@ -192,8 +192,7 @@ export default {
     },
     async load(){
       let vm = this;
-      console.log(`Current user's role: ${vm.currentUser.role}`)
-      if(vm.isHod){
+      if(vm.courseStage == 'hod'){
         vm.course_create.status=["HAP","CAR"];
         vm.course_create.dept = vm.currentUser.dept;
         vm.course_offered.status="P";
@@ -202,11 +201,11 @@ export default {
           [vm.load_create(), vm.load_offered(), vm.load_enrol()]
         );
       }
-      else if(vm.isDean){
+      else if(vm.courseStage == 'dean'){
         vm.course_create.status="CAP"
         await vm.load_create();
       }
-      else if(vm.isFaculty){
+      else if(vm.courseStage == 'author'){
         vm.course_create.status=["DRA","HAR"];
         vm.course_create.author = vm.currentUser.id;
         vm.course_offered.status="P";
@@ -215,7 +214,7 @@ export default {
           [vm.load_create(), vm.load_offered(), vm.load_enrol()]
         );
       } else {
-        console.debug("Invalid role for loading pending tasks: "+vm.currentUser.role);
+        console.debug("No course approval step for the user.");
       }
     },
     async load_create() {
@@ -251,7 +250,7 @@ export default {
     async load_enrol(){
       console.log("Loading enrollments for the CO.");
       let vm = this;
-      if(vm.isFaculty){
+      if(vm.courseStage == 'author'){
         try {
           let res = await vm.$http.get(`get_instructor_courses_enrol`);
           if (res.data.status == "OK") {
@@ -266,7 +265,7 @@ export default {
           console.log(error);
           vm.setStatusMessage("Error occurred when contacting the server.");
         }
-      } else if(vm.isHod) {
+      } else if(vm.courseStage == 'hod') {
         try {
           let res = await vm.$http.get(`get_advisor_courses_enrol`);
           if (res.data.status == "OK") {

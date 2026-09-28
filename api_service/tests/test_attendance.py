@@ -13,7 +13,7 @@ import pytest
 from quart import session
 from quart.datastructures import FileStorage
 
-import api_dc as apiDC
+import api_attendance as apiAT
 import models as M
 from conftest import enrol, make_offering, make_user
 
@@ -34,7 +34,7 @@ def setup(db):
 def queued(monkeypatch):
     """Records background photo-processing jobs instead of running them."""
     ids = []
-    monkeypatch.setattr(apiDC, "_process_attendance_photos", ids.append)
+    monkeypatch.setattr(apiAT, "_process_attendance_photos", ids.append)
     return ids
 
 
@@ -95,8 +95,8 @@ async def test_student_cannot_upload(client, auth, setup, queued):
 # ---- photo processing task ----
 
 def _stub_face_matching(monkeypatch, found, missing):
-    monkeypatch.setattr(apiDC, "_get_face_enc_and_user_info", lambda ap: ([], []))
-    monkeypatch.setattr(apiDC.fapi, "find_persons_in_photo",
+    monkeypatch.setattr(apiAT, "_get_face_enc_and_user_info", lambda ap: ([], []))
+    monkeypatch.setattr(apiAT.fapi, "find_persons_in_photo",
                         lambda path, known, tolerance: (found, missing, len(found) + len(missing), ""))
 
 
@@ -106,7 +106,7 @@ def _process_as(app, login_id, ap_id):
     async def run():
         async with app.test_request_context("/"):
             session["user"] = {"login_id": login_id}
-            apiDC._process_attendance_photos(ap_id)
+            apiAT._process_attendance_photos(ap_id)
     return run()
 
 
@@ -116,7 +116,7 @@ async def test_c22_photo_processing_works_outside_a_request(app, setup, monkeypa
     _stub_face_matching(monkeypatch, [{"enrollment_id": setup["ce1"].id}],
                         [{"enrollment_id": setup["ce2"].id}])
     async with app.app_context():
-        apiDC._process_attendance_photos(ap.id)
+        apiAT._process_attendance_photos(ap.id)
     att = {a.enrollment_id: a.attend for a in M.StudentAttendance.select()}
     assert att == {setup["ce1"].id: "P", setup["ce2"].id: "A"}
     assert M.AttendancePhoto.get_by_id(ap.id).status == "DONE"

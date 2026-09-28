@@ -52,7 +52,9 @@ ACAD_EVENT_CODES = ['ADD_DROP_E', 'ADD_DROP_S',
                     'MAJOR_EXAM_S', 'MINOR_EXAM_E', 'MINOR_EXAM_S',
                     'SESSION_E', 'SESSION_S', 'WITHDRAW_E',
                     'WITHDRAW_S', 'FEEDBACK_MID_E', 'FEEDBACK_MID_S',
-                    'SHOW_MIDSEM_FB_S', 'SHOW_ENDSEM_FB_S','RESULT_DECLARATION']
+                    'SHOW_MIDSEM_FB_S', 'SHOW_ENDSEM_FB_S','RESULT_DECLARATION',
+                    # Written only by closing the session (/close_session)
+                    'SESSION_CLOSED']
 
 class AcadStackException(Exception):
     """
