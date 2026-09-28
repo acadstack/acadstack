@@ -45,6 +45,9 @@ Component for the application's navigation bar.
         </ul>
         <span class="me-2" v-if="user.login_id != undefined">
           <span class="navbar-text me-1" style="font-size: small">{{user.login_id}} ({{user.role_name}})</span>
+          <a class="btn btn-outline-secondary me-1" href="#/my.password" title="Change Password">
+            <i class="bi bi-key"></i>
+          </a>
           <button class="btn btn-outline-danger" type="button" @click="logout">
             <i class="bi bi-power"></i>
           </button>

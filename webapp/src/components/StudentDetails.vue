@@ -181,7 +181,7 @@ export default {
     console.log("Creating Student Details");
     let vm = this;
     // Only academic section can edit student details
-    vm.viewOnly = !vm.isAcad;
+    vm.viewOnly = !vm.hasPermission('users.edit:any');
     if (!vm.isNew) {
       vm.student.id = vm.$route.params.id;
       vm.load();

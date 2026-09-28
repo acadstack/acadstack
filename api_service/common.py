@@ -7,15 +7,16 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging, re, random, string, toml
-from typing import Any, Callable, Optional
+import base64, hashlib, hmac, logging, re, secrets, string, toml
+from typing import Any, Optional
 from datetime import datetime as DT
 from datetime import date
-from functools import wraps
 from quart import current_app
-from quart import (jsonify, session)
+from quart import session
 
 from jinja2 import Environment, FileSystemLoader
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 from playhouse.shortcuts import update_model_from_dict
 
 from json import JSONEncoder
@@ -36,6 +37,7 @@ class JSONEncoderWithDate(JSONEncoder):
         return JSONEncoder.default(self, obj)
 
 emailer = Emailer()
+_password_hasher = PasswordHasher()
 
 TS_FORMAT = "%Y%m%d_%H%M%S"
 WEEK_DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -50,7 +52,9 @@ ACAD_EVENT_CODES = ['ADD_DROP_E', 'ADD_DROP_S',
                     'MAJOR_EXAM_S', 'MINOR_EXAM_E', 'MINOR_EXAM_S',
                     'SESSION_E', 'SESSION_S', 'WITHDRAW_E',
                     'WITHDRAW_S', 'FEEDBACK_MID_E', 'FEEDBACK_MID_S',
-                    'SHOW_MIDSEM_FB_S', 'SHOW_ENDSEM_FB_S','RESULT_DECLARATION']
+                    'SHOW_MIDSEM_FB_S', 'SHOW_ENDSEM_FB_S','RESULT_DECLARATION',
+                    # Written only by closing the session (/close_session)
+                    'SESSION_CLOSED']
 
 class AcadStackException(Exception):
     """
@@ -75,42 +79,6 @@ def add_user_to_session():
         return dict()
 
 
-def rbac(_func:Callable=None, *, roles=None):
-    """Decorator that can be applied to a function to perform the role 
-    based access checks for the current user if available in the session.
-    If no authenticated user available in the session, the decorated 
-    function wll not be called and an error JSON message will be returned.
-    If the logged in user has at least one of the roles specified in the
-    list, then the decorated function is called. If the roles list is not
-    supplied then only the presence of the authenticated user in the session
-    is checked before allowing the decorated function invocation.
-    Args:
-        _func (Callable, optional): The function being decorated. Defaults to None.
-        roles (list[str], optional): Roles list allowed. Defaults to None.
-    """
-    def decor_auth(func):
-        @wraps(func)
-        async def wrapper_auth(*args, **kwargs):
-            if "user" not in session:
-                msg = "Login required to access this operation."
-                logging.warning(msg)
-                return jsonify({"status": "ERROR", "body": msg})
-
-            user_role = session["user"]["role"]
-            if roles and (user_role not in roles):
-                msg = "You do not have required permissions to access."
-                logging.warning(msg)
-                return jsonify({"status": "ERROR", "body": msg})
-            return await func(*args, **kwargs)
-
-        return wrapper_auth
-
-    if _func is None:
-        return decor_auth
-    else:
-        return decor_auth(_func)
-
-
 def jinja2_filter_datefmt(dt, fmt=None):
     if not fmt:
         fmt = TS_FORMAT
@@ -124,7 +92,13 @@ def parse_number(sval):
     p = r"^[-+]?\d+[\./]?\d*$"
     sval = sval.strip()
     if re.search(p, sval):
-        n = eval(sval)
+        if "/" in sval:
+            num, den = sval.split("/")
+            n = int(num) / int(den)
+        elif "." in sval:
+            n = float(sval)
+        else:
+            n = int(sval)
         if isinstance(n, float):
             return round(n, 2)
         else:
@@ -142,7 +116,37 @@ def get_rand_str(size=10):
     Returns:
         str: Random alphanumeric ASCII string.
     """
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=size))
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(size))
+
+
+def hash_password(plain: str) -> str:
+    return _password_hasher.hash(plain)
+
+
+def _ab64_decode(data: str) -> bytes:
+    # passlib's "adapted base64": '.' instead of '+', no padding.
+    data = data.replace(".", "+")
+    return base64.b64decode(data + "=" * (-len(data) % 4))
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Checks a password against an argon2 hash, or against a
+    ``$pbkdf2-sha256$rounds$salt$checksum`` hash written by passlib."""
+    if hashed.startswith("$pbkdf2-sha256$"):
+        _, _, rounds, salt, checksum = hashed.split("$")
+        dk = hashlib.pbkdf2_hmac("sha256", plain.encode("utf-8"),
+                                 _ab64_decode(salt), int(rounds))
+        return hmac.compare_digest(dk, _ab64_decode(checksum))
+    try:
+        return _password_hasher.verify(hashed, plain)
+    except (VerificationError, InvalidHashError):
+        return False
+
+
+def password_needs_rehash(hashed: str) -> bool:
+    return (not hashed.startswith("$argon2")
+            or _password_hasher.check_needs_rehash(hashed))
 
 
 def update_model_skip_unknown(mod, form_data):
@@ -155,23 +159,23 @@ def update_model_skip_unknown(mod, form_data):
     update_model_from_dict(mod, form_data, ignore_unknown=True)
 
 
-def init_db_connection():
+# These hooks are async so that they run on the event loop thread, the same
+# thread as the views: peewee keeps one connection per thread, and a sync hook
+# would open and close connections on executor threads instead, leaving the
+# views' connection open (and dead after a DB restart) forever.
+async def init_db_connection():
     try:
-        if db.is_closed():
-            # DB connection params are configured in config.json
-            db.init(current_app.config['db_name'], **current_app.config['db_args'])
-            db.connect()
+        db.connect(reuse_if_open=True)
     except Exception as ex:
         logging.exception("Failed to connect to DB.")
 
 
-def close_db_connection(http_resp):
+async def close_db_connection(exc=None):
     try:
         if not db.is_closed():
             db.close()
     except Exception as ex:
         logging.exception("Failed to close DB connection.")
-    return http_resp
 
 
 def fill_template(templ_dir:str, templ_name:str, data_dict:dict) -> str:

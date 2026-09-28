@@ -16,18 +16,19 @@ import playhouse.shortcuts as PS
 import models as M
 import api_common as apiVC
 import common as C
+import policy as P
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/wfnote_find/<string:entity_name>/<int:entity_key>', 
                         view_func=wfnote_find, methods=['GET'])
     bp.add_url_rule('/wfnote_delete/<int:my_id>', 
-                        view_func=wfnote_delete, methods=['GET'])
+                        view_func=wfnote_delete, methods=['POST'])
     bp.add_url_rule('/wfnote_save', view_func=wfnote_save, methods=['POST'])
     bp.add_url_rule('/dates_save', view_func=dates_save, methods=['POST'])
     bp.add_url_rule('/dates_search', view_func=dates_search, methods=['POST'])
 
 
-@C.rbac
+@P.require("wfnotes.edit")
 async def wfnote_save():
     """Save the workflow note. Expects the JSON request from
     client in an HTTP POST.
@@ -37,8 +38,6 @@ async def wfnote_save():
         JSONified data result of this operation.
     """
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students not allowed to add workflow notes!")
         fd = await request.get_json(force=True)
         logging.debug(f"Saving workflow note details: {fd}")
         wfn = M.WorkflowNote()
@@ -53,10 +52,10 @@ async def wfnote_save():
     except Exception as ex:
         msg = "Error when saving workflow note details."
         logging.exception(msg)
-        return apiVC.error_json("{0}: {1}".format(msg, ex))
+        return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("wfnotes.view")
 async def wfnote_find(entity_name, entity_key):
     try:
         logging.info(f"Loading workflow note details for {entity_name}, "
@@ -71,14 +70,12 @@ async def wfnote_find(entity_name, entity_key):
     except Exception as ex:
         msg = "Error when finding workflow note details."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("wfnotes.edit")
 async def wfnote_delete(my_id):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students not allowed to delete workflow notes!")
         note = M.WorkflowNote.get_or_none(int(my_id))
         if note and note.txn_login_id != apiVC.logged_in_user().login_id:
             return apiVC.error_json("Cannot delete notes of others!")
@@ -91,7 +88,7 @@ async def wfnote_delete(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("calendar.edit")
 async def dates_save():
     try:
         fd = await request.get_json(force=True)
@@ -100,6 +97,10 @@ async def dates_save():
         eventdates = fd.get("eventDates")
         ac = M.AcademicCalendar()
         for x in eventdates:
+            # Only closing the session marks it closed, as that also freezes
+            # its credits.
+            if x == "SESSION_CLOSED":
+                continue
             (ac.insert(acad_session=session, event_code=x, \
                        event_value=eventdates[x]) \
             .on_conflict(
@@ -112,10 +113,10 @@ async def dates_save():
     except Exception as ex:
         msg = "Error when saving academic dates."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("calendar.view")
 async def dates_search():
     try:
         fd = await request.get_json(force=True)
@@ -133,4 +134,4 @@ async def dates_search():
     except Exception as ex:
         msg = "Error when saving academic dates."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)

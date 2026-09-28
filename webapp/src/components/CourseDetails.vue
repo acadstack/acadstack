@@ -33,12 +33,12 @@ is implemented in a separate component.
             <li class="nav-item">
               <a class="nav-link" :class="{active: tab === 'offerings'}" @click="tab='offerings'">Offerings</a>
             </li>
-            <li class="nav-item" v-if="!isStudent">
+            <li class="nav-item" v-if="hasPermission('wfnotes.edit')">
               <a class="nav-link" :class="{active: tab === 'notes'}" @click="tab='notes'">Notes</a>
             </li>
           </ul>
         </div>
-        <div class="float-end" v-if="!isStudent">
+        <div class="float-end" v-if="hasPermission('courses.edit')">
           <div class="btn-group me-2">
             <div class="dropdown">
               <button type="button" class="btn btn-primary dropdown-toggle"
@@ -65,7 +65,7 @@ is implemented in a separate component.
         <CourseTKP v-if="tab=='tkp'" v-bind:tkp="course.tkp" v-bind:error="v$"/>
         <CourseTGAP v-if="tab=='tgap'" v-bind:tgap="course.tgap" v-bind:error="v$"/>
         <CourseOfferings v-if="tab=='offerings'" v-bind:cid="course.id" />
-        <WorkflowNotes v-if="tab=='notes' && !isStudent" v-bind:ent_name="'course'" v-bind:ent_key="course.id" />
+        <WorkflowNotes v-if="tab=='notes' && hasPermission('wfnotes.edit')" v-bind:ent_name="'course'" v-bind:ent_key="course.id" />
       </div>
     </form>
   </div>
@@ -110,18 +110,15 @@ export default {
               learning:{}, evaluation: {}, teaching: []
               },
       /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label and the status of
-       * course that will be set when action is performed.
+       * The actions at each course approval step (courseStage): the label
+       * and the status of course that will be set when action is performed.
        */
-      actionsMap: {
-        "HOD": [{label: "Forward", status: "CAP"}, 
-                {label: "Return to Faculty", status: "HAR"}],
-        "DEA": [{label: "Approve", status: "APP"}, 
-                {label: "Return to Dept.", status: "CAR"}],
-        "FAC": [{label: "Submit", status: "HAP"}, 
+      actionsByStage: {
+        "author": [{label: "Submit", status: "HAP"}, 
                 {label: "Delete", status: "DEL"}],
-        "ACA": [{label: "Approve", status: "APP"}, 
+        "hod": [{label: "Forward", status: "CAP"}, 
+                {label: "Return to Faculty", status: "HAR"}],
+        "dean": [{label: "Approve", status: "APP"}, 
                 {label: "Return to Dept.", status: "CAR"}],
       }
     };
@@ -132,7 +129,7 @@ export default {
       return this.$route.params.id > 0;
     },
     actions() {
-      return this.actionsMap[this.userRole];
+      return this.actionsByStage[this.courseStage];
     }
   },
   async beforeRouteUpdate(to, from, next) {
@@ -180,11 +177,11 @@ export default {
     async save() {
       let vm = this;
       vm.v$.$touch()
-      if (!(vm.isAcad || vm.isDean) && vm.v$.$invalid) {
+      if (!vm.hasPermission('courses.edit_approved') && vm.v$.$invalid) {
         return;
       }
       else {
-        if (vm.oldStatus == "APP" && !(vm.isDean || vm.isAcad)) {
+        if (vm.oldStatus == "APP" && !vm.hasPermission('courses.edit_approved')) {
           vm.setStatusMessage("Change not allowed! Please request the dean's office.");
           return;
         }
@@ -222,7 +219,7 @@ export default {
     },
     async onAction(act) {
       let vm = this;
-      if (vm.oldStatus == "APP" && !(vm.isDean || vm.isAcad)) {
+      if (vm.oldStatus == "APP" && !vm.hasPermission('courses.edit_approved')) {
         vm.setStatusMessage("Change not allowed! Please request the dean's office.");
         return;
       }

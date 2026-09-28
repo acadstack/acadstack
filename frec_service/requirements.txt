@@ -3,3 +3,5 @@ hypercorn
 face_recognition
 opencv-python-headless
 numpy
+# face_recognition_models imports pkg_resources, which setuptools 81 removed
+setuptools<81

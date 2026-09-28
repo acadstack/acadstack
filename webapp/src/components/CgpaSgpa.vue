@@ -31,7 +31,7 @@
           <div class="col">Cred Earned</div>
           <div class="col">Cred Registered</div>
           <div class="col">Commulative earned Total</div>
-          <div class="col" v-if="!isStudent">
+          <div class="col" v-if="hasPermission('credits.reports')">
               <a class="btn btn-outline-success" :href="`download_cgpa_sgpa/${search_crit.acad_session}`">Download CSV</a>
           </div>
         </div>

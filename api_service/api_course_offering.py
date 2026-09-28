@@ -1,15 +1,14 @@
-import csv
 import math
-import os
-from quart import request, Blueprint, current_app as APP
-from werkzeug.utils import secure_filename
-from create_email import send_grades_submission_email, send_offering_updated_email
+from quart import request, Blueprint
+from create_email import send_offering_updated_email
 from datetime import datetime as DT
 from peewee import IntegrityError
 import api_common as apiVC
+import settings as ST
 import validation_checks as VAL
 import common as C
 import models as DB
+import policy as P
 import logging
 
 def init_routes(bp:Blueprint):
@@ -19,7 +18,6 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/co_lookup/<string:query_str>', view_func=course_offering_lookup, methods=['GET'])
     bp.add_url_rule('/co_lookup_all/<string:query_str>', view_func=course_offering_lookup_all, methods=['GET'])
     bp.add_url_rule('/offerings_of_course/<int:my_id>', view_func=offerings_of_course, methods=['GET'])
-    bp.add_url_rule('/grades_upload', view_func=grades_upload, methods=['POST'])
     bp.add_url_rule('/fetch_stats/<int:my_id>', view_func=fetch_stats, methods=['GET'])
     bp.add_url_rule('/running_courses', view_func=get_running_courses, methods=['GET'])
 
@@ -75,7 +73,7 @@ def _save_co_categorization(cats, co_id):
             apiVC.save_entity(cc_obj)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_view(my_id):
     try:
 
@@ -115,11 +113,11 @@ def _is_course_approved(cour_dict):
         cq = DB.Course.select().where((DB.Course.id == cid) & (DB.Course.status == "APP"))
         return cq.exists()
     except Exception as ex:
-        logging.exception("Error when checking approved course.", ex)
+        logging.exception("Error when checking approved course.")
         return False
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA", "HOD"])
+@P.require("offerings.edit")
 async def course_offering_save():
     try:
         fd = await request.get_json(force=True)
@@ -127,11 +125,12 @@ async def course_offering_save():
         cid = int(fd.get("id") or 0)
 
         if cid:
-            if apiVC.is_user_in_role("HOD") and \
-                    not VAL.is_hod_for_course_offering(cid, apiVC.logged_in_user().id):
-                return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
-
-            if not VAL.validate_course_instructor(cid, ["ACA", "DEA", "HOD"]):
+            actor = P.current_actor()
+            if not actor.allowed("offerings.edit",
+                                 own=lambda: VAL.validate_course_instructor(cid),
+                                 dept=lambda: VAL.is_offering_in_actor_dept(cid, actor)):
+                if actor.has("offerings.edit:dept"):
+                    return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
                 return apiVC.error_json("Only the course cordinator can make changes.")
 
         acad_session = (fd.get("acad_session") or "").upper()
@@ -176,9 +175,9 @@ async def course_offering_save():
                 _save_co_instructors(fd.get("instructors"), co.id)
                 _save_co_categorization(fd.get("course_categories"), co.id)
 
-            send_offering_updated_email(co.id, old_status, co.status)
             txn.commit()
 
+        send_offering_updated_email(co.id, old_status, co.status)
         return await course_offering_view(co.id)
 
     except C.AcadStackException as ae:
@@ -187,123 +186,6 @@ async def course_offering_save():
 
     except Exception as ex:
         msg = "Error when saving course details."
-        logging.exception(msg, ex)
-        return apiVC.error_json(msg)
-
-
-@C.rbac(roles=["ACA", "FAC", "DEA"])
-async def grades_upload():
-    try:
-        form = await request.form
-        co_id = form.get('course_offering')
-        if not (co_id and co_id.isdigit()):
-            return apiVC.error_json("It seems you have not selected the course for which you want to upload grades. Please retry after selecting the course.")
-        co_id = int(co_id)
-        co_obj = DB.CourseOffering.get_or_none(co_id)
-        if not co_obj:
-            return apiVC.error_json("DB.Course offering not found. Please make sure that you have selected a course when uploading grades.")
-
-        if not VAL.is_today_between_events("GRADE_SUB_S", "GRADE_SUB_E",
-                co_obj.acad_session):
-            return apiVC.error_json("Grades upload is not open!")
-        # Only the course instructor OR dean may upload the course grades            
-        if not VAL.validate_course_instructor(co_id, allowed_role=["ACA", "DEA"]):
-            return apiVC.error_json("Only the course coordinator can upload grades for the course!")
-
-        # Raises exception when change not allowed
-        VAL.validate_coff_status(co_id)
-
-        grades_file = (await request.files)['grades_file']
-        if grades_file.filename == '':
-            return apiVC.error_json("No grades .csv file supplied!")
-        filename = secure_filename(grades_file.filename)
-        file_path = os.path.join(apiVC.get_upload_folder_for_user(), filename)
-        grades_file.save(file_path)
-
-        # Convert all text to uppercase in the grades file
-        with open(file_path, 'r') as inp:
-            y = inp.read().upper().strip()
-            lines = y.splitlines()
-            if len(lines) < 2:
-                return apiVC.error_json("No grades found in the CSV file you uploaded. Please upload a non-empty CSV file!")
-
-            if not lines[0].replace(' ', '').startswith("FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"):
-                return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
-
-            invalid_rows = []
-            for ll in lines[1:]:
-                if ll.split(',')[3].strip() not in C.VALID_GRADES:
-                    invalid_rows.append(ll)
-
-            if invalid_rows:
-                return apiVC.error_json(f"Found invalid grades in rows: {invalid_rows}. "
-                                     f"Allowed grades values are: {C.VALID_GRADES}")
-
-
-        with open(file_path, 'w') as out:
-            out.write(y)
-
-        # Check the uploaded roll numbers against what we have in the DB
-        with open(file_path, newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            rolls = [row["ROLL_NO"].upper().strip() for row in reader]
-
-        coe = DB.CourseEnrollment.select().where(
-            (DB.CourseEnrollment.course_offering == co_id) &
-            (DB.CourseEnrollment.enrol_status == "ENRO"))
-        rolls_indb = [x.student.person.org_id.upper().strip() for x in coe]
-        missing = set(rolls_indb) - set(rolls)
-        if bool(missing):
-            return apiVC.error_json(
-                "Grades can be submitted only for enrolled students in "
-                "this course. Following roll numbers are missing in the "
-                f"uploaded .csv file: {missing}")
-        extra = set(rolls) - set(rolls_indb)
-        if bool(extra):
-            return apiVC.error_json(
-                "Grades can be submitted only for enrolled students in this "
-                "course. Following roll numbers are supplied, but not "
-                f"enrolled: {extra}")
-
-        # If all is OK, then update the grades in DB
-        upd_count = 0
-        with DB.db.atomic() as txn:
-            with open(file_path, newline='') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    roll_no = row["ROLL_NO"].upper().strip()
-                    grade = row["GRADE"].upper().strip()
-                    stu = DB.User.select(DB.User.id).join(DB.Person)\
-                        .where(DB.Person.org_id == roll_no)[0]
-                    coe = DB.CourseEnrollment.select().where(
-                        (DB.CourseEnrollment.course_offering == co_id) &
-                        (DB.CourseEnrollment.student == stu.id)
-                    )[0]
-
-                    if coe.enrol_type == "A" and grade not in C.VALID_AUDIT_GRADES:
-                        raise C.AcadStackException(f"Invalid grade {grade} assigned "
-                                f"to {roll_no} for audited course. "
-                                f"Allowed audit grades are: {C.VALID_AUDIT_GRADES}")
-
-                    if coe.grade == grade:
-                        logging.debug("Grade unchanged, skipping the update.")
-                        continue
-
-                    coe.grade = grade
-                    apiVC.update_entity(DB.CourseEnrollment, coe)
-                    upd_count += 1
-
-            txn.commit()
-        if(apiVC.logged_in_user().role != "ACA"):
-            send_grades_submission_email(co_id, upd_count)
-        return apiVC.ok_json(f"Grades processed successfully! Added/updated {
-            upd_count} records.")
-
-    except C.AcadStackException as ae:
-        logging.exception(ae)
-        return apiVC.error_json(str(ae))
-    except Exception as ex:
-        msg = "Error when handling grades upload request."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
@@ -321,7 +203,7 @@ def __fill_co_search_result(row, enrol_count):
     return obj
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_find():
     try:
         fd = await request.get_json(force=True)
@@ -370,14 +252,14 @@ async def course_offering_find():
             query = query.where(DB.CourseOffering.acad_session == acad_session)
 
         courses = query.order_by(-DB.CourseOffering.id).distinct() \
-            .paginate(pg_no, apiVC.PAGE_SIZE)
+            .paginate(pg_no, ST.get("page_size"))
         serialized = []
         for crs, co_dict in zip(courses, courses.dicts()):
             obj = __fill_co_search_result(crs, co_dict["EnrollmentsCount"])
             serialized.append(obj)
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= ST.get("page_size")
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
         return apiVC.ok_json(res)
 
@@ -412,17 +294,17 @@ def _do_course_offering_lookup(query_str, all_statuses):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_lookup(query_str):
     return _do_course_offering_lookup(query_str, False)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_lookup_all(query_str):
     return _do_course_offering_lookup(query_str, True)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def offerings_of_course(my_id):
     try:
         c = DB.Course.get_by_id(my_id)
@@ -440,12 +322,10 @@ async def offerings_of_course(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("offerings.view_stats")
 async def fetch_stats(my_id):
     try:
         res = {"data_att": [], "Weeks": [], "grades": [], "data": []}
-        if apiVC.logged_in_user().role in APP.config["hide_course_stats_from"]:
-            return apiVC.error_json("DB.Course stats are not visible for you!")
 
         cursor = DB.db.execute_sql(C.sql_by_id("course_grades"), [int(my_id)])
         grades = []
@@ -486,36 +366,35 @@ async def fetch_stats(my_id):
         return apiVC.ok_json(res)
     except Exception as ex:
         msg = "Error when fetching stats details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
 def schedule_course_status(config=None):
     try:
-        DB.db.init(config['db_name'], **config['db_args'])
-        DB.db.connect()
-        cur = DB.db.execute_sql(C.sql_by_id("move_running_co_to_finish"), ['%Y-%m-%d'])
-        rc = DB.db.rows_affected(cur)
-        logging.info(f"Changed {rc} Running course offerings to Completed.")
+        # Runs on a scheduler thread, with its own connection to the DB
+        # that the app initialised.
+        with DB.db.connection_context():
+            cur = DB.db.execute_sql(C.sql_by_id("move_running_co_to_finish"), ['%Y-%m-%d'])
+            rc = DB.db.rows_affected(cur)
+            logging.info(f"Changed {rc} Running course offerings to Completed.")
 
-        cur = DB.db.execute_sql(C.sql_by_id("move_enrolling_co_to_running"), ['%Y-%m-%d'])
-        rc = DB.db.rows_affected(cur)
-        logging.info(f"Changed {rc} Enrolling course offerings to Running.")
+            cur = DB.db.execute_sql(C.sql_by_id("move_enrolling_co_to_running"), ['%Y-%m-%d'])
+            rc = DB.db.rows_affected(cur)
+            logging.info(f"Changed {rc} Enrolling course offerings to Running.")
 
     except Exception as ex:
         msg = "Error when updating course status."
-        logging.exception(msg, ex)
-    finally:
-        DB.db.close()
+        logging.exception(msg)
 
 
-@C.rbac
+@P.require("offerings.view_running")
 async def get_running_courses():
     try:
         cu = apiVC.logged_in_user()
         coq = DB.CourseOffering.select().join(DB.CourseInstructor)
         coq = coq.where(DB.CourseOffering.status=="R")
-        if not apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+        if not P.current_actor().has("offerings.view_running:any"):
             coq = coq.where(DB.CourseInstructor.instructor==cu.id)
         data = []
         for x in coq:

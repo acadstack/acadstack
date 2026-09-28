@@ -63,7 +63,7 @@ Component for showing the attendance for enrolled students in a course.
         <div class="row row-striped" v-for="(s, i) in attData" :key="s.id">
           <div class="col-md-1">{{i+1}}</div>
           <div class="col-md-2">
-            <span v-if="!isStudent">
+            <span v-if="hasPermission('students.academics:any')">
               <a :href="'#/std.detail/'+s.user_id">{{s.org_id}}</a>
             </span>
             <span v-else>{{s.org_id}}</span>
@@ -75,7 +75,7 @@ Component for showing the attendance for enrolled students in a course.
           </div>
           <div class="col-md-1">
             <span v-if="s.attendance">
-              <a v-if="!isStudent" :href="`#/att.detail/${s.id}`">{{s.attendance}}%</a>
+              <a v-if="hasPermission('students.academics:any')" :href="`#/att.detail/${s.id}`">{{s.attendance}}%</a>
             </span>
             <span v-else>--</span>
           </div>

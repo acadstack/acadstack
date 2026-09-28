@@ -7,53 +7,14 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging
 from datetime import datetime as DT
 
 import peewee as ORM
-from playhouse.postgres_ext import JSONField
-from playhouse.pool import PooledPostgresqlExtDatabase
+from playhouse.postgres_ext import JSONField, PooledPostgresqlExtDatabase
 
 # Deferred initialization
 # db = ORM.PostgresqlDatabase(None)
 db = PooledPostgresqlExtDatabase(None)
-
-# List of degree programs
-DEGREES = [
-    ("BTE", "B.Tech"),
-    ("MTE", "M.Tech"),
-    ("MSR", "M.S (Research)"),
-    ("MSC", "M.Sc"),
-    ("BMD", "B.Tech-M.Tech Dual"),
-    ("PHD", "PhD"),
-    ("MCS_AI", "M.Tech(AI)"),
-    ("MEE_SIGNAL", "M.Tech(Signal Processing)"),
-    ("MEE_MICRO", "M.Tech(Micro. & VLSI)"),
-    ("MEE_POWER", "M.Tech(Power Engg.)"),
-    ("MME_THERM", "M.Tech(Thermal Engg.)"),
-    ("MME_MANUF", "M.Tech(Manufacturing)"),
-    ("MCE_MECHA", "M.Tech(Mechanics And Design)")
-]
-
-
-def create_schema():
-    logging.info("Creating DB tables")
-    with db:
-        db.create_tables([User, KnownFace, Person, Course,
-                          PasswordResetKey, CourseOffering,
-                          CourseCategory, UserDoc,
-                          CourseEnrollment, StudentAttendance,
-                          CourseInstructor, WorkflowNote,
-                          BatchAdvisors, AcademicCalendar,
-                          FeedbackForm, FeedbackQuestion,
-                          CourseInstructorFeedback,
-                          StudentFeedbackStatus,
-                          StudentSupervisor, CourseSlotTiming,
-                          FeesTransaction, StudentCredits, DcForStudent,
-                          DcMember, PhDProgressReport, AcademicMilestone,
-                          AttendancePhoto, SystemSetting])
-        logging.info("DB tables created.")
-
 
 class BaseModel(ORM.Model):
     id = ORM.BigAutoField()
@@ -91,17 +52,14 @@ class Person(BaseModel):
     org_id = ORM.CharField(max_length=40, unique=True)
     gender = ORM.FixedCharField(max_length=1, null=True)
 
-    # Dept. code defined in static_data.json
+    # Dept. code from the Departments list (VocabItem)
     dept_name = ORM.CharField(max_length=10)
     year_of_entry = ORM.CharField(max_length=4, null=True)  # yyyy
-    degree = ORM.CharField(max_length=20, choices=DEGREES, null=True)
+    degree = ORM.CharField(max_length=20, null=True)
     category = ORM.CharField(max_length=10, null=True) # SC, ST, OBC, EWS, GEN, PWD
     deg_type = ORM.CharField(max_length=10, null=True) # REG, DWM, DWC
     deg_type_spec = ORM.CharField(max_length=10, null=True)
     current_status = ORM.CharField(max_length=10, null=True) # REG, WTH, MDL
-
-    def get_degree_label(self):
-        return dict(self.DEGREES)[self.degree]
 
 
 class User(BaseModel):
@@ -112,22 +70,12 @@ class User(BaseModel):
     last_name = ORM.CharField(max_length=100, null=True)
     is_locked = ORM.BooleanField(default=False)
     person = ORM.ForeignKeyField(Person, backref='users', unique=True, null=True)
-    ROLES = [
-        ("STU", 'Student'),
-        ("ACA", 'Academic Section'),
-        ("FAC", 'Faculty'),
-        ("HOD", 'Head of Dept.'),
-        ("DEA", 'Dean of Academics'),
-        ("SUP", 'Superuser'),
-        ("GUE", 'Guest'),
-        ("PLA", 'Placement Cell'),
-        ("ADV", 'Advisor'),
-        ("RES", 'Research Section')
-    ]
-    role = ORM.CharField(max_length=4, choices=ROLES, default="GUE")
+    # Role codes are rows of the Role table.
+    role = ORM.CharField(max_length=4, default="GUE")
 
     def get_role_label(self):
-        return dict(self.ROLES)[self.role]
+        r = Role.get_or_none(Role.code == self.role)
+        return r.label if r else self.role
 
     def get_full_name(self):
         return "{0} {1}".format(self.first_name, self.last_name)
@@ -268,7 +216,7 @@ class CourseOffering(BaseModel):
                        default="E")
     slot = ORM.CharField(max_length=10, null=True)
     section = ORM.CharField(max_length=2, default="A")
-    # Dept. code defined in static_data.json
+    # Dept. code from the Departments list (VocabItem)
     dept_name = ORM.CharField(max_length=10, null=True)
 
     def get_status_label(self):
@@ -285,7 +233,7 @@ class CourseCategory(BaseModel):
     offering = ORM.ForeignKeyField(CourseOffering, null=True,
                                backref='course_categories',
                                on_delete='SET NULL')
-    degree = ORM.CharField(max_length=20, choices=DEGREES, default="ALL")
+    degree = ORM.CharField(max_length=20, default="ALL")
     dept = ORM.CharField(max_length=4, null=True)
     category = ORM.CharField(max_length=4, null=True)
     for_entry_years = ORM.CharField(max_length=100, null=True)
@@ -337,6 +285,9 @@ class CourseEnrollment(BaseModel):
     grade = ORM.CharField(max_length=2, default="NA")
     current_score = ORM.FloatField(null=True)
     remarks = ORM.TextField(null=True)
+    # The course's credits, copied when the session is closed; NULL while
+    # it is open, when they are read from the course's L-T-P-S-C.
+    credits = ORM.DecimalField(max_digits=6, decimal_places=2, null=True)
 
     def get_status_label(self):
         return dict(self.ENROL_STATUSES)[self.enrol_status]
@@ -346,6 +297,17 @@ class CourseEnrollment(BaseModel):
             # Unique index
             (('student', 'course_offering'), True),
         )
+
+
+class GradeChange(BaseModel):
+    """A change of an enrolment's grade; ins_ts is when it was made."""
+    enrolment = ORM.ForeignKeyField(CourseEnrollment, backref='grade_changes',
+                                    on_delete='CASCADE')
+    old_grade = ORM.CharField(max_length=2)
+    new_grade = ORM.CharField(max_length=2)
+    changed_by = ORM.CharField(max_length=40)
+    # Required once the session is closed
+    reason = ORM.TextField(null=True)
 
 
 class StudentAttendance(BaseModel):
@@ -426,7 +388,7 @@ class StudentFeedbackStatus(BaseModel):
     course_instructor = ORM.ForeignKeyField(CourseInstructor,
                                         backref='student_feedbacks',
                                         on_delete='CASCADE')
-    student = ORM.ForeignKeyField(CourseEnrollment,
+    student = ORM.ForeignKeyField(User,
                               backref='student_feedbacks',
                               on_delete='CASCADE')
     is_submitted = ORM.BooleanField()
@@ -607,15 +569,46 @@ class AttendancePhoto(BaseModel):
             (('offering', 'attend_dt', 'file_name'), True),
         )
 
-class SystemSetting(BaseModel):
-    group = ORM.CharField(max_length=60, index=True)
-    name = ORM.CharField(max_length=200, index=True)
-    is_json = ORM.BooleanField(index=True)
-    value_text = ORM.TextField(null=True)
-    value_json = JSONField(default={}, null=True)
+class VocabItem(BaseModel):
+    """An entry of a list that differs between universities, such as the
+    departments or degrees. The lists are served with the static data and are
+    edited with SQL; setting is_deleted hides an entry."""
+    vocab = ORM.CharField(max_length=40)
+    code = ORM.CharField(max_length=20)
+    label = ORM.CharField(max_length=200)
+    sort_order = ORM.IntegerField(default=0)
 
     class Meta:
         indexes = (
-            # Unique index
-            (('group', 'name', 'is_json'), True),
+            (('vocab', 'code'), True),
+        )
+
+
+class Setting(BaseModel):
+    """A value of one of the known settings in settings.py. A setting with no
+    row here has its default value."""
+    key = ORM.CharField(max_length=60, unique=True)
+    value = JSONField()
+
+
+class Role(BaseModel):
+    """A named set of permissions; each user has one role."""
+    code = ORM.CharField(max_length=4, unique=True)
+    label = ORM.CharField(max_length=100)
+
+
+class Permission(BaseModel):
+    """A permission that the code checks; see policy.py for the naming."""
+    code = ORM.CharField(max_length=60, unique=True)
+    description = ORM.CharField(max_length=200)
+
+
+class RolePermission(BaseModel):
+    """Grants a permission to a role."""
+    role = ORM.CharField(max_length=4)
+    permission = ORM.CharField(max_length=60)
+
+    class Meta:
+        indexes = (
+            (('role', 'permission'), True),
         )

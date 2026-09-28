@@ -93,10 +93,10 @@
         <button class="btn btn-outline-danger me-2 mt-3" @click="reset" type="reset">
           <i class="bi bi-eraser"></i>
         </button>
-        <button v-if="isAcad || isDean" class="btn btn-outline-info me-2 mt-3" @click="email_students" type="button">  
+        <button v-if="hasPermission('credits.notify_violation')" class="btn btn-outline-info me-2 mt-3" @click="email_students" type="button">  
           <i class="bi bi-envelope"></i>
         </button>
-        <button v-if="isAcad || isDean" class="btn  me-2 mt-3"  type="button">  
+        <button v-if="hasPermission('credits.reports')" class="btn  me-2 mt-3"  type="button">  
           <a class="btn btn-outline-success" :href="`download_catwise_earned_credits/${search_crit.acad_session}/${search_crit.degree}/${search_crit.dept_name}/${search_crit.course_type}/${search_crit.for_year}/${search_crit.min_credits}/${search_crit.max_credits}`">Download CSV</a>
         </button>
       </div>
@@ -110,7 +110,7 @@
           <div class="col">First Name</div>
           <div class="col">Last Name</div>
           <div class="col">Acad. Session</div>
-          <div v-if="isAcad || isDean" class="col-md-1">
+          <div v-if="hasPermission('credits.notify_violation')" class="col-md-1">
             <div class="form-check form-check-inline">
               <input type="radio" id="rb1" value="include" 
                 v-model="search_crit.mark_type"
@@ -137,7 +137,7 @@
           <div class="col">{{ s.first_name }}</div>
           <div class="col">{{ s.last_name }}</div>
           <div class="col">{{ s.acad_session }}</div>
-          <div v-if="isAcad || isDean" class="col-md-1">
+          <div v-if="hasPermission('credits.notify_violation')" class="col-md-1">
             <input class="form-check-input" type="checkbox" 
               v-model="search_crit.marked_items" :value="s.user_id"/>
           </div>

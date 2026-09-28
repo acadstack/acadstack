@@ -4,16 +4,22 @@ from quart import Blueprint, request
 from quart import current_app as APP
 from quart.helpers import send_file
 from peewee import IntegrityError
-from common import AcadStackException, rbac, sql_by_id
+from common import AcadStackException, sql_by_id
 from create_email import send_enrolment_email
 from playhouse.shortcuts import model_to_dict
 import api_common as apiVC
+import settings as ST
 import validation_checks as VAL
 import models as DB
 import common as C
+import policy as P
+import transcript as TR
+import workflows as WF
 
 
-def __get_ce_ownership(eids):
+def __get_ce_ownership(eids, actor):
+    """For each enrolment ID: (the actor is its course coordinator, the actor
+    is its student's batch advisor)."""
     sql1 = sql_by_id("frag_pending_enrollments")
     sql2 = sql_by_id("frag_ba_and_instructor")
     sql = "{0} {1}".format(sql1, sql2)
@@ -21,13 +27,24 @@ def __get_ce_ownership(eids):
     cursor = DB.db.execute_sql(sql, [param])
 
     ba_instr = apiVC.result_set_from_cursor(cursor)
-    cuid = apiVC.logged_in_user().id
     data = {}
     for obj in ba_instr:
-        is_instr = obj["instructor_id"] == cuid
-        is_advisor = obj["batch_adv_id"] == cuid
-        data[obj["id"]] = [is_instr, is_advisor]
+        is_instr = obj["instructor_id"] == actor.id
+        is_advisor = obj["batch_adv_id"] == actor.id
+        data[obj["id"]] = (is_instr, is_advisor)
     return data
+
+
+def record_grade_change(ce, old_grade, actor, reason=None):
+    """Logs the change of the enrolment's grade to ``ce.grade``. Call it in
+    the transaction that saves the grade. Once the session is closed, a
+    change needs a reason."""
+    if VAL.is_session_closed(ce.course_offering.acad_session) and not reason:
+        raise AcadStackException("The session is closed. Please give a reason "
+                                 "for changing the grade.")
+    apiVC.save_entity(DB.GradeChange(enrolment=ce, old_grade=old_grade,
+                                     new_grade=ce.grade, changed_by=actor.login_id,
+                                     reason=reason))
 
 
 def __get_existing_enrolment(co_id, student_id):
@@ -40,11 +57,13 @@ def __get_existing_enrolment(co_id, student_id):
 
 
 def __check_student_fees_status():
-    if apiVC.is_user_in_role("STU"):
+    # Applies to users who may enrol only themselves (students).
+    if not P.current_actor().has("enrolments.enrol:any"):
         qry = DB.FeesTransaction.select() \
             .where(
             (DB.FeesTransaction.student == apiVC.logged_in_user().id) &
-            (DB.FeesTransaction.acad_session.in_(apiVC.current_acad_session_list())) &
+            # Trimester sessions count too, not just semesters.
+            (DB.FeesTransaction.acad_session.in_(apiVC.current_acad_session_list(sem_only=False))) &
             (DB.FeesTransaction.is_deleted != True) &
             (DB.FeesTransaction.fees_txn_amt > 0)
         )
@@ -55,13 +74,29 @@ def __check_student_fees_status():
                 "submit the necessary details first.")
 
 
+def slot_conflicts(new_timings, existing_timings):
+    """The existing slot timings that overlap any of the new ones: same week
+    day and time ranges that intersect (touching ranges don't)."""
+    return [x for x in existing_timings
+            if any(n.week_day == x.week_day and
+                   n.start_time < x.end_time and x.start_time < n.end_time
+                   for n in new_timings)]
+
+
 def __get_slot_conflicts(co_id, student_id):
     stu = DB.User.get_or_none(int(student_id))
     if not stu:
         raise AcadStackException("User record not found for student.")
+    co = DB.CourseOffering.get_or_none(int(co_id))
+    if not co:
+        return []
+
+    # Only the student's other offerings in the same session can clash.
     slots = []
-    for ce in stu.enrollments.where(DB.CourseEnrollment.
-                                    enrol_status.in_(["IPEN", "APEN", "ENRO"])):
+    for ce in stu.enrollments.join(DB.CourseOffering).where(
+            DB.CourseEnrollment.enrol_status.in_(["IPEN", "APEN", "ENRO"]) &
+            (DB.CourseOffering.acad_session == co.acad_session) &
+            (DB.CourseOffering.id != co.id)):
         if ce.course_offering.slot:
             slots.append(ce.course_offering.slot)
 
@@ -69,26 +104,21 @@ def __get_slot_conflicts(co_id, student_id):
         (DB.CourseSlotTiming.slot.in_(slots))
         & (DB.CourseSlotTiming.is_deleted != True)))
 
-    co = DB.CourseOffering.get_or_none(int(co_id))
+    course_slots = apiVC.static_data_item("CourseSlots")
+    new_timings = list(DB.CourseSlotTiming.select().where(
+        (DB.CourseSlotTiming.slot == co.slot)
+        & (DB.CourseSlotTiming.is_deleted != True)))
+    if not new_timings:
+        slot_nm = apiVC.label_for_static_data_item(co.slot, course_slots)
+        raise AcadStackException(
+            f"Slot timing not setup for slot: '{slot_nm}'. "
+            "Please contact the administrator.")
     conflicts = []
-    if co:
-        course_slots = apiVC.static_data_item("CourseSlots")
-        cst_qry = DB.CourseSlotTiming.select().where(
-            DB.CourseSlotTiming.slot == co.slot)
-        if not cst_qry.exists():
-            course_slots = apiVC.static_data_item("CourseSlots")
-            slot_nm = apiVC.label_for_static_data_item(co.slot, course_slots)
-            raise AcadStackException(
-                f"Slot timing not setup for slot: '{slot_nm}'. "
-                "Please contact the administrator.")
-        for x in cst_list:
-            if cst_qry[0].week_day == x.week_day and \
-                    ((x.start_time < cst_qry[0].start_time < x.end_time) or
-                     (x.start_time < cst_qry[0].end_time < x.end_time)):
-                slot = apiVC.label_for_static_data_item(x.slot, course_slots)
-                msg = (f"{slot} : {C.WEEK_DAY_NAMES[x.week_day]} "
-                        f"{x.start_time}-{x.end_time}")
-                conflicts.append(msg)
+    for x in slot_conflicts(new_timings, cst_list):
+        slot = apiVC.label_for_static_data_item(x.slot, course_slots)
+        msg = (f"{slot} : {C.WEEK_DAY_NAMES[x.week_day]} "
+                f"{x.start_time}-{x.end_time}")
+        conflicts.append(msg)
 
     return conflicts
 
@@ -129,10 +159,11 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
                "enrol_type": se.enrol_type.strip().upper(),
                "enrol_status": se.enrol_status.strip().upper(),
                "grade": se.grade.strip().upper(),
+               "credits": se.credits,
                "remarks": se.remarks}
         
         # Fetch the student's user/profile info
-        stud = DB.User.select().join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)\
+        stud = DB.User.select(DB.User, DB.Person).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)\
             .where(DB.User.id == se.student_id)
 
         if stud:
@@ -183,14 +214,8 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
 
         enrol_data[acad_sess_key]["courses"].append(my_course)
     
-    # We use these suffixies for academic sessions. Change them as needed.
-    # T1, T2 etc. are for trimesters, I, II and S are for regular semesters.
-    suffixes = ['T1', 'T2', 'T3', 'T4', 'I', 'II', 'S']
-
     # Sort by academic session. Needed for cgpa calculations
-    acad_sess_list = list(enrol_data.keys())
-    acad_sess_list = sorted(acad_sess_list,
-        key=lambda item: "{0}{1}".format(item[:4], suffixes.index(item[5:])))
+    acad_sess_list = sorted(enrol_data.keys(), key=TR.session_sort_key)
     
     # We return the enrolment data per academic session, sorted in reverse
     # chronological order of academic sessions (2025-II, 2025-I, 2024-II ...).
@@ -200,111 +225,6 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
 
     logging.debug(f"Sorted acad sessions: {acad_sess_list}")
     return acad_sess_list, enrol_data_sorted
-
-
-def __compute_cgpa_sgpa_ec(courses, degree):
-
-    # Mapping of grade letter to points
-    gpm = {"A": 10, "A-": 9, "B": 8, "B-": 7, "C": 6, "C-": 5, 
-           "D": 4, "E": 2, "F": 0}
-
-    # Grades counted for earned credits for UG students
-    ug_ec_grades = "A,A-,B,B-,C,C-,D,S,NP"
-
-    # Grades counted for earned credits for PG students
-    pg_ec_grades = "A,A-,B,B-,C,C-,D,S"
-
-    # Passing grades (UG+PG) used in CGPA calculation
-    pass_grades = "A,A-,B,B-,C,C-,D"
-
-
-    # Temp variables used for calculations
-    ec, s_ec, pts_sgpa, pts_cgpa,u_ec = 0, 0, 0, 0, 0
-    creg, creg_wo_audit, sgpa, cgpa = 0, 0, 0, 0
-    try:
-        for c in courses:
-
-            # Take only confirmed enrolments in finished courses
-            if c["enrol_status"] != "ENRO":
-                continue
-
-            # Default grades counted for earned credits for PhD students
-            phd_ec_pass_grades = "A,A-,B,B-,C,C-"
-            phd_ec_grades = "A,A-,B,B-,C"
-
-            academic_session = c['acad_session']
-            academic_session_year = int(academic_session[:4])
-            academic_session_sem = academic_session[5:] # I, II, S, T1, T2, etc.
-
-            # Adjustment for PhD passing grades introduced in 2021
-            if academic_session_year > 2021:
-                phd_ec_grades = "A,A-,B,B-,C,C-"
-            elif academic_session_year < 2021:
-                phd_ec_pass_grades = "A,A-,B,B-,C"
-            else: # Year 2021
-                if academic_session_sem == "I":
-                    phd_ec_pass_grades = "A,A-,B,B-,C"
-                    phd_ec_grades = "A,A-,B,B-,C,C-"
-                elif academic_session_sem in ["II", "S", "T1", "T2"]:
-                    phd_ec_grades = "A,A-,B,B-,C,C-"
-                else:
-                    logging.warning(
-                        f"Unknown academic semester: '{academic_session_sem}'")
-
-            # L-T-P-S-C
-            ltp = c["ltp"].strip().split("-")
-            if len(ltp) < 2 or not (ltp[0] and ltp[2]):
-                raise AcadStackException(f"LTP data missing for course {c["code"]}")
-            if len(ltp) == 5:
-                cc = round(C.parse_number(ltp[-1]), 2)
-            else:
-                raise AcadStackException(
-                    f"LTP data not in L-T-P-S-C format for course {c["code"]}")
-
-            is_credit_course = c["enrol_type"] in "C,CM,CC"
-            # Total registered credits
-            creg += cc
-            if is_credit_course:
-                creg_wo_audit += cc
-
-            # Grades that are counted towards earned credits
-            if degree == "BTE":
-                 ec_grades = ug_ec_grades
-            elif degree == "PHD":
-                 ec_grades = phd_ec_grades
-                 pass_grades = phd_ec_pass_grades
-            else:
-                 ec_grades = pg_ec_grades
-
-
-            # Grade secured in this course
-            grade = c["grade"]
-
-            if grade == "S":
-                s_ec += cc
-            if grade == "U" or grade == "I" or grade == "W":
-                u_ec += cc
-            if grade in ec_grades and is_credit_course:
-                ec += cc
-
-            if grade in gpm and is_credit_course:
-                pts_sgpa += gpm[grade] * cc
-                if grade in pass_grades and is_credit_course:
-                    pts_cgpa += gpm[grade] * cc
-            else:
-                logging.debug(f"Points not mapped for grade {grade}!")
-
-        creg_sgpa = (creg_wo_audit - s_ec) - u_ec
-        ec_cgpa = (ec - s_ec)
-        sgpa = round(pts_sgpa / creg_sgpa, 2) if creg_sgpa > 0 else 0
-        cgpa = round(pts_cgpa / ec_cgpa, 2) if ec_cgpa > 0 else 0
-
-    except Exception as ex:
-        logging.error(ex)
-        raise ex
-
-    return {"sgpa": sgpa, "ec": ec, "s_ec": s_ec,
-            "creg": creg, "cgpa": cgpa, "pts_cgpa": pts_cgpa}
 
 
 def __get_student_courses_perf(stu, include_attendance):
@@ -346,7 +266,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/get_student_academics/<int:my_id>', view_func=get_student_academics, methods=['GET'])
     bp.add_url_rule('/get_passed_courses/<int:user_id>', view_func=get_passed_courses, methods=['GET'])
     bp.add_url_rule('/drop_withdraw_course/<int:my_id>/<string:status>',
-                       view_func=drop_withdraw_course, methods=['GET'])
+                       view_func=drop_withdraw_course, methods=['POST'])
     bp.add_url_rule('/download_course_enrollments/<int:co_id>', 
                         view_func=download_course_enrollments,
                        methods=['GET'])
@@ -371,35 +291,26 @@ def get_student_courses_perf_filtered(stu, include_attendance,
     
     acad_sessions, enrol_data = __fetch_student_enrollments_data(
         enrols, include_attendance)
-    ec, pts_cgpa, s_ec = 0, 0, 0
-    
     # acad_sessions is already in properly sorted chronology
-    for ad in acad_sessions:
-        cg_data = __compute_cgpa_sgpa_ec(enrol_data[ad]["courses"], 
-                                         stu.person.degree)
-        enrol_data[ad]["sgpa"] = cg_data["sgpa"]
-        enrol_data[ad]["ec"] = cg_data["ec"]
-        enrol_data[ad]["creg"] = cg_data["creg"]
-        pts_cgpa += cg_data["pts_cgpa"]
-        s_ec += cg_data["s_ec"]
-        ec += cg_data["ec"]
-
-        enrol_data[ad]["cec"] = ec
-        enrol_data[ad]["cgpa"] =round(pts_cgpa /(ec - s_ec), 2) if (ec - s_ec) > 0 else 0
+    gpas = TR.cumulative_gpa([enrol_data[ad]["courses"] for ad in acad_sessions],
+                             stu.person.degree)
+    for ad, gpa in zip(acad_sessions, gpas):
+        enrol_data[ad].update(gpa)
 
     return {"enrollments": enrol_data, "acad_sessions": acad_sessions}
 
 
-@rbac
+@P.require("enrolments.change")
 async def drop_withdraw_course(my_id, status):
     try:
-        if status not in "DROP,WDRAW":
+        if status not in ("DROP", "WDRAW"):
             return apiVC.error_json(f"Invalid status {status}! Only drop/withdraw allowed!")
 
         # Raises AcadStackException
-        VAL.validate_enrolment_change(my_id, status)
+        actor = P.current_actor()
+        VAL.validate_enrolment_change(my_id, status, actor)
 
-        if apiVC.is_user_in_role("ACA,DEA"):
+        if actor.has("enrolments.edit:any"):
             status = "ASREJ"
 
         ce = DB.CourseEnrollment.get_by_id(my_id)
@@ -409,15 +320,15 @@ async def drop_withdraw_course(my_id, status):
         return apiVC.ok_json("Course enrollment updated successfully")
     except AcadStackException as ex:
         msg = "Error when dropping/withdrawing the course"
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(str(ex))
     except Exception as ex:
         msg = "Error when dropping/withdrawing the course"
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["FAC", "ACA", "DEA"])
+@P.require("enrolments.pending_instructor")
 async def get_instructor_courses_enrol():
     try:
         res = DB.CourseEnrollment.select(). \
@@ -450,15 +361,15 @@ async def get_instructor_courses_enrol():
                         "advisor_enrol": result_adv})
     except Exception as ex:
         msg = "Error when fetching DB.CourseEnrollment details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ADV", "ACA", "DEA", "HOD"])
+@P.require("enrolments.pending_advisor")
 async def get_advisor_courses_enrol():
     try:
         qry = sql_by_id("pending_enrolments_advisor")
-        if apiVC.is_user_in_role("HOD"):
+        if P.current_actor().has("enrolments.pending_advisor:dept"):
             qry = sql_by_id("pending_enrolments_hod")
 
         cursor = DB.db.execute_sql(qry, [apiVC.logged_in_user().id])
@@ -472,19 +383,19 @@ async def get_advisor_courses_enrol():
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("students.academics")
 async def get_passed_courses(user_id):
     try:
-        VAL.is_current_user_in_role_and_id("STU", "user_id", user_id, 
+        VAL.check_own_or_any("students.academics", "user_id", user_id, 
             "Student attempted to access passed courses data for someone else.")
 
         stu = DB.User.get_by_id(user_id)
         if stu:
             res = []
             enrols = stu.enrollments
-            pass_grades = "A,A-,B,B-,C,C-,D,S"
+            pass_grades = TR.PASS_GRADES | {"S"}
             for se in enrols:
-                if se.grade in pass_grades:
+                if se.grade.strip().upper() in pass_grades:
                     res.append(se.course_offering.course.code)
 
             records = {}
@@ -500,7 +411,7 @@ async def get_passed_courses(user_id):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ACA", "DEA"])
+@P.require("enrolments.bulk_enrol")
 async def bulk_enrol_in_course(entry_no_pattern, co_id):
     try:
         if not apiVC.roll_number_valid(entry_no_pattern):
@@ -512,7 +423,6 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
             DB.Person.org_id.startswith(entry_no_pattern)))
 
         co = DB.CourseOffering.get_by_id(co_id)
-        VAL.check_enrollment_allowed(co)
         num = 0
         with DB.db.atomic() as txn:
             for stu in query:
@@ -536,17 +446,14 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("enrolments.download")
 async def download_course_enrollments(co_id, is_grades=False):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
         sql_id = "enrolled_students"
         co = DB.CourseOffering.get_by_id(co_id)
         if is_grades:
-            if VAL.validate_course_instructor(co_id,
-                    allowed_role=["ACA", "DEA", "HOD"],
-                    coordinator_only=False):
+            if P.current_actor().allowed("grades.upload", own=lambda:
+                    VAL.validate_course_instructor(co_id, coordinator_only=False)):
                 sql_id = "get_course_grades"
             else:
                 sql_id = "enrolled_students_for_grades"
@@ -582,16 +489,14 @@ async def download_course_enrollments(co_id, is_grades=False):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["FAC", "ACA", "DEA"])
+@P.require("grades.upload")
 async def download_enrollments_for_grades(co_id):
-    return download_course_enrollments(co_id, True)
+    return await download_course_enrollments(co_id, True)
 
 
-@rbac
+@P.require("enrolments.download")
 async def download_course_enrolments(dept_name, entry_year, acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
         if dept_name == "-":
             dept_name = ""
         if entry_year == "-":
@@ -611,10 +516,10 @@ async def download_course_enrolments(dept_name, entry_year, acad_session):
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("students.academics")
 async def get_student_academics(my_id):
     try:
-        VAL.is_current_user_in_role_and_id("STU", "user_id", my_id, 
+        VAL.check_own_or_any("students.academics", "user_id", my_id, 
             "Student attempted to access other's academics details.")
 
         stu = DB.User.get_by_id(my_id)
@@ -631,11 +536,14 @@ async def get_student_academics(my_id):
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("students.academics")
 async def get_course_enrollments(my_id):
     try:
         res = DB.CourseEnrollment.select().where(
             DB.CourseEnrollment.course_offering == my_id)
+        actor = P.current_actor()
+        if not actor.has("students.academics:any"):
+            res = res.where(DB.CourseEnrollment.student == actor.id)
         if res:
             result = []
             for coe in res:
@@ -661,17 +569,18 @@ async def get_course_enrollments(my_id):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ACA", "STU"])
+@P.require("enrolments.enrol")
 async def enroll_in_courses():
     try:
         fd = await request.get_json(force=True)
         std_id = int(fd["user_id"])
-        VAL.is_current_user_in_role_and_id("STU", "user_id", std_id, 
+        VAL.check_own_or_any("enrolments.enrol", "user_id", std_id, 
             "Student attempted to enrol someone else in a course.")
-        if not APP.config.get("disable_fees_check"):
+        if ST.get("fees_check_enabled"):
             __check_student_fees_status()
         CREDIT_NA_ALLOWED_MSG = ""
         ALLOWED_COURSES = []
+        saved_ids = []
         logging.debug("Enrolling student in courses: {}".format(fd))
         if fd["co_ids"]:
             with DB.db.atomic() as txn:
@@ -692,6 +601,9 @@ async def enroll_in_courses():
                         ALLOWED_COURSES.append(ccode)
                     conflicts = __get_slot_conflicts(co_id, std_id)
                     if len(conflicts) > 0:
+                        # Leaving atomic() by return commits, so undo the
+                        # courses already saved in this request.
+                        txn.rollback()
                         return apiVC.error_json(conflicts)
 
                     coe = DB.CourseEnrollment()
@@ -709,10 +621,12 @@ async def enroll_in_courses():
                             apiVC.save_entity(coe)
                         logging.debug("Saved: {}".format(coe))
                         VAL.check_enrolled_credits(std_id,co.acad_session)
-                        send_enrolment_email(coe.id)
+                        saved_ids.append(coe.id)
 
                 # VAL.check_enrolled_credits(std_id)
                 txn.commit()
+            for ce_id in saved_ids:
+                send_enrolment_email(ce_id)
             if CREDIT_NA_ALLOWED_MSG == "":
                 return apiVC.ok_json("Enrollment requested successfully!")
             elif (len(ALLOWED_COURSES) != 0 and len(CREDIT_NA_ALLOWED_MSG)):
@@ -733,7 +647,7 @@ async def enroll_in_courses():
         logging.exception(msg)
         return apiVC.error_json("{0}".format(msg))
 
-@rbac(roles=["ACA", "DEA", "FAC", "HOD"])
+@P.require("enrolments.approve")
 async def change_enroll_status():
     try:
         fd = await request.get_json(force=True)
@@ -741,43 +655,23 @@ async def change_enroll_status():
         status = fd.get("status")
         if len(eids) == 0:
             return apiVC.error_json("Select students to enrol first!")
-        # if VC.is_user_in_role("FAC") and not validate_ce_approver(fd.get("ids")):
-        #     return VC.error_json("You do not have privileges to approve one or more of the selected enrolments!")
-
-        ce_ownership = __get_ce_ownership(eids)
+        actor = P.current_actor()
+        ce_ownership = __get_ce_ownership(eids, actor)
+        changed_ids = []
         with DB.db.atomic() as txn:
             for eid in eids:
                 ce = DB.CourseEnrollment.get_by_id(eid)
-                enrol_status = ce.enrol_status
-                new_status = ""
-                if apiVC.is_user_in_role(["ACA", "DEA"]):
-                    new_status = "ENRO" if status == "approve" else "ASREJ"
-                elif apiVC.is_user_in_role(["FAC", "HOD"]):
-                    ceos = ce_ownership[eid]
-                    # User is course instructor
-                    if ceos[0] and not(ceos[1]):
-                        new_status = "APEN" if status == "approve" else "IREJ"
-                    # User is batch advisor
-                    elif ceos[1] and not(ceos[0]):
-                        new_status = "ENRO" if status == "approve" else "AREJ"
-                    # User is both instrcutor and batch advisor
-                    elif ceos[0] and ceos[1] and enrol_status =="IPEN":
-                        new_status = "APEN" if status == "approve" else "AREJ"
-                    elif ceos[0] and ceos[1] and enrol_status =="APEN":
-                        new_status = "ENRO" if status == "approve" else "AREJ"
-                    elif apiVC.is_user_in_role("HOD") and enrol_status =="APEN":
-                        new_status = "ENRO" if status == "approve" else "AREJ"
-                    else:
-                        raise AcadStackException("You do not have privileges to change one or more enrollments!")
-                else:
-                    raise AcadStackException("Unexpected user role: "+apiVC.logged_in_user().role)
-
-                VAL.validate_enrolment_change(ce, new_status)
+                is_instr, is_advisor = ce_ownership.get(eid, (False, False))
+                new_status = WF.enrolment_next_status(actor, ce.enrol_status, status,
+                                                      is_instr, is_advisor)
+                VAL.validate_enrolment_change(ce, new_status, actor)
 
                 ce.enrol_status = new_status
                 if apiVC.update_entity(DB.CourseEnrollment, ce) == 1:
-                    send_enrolment_email(eid)
+                    changed_ids.append(eid)
             txn.commit()
+        for eid in changed_ids:
+            send_enrolment_email(eid)
 
         logging.info("Enrolled students in courses: {}".format(fd))
         return apiVC.ok_json("Changed successfully!")
@@ -792,7 +686,7 @@ async def change_enroll_status():
         return apiVC.error_json("{0}".format(msg))
 
 
-@rbac
+@P.require("enrolments.change")
 async def course_enrollment_view(my_id):
     try:
         res = DB.CourseEnrollment.get_by_id(my_id)
@@ -811,7 +705,16 @@ async def course_enrollment_view(my_id):
         return apiVC.error_json(msg)
 
 
-@rbac
+# Request fields that coe_save copies onto an enrolment. Users allowed only
+# through enrolments.change:own (students) may only drop or withdraw their own
+# enrolment; only holders of enrolments.edit:any may create one here.
+COE_EDIT_FIELDS = ["enrol_type", "enrol_status", "grade", "current_score",
+                   "remarks", "txn_no"]
+COE_STUDENT_FIELDS = ["enrol_status", "txn_no"]
+COE_STUDENT_STATUSES = ["DROP", "WDRAW"]
+
+
+@P.require("enrolments.change")
 async def course_enrollment_save():
     try:
         fd = await request.get_json(force=True)
@@ -822,31 +725,45 @@ async def course_enrollment_save():
             old_data = {}
             if cid:
                 coe = DB.CourseEnrollment.get_by_id(cid)
+                old_grade = coe.grade
                 old_data = model_to_dict(coe)
                 old_data["enrol_status"] = dict(DB.CourseEnrollment.ENROL_STATUSES)[old_data["enrol_status"]]
                 # Raises AcadStackException
-                VAL.validate_enrolment_change(coe, fd.get("enrol_status"))
+                VAL.validate_enrolment_change(coe, fd.get("enrol_status"), P.current_actor())
 
-                if not VAL.is_enrollment_owner_valid(coe):
+                access = VAL.is_enrollment_owner_valid(coe)
+                if not access:
                     return apiVC.error_json("User not allowed to change enrollment!")
 
-                C.update_model_skip_unknown(coe, fd)
+                if access == "own":
+                    if fd.get("enrol_status") not in COE_STUDENT_STATUSES + [coe.enrol_status]:
+                        return apiVC.error_json("Students can only drop or withdraw a course!")
+                    allowed = COE_STUDENT_FIELDS
+                else:
+                    allowed = COE_EDIT_FIELDS
+                C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})
+                if coe.grade != old_grade:
+                    record_grade_change(coe, old_grade, P.current_actor(),
+                                        fd.get("grade_change_reason"))
                 if apiVC.update_entity(DB.CourseEnrollment, coe) != 1:  # if rc != 1:
                     return apiVC.error_json("Could not update. Please try again.")
                 logging.debug(f"Updated DB.CourseEnrollment details: {coe}")
             else:
-                C.update_model_skip_unknown(coe, fd)
+                if not P.current_actor().has("enrolments.edit:any"):
+                    return apiVC.error_json("User not allowed to create enrollment!")
+                allowed = COE_EDIT_FIELDS + ["course_offering", "student"]
+                C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})
                 apiVC.save_entity(coe)
                 logging.debug(f"Inserted DB.CourseEnrollment: {coe}")
 
-            send_enrolment_email(coe.id, old_rec=old_data)
             txn.commit()
 
+        send_enrolment_email(coe.id, old_rec=old_data)
         return await course_enrollment_view(coe.id)
     except AcadStackException as ae:
         logging.exception(ae)
         return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when saving course enrollment details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)

@@ -120,19 +120,19 @@ def find_persons_in_photo(group_photo_bytes, known_faces_data, tolerance=0.45):
     else:
         logging.debug("No faces found in group photo")
 
-    return (names_found, names_missing, len(grp_faces), 
-            mark_faces(group_photo_bytes, face_locs_found))
+    image = fr.load_image_file(io.BytesIO(group_photo_bytes))
+    return (names_found, names_missing, len(grp_faces),
+            mark_faces(image, face_locs_found))
 
 
-def mark_faces(image, face_loc):
+def mark_faces(image, face_loc, as_buff=False):
+    """Draws numbered boxes at the face locations on the image (an RGB
+    array) and returns it encoded as by `_encode_image`."""
     for idx, (top, right, bottom, left) in enumerate(face_loc):
-        cv2.rectangle(image, (left, top), (right, bottom), (0, 0, 255), 2)
+        cv2.rectangle(image, (left, top), (right, bottom), (255, 0, 0), 2)
         font = cv2.FONT_HERSHEY_DUPLEX
-        cv2.putText(image, str(idx), (left - 15, bottom + 30), font, 1.0, (0, 0, 255), 2)
-    
-    _, buffer = cv2.imencode(".jpg", image)
-    b64_img = base64.b64encode(buffer).decode()
-    return f"data:image/jpeg;base64,{b64_img}"
+        cv2.putText(image, str(idx), (left - 15, bottom + 30), font, 1.0, (255, 0, 0), 2)
+    return _encode_image(image, as_buff)
 
 
 def is_person_in_photo_bytes(person_photo_bytes, group_photo_bytes, tolerance=0.45):
@@ -175,6 +175,8 @@ def mark_person_in_photo_bytes(person_photo, group_photo, tolerance=0.45):
     """
     grp_faces, face_loc = get_faces_from_photo(group_photo)
     faces, flocs = get_faces_from_photo(person_photo)
+    if not grp_faces:
+        return None
     matches = fr.compare_faces(grp_faces, faces[0], tolerance=tolerance)
     face_distances = fr.face_distance(grp_faces, faces[0])
     bmi = np.argmin(face_distances)
@@ -188,12 +190,13 @@ def mark_person_in_photo_bytes(person_photo, group_photo, tolerance=0.45):
 def write_text_on_image_bytes(image_bytes, txt, bottom_left):
     image = fr.load_image_file(io.BytesIO(image_bytes))
     font = cv2.FONT_HERSHEY_DUPLEX
-    cv2.putText(image, txt, bottom_left, font, 1.0, (0, 0, 255), 2)
+    cv2.putText(image, txt, bottom_left, font, 1.0, (255, 0, 0), 2)
     return _encode_image(image, as_buff=True)
 
 
 def _encode_image(image, as_buff=False):
-    is_success, im_buf_arr = cv2.imencode(".jpg", image)
+    # face_recognition loads images as RGB; OpenCV encodes BGR.
+    is_success, im_buf_arr = cv2.imencode(".jpg", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
     if is_success:
         if as_buff:
             return io.BytesIO(im_buf_arr)

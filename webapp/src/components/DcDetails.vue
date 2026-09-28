@@ -19,7 +19,7 @@ Component for Doctoral committee
                 :disabled="viewOnly"
                 placeholder="Lookup by Roll No."/>
           </div>
-          <div class="col-md-3" v-if="!(isStudent || viewOnly)">
+          <div class="col-md-3" v-if="hasPermission('dc.edit') && !viewOnly">
             <div class="dropdown me-2 float-end">
               <button
                 type="button"
@@ -164,25 +164,21 @@ export default {
       loaded: false,
       doc_comm: this.initDc(),
       /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label and the status of
-       * course that will be set when action is performed.
+       * The actions of each scope of dc.edit: the label and the DC status it
+       * sets. The supervisor (own) submits to the HoD (dept), who forwards
+       * to the Dean (any).
        */
-      actionsMap: {
-        HOD: [
-          { label: "Forward to Dean", status: "FTD" },
-          { label: "Return to Supervisor", status: "RTS" },
-        ],
-        DEA: [
-          { label: "Approve", status: "APP" },
-          { label: "Return to HoD", status: "RTH" },
-        ],
-        FAC: [
+      actionsByScope: {
+        own: [
           { label: "Save as Draft", status: "DRA" },
           { label: "Submit to HoD", status: "SUB" },
           { label: "Delete", status: "DEL" },
         ],
-        ACA: [
+        dept: [
+          { label: "Forward to Dean", status: "FTD" },
+          { label: "Return to Supervisor", status: "RTS" },
+        ],
+        any: [
           { label: "Approve", status: "APP" },
           { label: "Return to HoD", status: "RTH" },
           { label: "Return to Supervisor", status: "RTS" },
@@ -198,7 +194,8 @@ export default {
       return this.$route.params.stu_id > 0;
     },
     actions() {
-      return this.actionsMap[this.userRole];
+      const scope = ["any", "dept", "own"].find(s => this.hasPermission(`dc.edit:${s}`));
+      return this.actionsByScope[scope];
     }
   },
   async created() {
@@ -239,11 +236,11 @@ export default {
     markViewOnly() {
       let vm = this;
       vm.viewOnly = vm.isEdit;
-      /* Editable DC status for roles */
-      const am = {"HOD": "SUB,RTH", "FAC": "DRA,RTS"}
-      const alowSt = am[vm.userRole]
+      /* DC statuses each scope may edit */
+      const alowSt = vm.hasPermission("dc.edit:dept") ? "SUB,RTH"
+                   : vm.hasPermission("dc.edit:own") ? "DRA,RTS" : undefined
       const cs = vm.doc_comm.status
-      if ((vm.isAcad || vm.isDean) &&  cs != "DRA") {
+      if (vm.hasPermission("dc.edit:any") &&  cs != "DRA") {
         vm.viewOnly = false;
       } else if (alowSt != undefined){
         vm.viewOnly = !alowSt.includes(cs)

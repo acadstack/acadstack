@@ -7,25 +7,26 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
+import asyncio
 import base64
 import csv
+import hmac
 import logging
 import os
-from pathlib import Path
 import create_email as CM
 import models as DB
 import common as C
 import api_common as apiVC
+import settings as ST
 import face_api_proxy as fapi
+import policy as P
 
-from datetime import datetime as DT
+from datetime import datetime as DT, timedelta
 from quart import Blueprint, request, current_app as APP
 from quart.helpers import send_file
 from google.auth.transport import requests
 from google.oauth2 import id_token
-from passlib.handlers.pbkdf2 import pbkdf2_sha256
 from werkzeug.utils import secure_filename
-from peewee import IntegrityError
 
 def init_routes(bp:Blueprint):
     bp.add_url_rule('/oauth/<string:token>', view_func=oauth_verify, methods=['GET'])
@@ -34,6 +35,8 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/current_user', view_func=apiVC.get_current_user_and_nav, methods=['GET'])
     bp.add_url_rule('/reset_password', view_func=reset_password, methods=['POST'])
     bp.add_url_rule('/gen_prk', view_func=gen_prk, methods=['POST'])
+    bp.add_url_rule('/change_password', view_func=change_password, methods=['POST'])
+    bp.add_url_rule('/admin_gen_prk', view_func=admin_gen_prk, methods=['POST'])
     bp.add_url_rule('/add_users', view_func=bulk_add_users, methods=['POST'])
     bp.add_url_rule('/user_find', view_func=user_find, methods=['POST'])
     bp.add_url_rule('/user/<int:my_id>', view_func=user_view, methods=['GET'])
@@ -43,16 +46,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/student_lookup/<string:query_str>', view_func=student_lookup, methods=['GET'])
     bp.add_url_rule('/students_find', view_func=find_students, methods=['POST'])
     bp.add_url_rule('/my_photo', view_func=get_my_photo, methods=['GET'])
-
-    bp.add_url_rule('/get_student_docs/<int:stu_id>', view_func=get_student_docs, methods=['GET'])
-    bp.add_url_rule('/upload_student_doc', view_func=upload_student_doc, methods=['POST'])
-    bp.add_url_rule('/get_doc/<int:doc_id>', view_func=get_doc, methods=['GET'])
-    bp.add_url_rule('/delete_doc/<int:doc_id>', view_func=delete_doc, methods=['GET'])
     bp.add_url_rule('/get_image/<string:file_name>', view_func=get_image, methods=['GET'])
-    bp.add_url_rule('/get_fees_txn_file/<string:file_name>', view_func=get_fees_txn_image, methods=['GET'])
-    bp.add_url_rule('/delete_fees_txn_data/<int:fee_id>', view_func=delete_student_reg_fees_data, methods=['GET'])
-    bp.add_url_rule('/get_reg_fees_data/<int:stu_id>', view_func=get_student_reg_fees_data, methods=['GET'])
-    bp.add_url_rule('/save_reg_fees_data', view_func=save_registration_fees_txn_info, methods=['POST'])
     bp.add_url_rule('/find_advisor', view_func=find_advisor, methods=['POST'])
     bp.add_url_rule('/assign_advisor', view_func=assign_advisor, methods=['POST'])
 
@@ -65,6 +59,53 @@ def __encode_face_to_json(photo_str):
     else:
         raise Exception(
             "Please supply a JPG format image. Mere renaming to .jpg won't work!")
+
+
+# A reset key is valid for PRK_TTL. After the lockout_limit setting's number
+# of wrong keys the outstanding keys are discarded and resets for that login
+# are refused for PRK_TTL. At most that many keys are issued per login within
+# PRK_TTL.
+PRK_TTL = timedelta(minutes=30)
+PRK_SENT_MSG = ("If the login id and email match an account, a password "
+                "reset key has been emailed to it.")
+PRK_INVALID_MSG = "Invalid or expired reset key."
+
+# Verified against when the login id is unknown, so that the response takes
+# about as long as for a known login id.
+_DUMMY_HASH = C.hash_password(C.get_rand_str(16))
+
+
+def __prk_locked_out(login_id):
+    count, since = APP.prk_failures.get(login_id, (0, None))
+    if count < ST.get("lockout_limit"):
+        return False
+    if DT.now() - since < PRK_TTL:
+        return True
+    APP.prk_failures.pop(login_id, None)
+    return False
+
+
+def __record_wrong_prk(login_id):
+    count, _ = APP.prk_failures.get(login_id, (0, None))
+    APP.prk_failures[login_id] = (count + 1, DT.now())
+    if count + 1 >= ST.get("lockout_limit"):
+        logging.warning(f"Too many wrong reset keys for {login_id}; "
+                        "password reset locked out.")
+        __clear_prk_for_user(login_id)
+
+
+def __issue_prk(login_id):
+    """Creates a fresh reset key for login_id, unless too many were issued
+    recently (within PRK_TTL). Returns the key, or None if rate-limited."""
+    recent = DB.PasswordResetKey.select().where(
+        (DB.PasswordResetKey.login_id == login_id) &
+        (DB.PasswordResetKey.ins_ts > DT.now() - PRK_TTL)).count()
+    if recent >= ST.get("lockout_limit"):
+        logging.warning(f"Too many password reset key requests for {login_id}.")
+        return None
+    prk_str = C.get_rand_str(size=8)
+    apiVC.save_entity(DB.PasswordResetKey(login_id=login_id, prk=prk_str))
+    return prk_str
 
 
 async def gen_prk():
@@ -81,23 +122,52 @@ async def gen_prk():
         if not u:
             logging.warning(
                 "Attempted to initiate password reset for non-existent user {}".format(login_id))
-            return apiVC.error_json("Invalid user/email.")
+        elif u.is_locked or __prk_locked_out(login_id):
+            logging.warning(f"Password reset key not issued to {login_id}: "
+                            "account or password reset locked.")
         else:
-            attempts = DB.PasswordResetKey.select().where(
-                DB.PasswordResetKey.login_id == login_id).count()
-            if attempts > 4:
-                u.is_locked = True
-                apiVC.save_entity(u)
-                return apiVC.error_json("Too many attempts! Your accounts has been locked.")
-            prk_str = C.C.random_str(size=8)
-            CM.send_password_reset_code(email, prk_str)
-            obj = DB.PasswordResetKey(login_id=login_id, prk=prk_str)
-            apiVC.save_entity(obj)
-            logging.debug("PRK: {}".format(prk_str))
-            return apiVC.ok_json("A password reset key code has been emailed to you.")
+            prk_str = __issue_prk(login_id)
+            if prk_str:
+                CM.send_password_reset_code(email, prk_str)
+        return apiVC.ok_json(PRK_SENT_MSG)
 
     except Exception as ex:
         msg = "Error when generating password reset key."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@P.require("users.edit")
+async def admin_gen_prk():
+    """Lets an admin (users.edit:any) issue a password reset key for another
+    user, e.g. for onboarding or when the user's email is unreachable. The
+    key is returned in the response so the admin can relay it out of band;
+    the user still sets their own new password via the existing reset-key
+    screen, so the admin never sees or sets the actual password."""
+    try:
+        actor = P.current_actor()
+        if not actor.has("users.edit:any"):
+            return apiVC.error_json("Insufficient privileges to perform the operation!")
+
+        fd = await request.get_json(force=True)
+        u = DB.User.get_or_none(DB.User.id == int(fd.get("id") or 0))
+        if not u:
+            return apiVC.error_json("User not found.")
+
+        prk_str = __issue_prk(u.login_id)
+        if not prk_str:
+            return apiVC.error_json(
+                "Too many reset keys were issued recently for this user. Please try again later.")
+
+        # A fresh admin-issued key should not be blocked by past reset attempts.
+        __clear_prk_for_user(u.login_id)
+        APP.prk_failures.pop(u.login_id, None)
+        CM.send_password_reset_code(u.email, prk_str)
+        logging.info(f"{actor.login_id} issued a password reset key for {u.login_id}.")
+        return apiVC.ok_json({"login_id": u.login_id, "key_code": prk_str})
+
+    except Exception as ex:
+        msg = "Error when generating password reset key for user."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
@@ -118,25 +188,55 @@ async def reset_password():
         if not u:
             logging.warning(
                 "Attempted to reset password for non-existent user {}".format(login_id))
-            return apiVC.error_json("Invalid user/email.")
-        elif u.is_locked:
-            return apiVC.error_json("DB.User is locked. Please contact the admin.")
-        else:
-            res = DB.PasswordResetKey.select(DB.PasswordResetKey.prk).where(
-                DB.PasswordResetKey.login_id == login_id).order_by(
-                -DB.PasswordResetKey.id).execute()
+            return apiVC.error_json(PRK_INVALID_MSG)
+        if u.is_locked or __prk_locked_out(login_id):
+            logging.warning(f"Password reset refused for locked user {login_id}.")
+            return apiVC.error_json(PRK_INVALID_MSG)
 
-            if res and res[0].prk == key_code:
-                u.password_hashed = pbkdf2_sha256.hash(new_password)
-                apiVC.save_entity(u)
-                DB.PasswordResetKey.delete().where(DB.PasswordResetKey.login_id == login_id).execute()
-                CM.send_password_changed_alert(u.email, u.first_name)
-                return apiVC.ok_json("Your password has been changed!")
-            else:
-                return apiVC.error_json("Invalid reset key!")
+        res = DB.PasswordResetKey.select().where(
+            DB.PasswordResetKey.login_id == login_id).order_by(
+            -DB.PasswordResetKey.id).limit(1)
+        prk = res[0] if res else None
+        if (prk and key_code and DT.now() - prk.ins_ts < PRK_TTL
+                and hmac.compare_digest(prk.prk.encode(), str(key_code).encode())):
+            u.password_hashed = C.hash_password(new_password)
+            apiVC.save_entity(u)
+            __clear_prk_for_user(login_id)
+            APP.prk_failures.pop(login_id, None)
+            CM.send_password_changed_alert(u.email, u.first_name)
+            return apiVC.ok_json("Your password has been changed!")
+
+        __record_wrong_prk(login_id)
+        return apiVC.error_json(PRK_INVALID_MSG)
 
     except Exception as ex:
         msg = "Error when resetting password."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+async def change_password():
+    try:
+        u = apiVC.logged_in_user()
+        if not u:
+            return apiVC.error_json("User not logged in.")
+
+        lf = await request.get_json(force=True)
+        old_password = lf.get("old_password")
+        new_password = lf.get("new_password")
+
+        if not C.verify_password(old_password, u.password_hashed):
+            logging.warning(
+                "Wrong current password given while changing password for {}".format(u.login_id))
+            return apiVC.error_json("Current password is incorrect.")
+
+        u.password_hashed = C.hash_password(new_password)
+        apiVC.save_entity(u)
+        CM.send_password_changed_alert(u.email, u.first_name)
+        return apiVC.ok_json("Your password has been changed!")
+
+    except Exception as ex:
+        msg = "Error when changing password."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
@@ -146,7 +246,7 @@ def __clear_prk_for_user(login_id):
         DB.PasswordResetKey.login_id == login_id).execute()
 
 
-@C.rbac
+@P.require("users.view")
 async def get_my_photo():
     try:
         cu = apiVC.logged_in_user()
@@ -171,10 +271,15 @@ async def login():
         u = DB.User.get_or_none(DB.User.login_id == login_id)
         valid = False
         if u:
-            if u.is_locked:
-                return apiVC.error_json("DB.User is locked! Please contact admin.")
             logging.info("Got user: {0}, {1}".format(u.login_id, u.first_name))
-            valid = pbkdf2_sha256.verify(plain_pass, u.password_hashed)
+            valid = C.verify_password(plain_pass, u.password_hashed)
+            if valid and u.is_locked:
+                return apiVC.error_json("DB.User is locked! Please contact admin.")
+            if valid and C.password_needs_rehash(u.password_hashed):
+                DB.User.update(password_hashed=C.hash_password(plain_pass)).where(
+                    DB.User.id == u.id).execute()
+        else:
+            C.verify_password(str(plain_pass), _DUMMY_HASH)
 
         if not valid:
             return apiVC.error_json("Invalid user/password.")
@@ -187,21 +292,20 @@ async def login():
                         "deg_type_spec": u.person.deg_type_spec, 
                         "current_status": u.person.current_status}
             apiVC.session['user'] = user_obj
-            nav = apiVC.init_navbar_items(u.role, u.person.degree)
+            actor = P.current_actor()
+            nav = apiVC.init_navbar_items(actor, u.person.degree)
             APP.active_users[C.this_user_name_login_id()] = DT.now()
-            return apiVC.ok_json({"user": user_obj, "nav": nav})
+            return apiVC.ok_json({"user": {**user_obj, "perms": sorted(actor.perms)},
+                                  "nav": nav})
     except Exception as ex:
         msg = "Error when authenticating."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("users.find")
 async def user_find():
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("DB.User search not allowed!")
-
         fd = await request.get_json(force=True)
         dept_name, org_id, fname, lname, role = fd.get("dept_name"), \
                                                 fd.get("org_id"), fd.get("first_name"), fd.get("last_name"), \
@@ -225,15 +329,15 @@ async def user_find():
         if lname:
             query = query.where(DB.User.last_name.contains(lname))
 
-        users = query.order_by(-DB.User.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        users = query.order_by(-DB.User.id).paginate(pg_no, ST.get("page_size"))
         serialized = []
         for r in users:
             uobj = apiVC.model_to_dict(r, exclude=[DB.User.password_hashed])
             uobj["photo"] = r.known_faces[0].photo if r.known_faces else ""
             serialized.append(uobj)
 
-        has_next = len(users) >= apiVC.PAGE_SIZE
-        res = {"users": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(users) >= ST.get("page_size")
+        res = {"users": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
         return apiVC.ok_json(res)
 
@@ -243,14 +347,14 @@ async def user_find():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("users.view")
 async def user_view(my_id):
     try:
-        cu = apiVC.logged_in_user()
-        if (apiVC.is_user_in_role(["STU"])) and my_id != cu.id:
+        actor = P.current_actor()
+        if not actor.allowed("users.view", own=lambda: my_id == actor.id):
             return apiVC.error_json("You cannot access other users' information!")
 
-        res = DB.User.select().join(DB.Person, DB.ORM.JOIN.LEFT_OUTER).where(DB.User.id == my_id)
+        res = DB.User.select(DB.User, DB.Person).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER).where(DB.User.id == my_id)
         if res:
             user = res[0]
             res1 = DB.BatchAdvisors.select().where(DB.BatchAdvisors.user == my_id)
@@ -269,77 +373,113 @@ async def user_view(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+# Request fields that user_save copies onto the user and person records.
+# Users without users.edit:any may edit only their own names.
+USER_ADMIN_FIELDS = ["login_id", "email", "first_name", "last_name", "role",
+                     "is_locked", "txn_no"]
+USER_SELF_FIELDS = ["first_name", "last_name", "txn_no"]
+PERSON_EXCLUDED_FIELDS = ["id", "is_deleted", "ins_ts", "upd_ts", "txn_login_id"]
+
+
+@P.require("users.edit")
 async def user_save():
     try:
         fd = await request.get_json(force=True)
-        role = fd.get("role")
 
-        logging.info("Saving user details: {}".format(fd))
+        logging.info("Saving user details: {}".format(
+            {k: v for k, v in fd.items() if k != "photo_new"}))
         cid = int(fd.get("id") or 0)
-        cu = apiVC.logged_in_user()
-        if (not apiVC.is_user_in_role(["ACA", "SUP"])) and cid != cu.id:
+        actor = P.current_actor()
+        is_admin = actor.has("users.edit:any")
+        if (not is_admin) and cid != actor.id:
             return apiVC.error_json("Insufficient privileges to perform the operation!")
-        user_mod = DB.User()
+        if not is_admin and "photo_new" in fd:
+            return apiVC.error_json("Only the academic section can change the photo!")
+
+        user_fd = {k: v for k, v in fd.items()
+                   if k in (USER_ADMIN_FIELDS if is_admin else USER_SELF_FIELDS)}
+        has_person = is_admin and "person" in fd
+        person_fd = {k: v for k, v in (fd.get("person") or {}).items()
+                     if k not in PERSON_EXCLUDED_FIELDS} if has_person else {}
+        if "role" in user_fd and not DB.Role.get_or_none(DB.Role.code == user_fd["role"]):
+            return apiVC.error_json("Invalid role!")
+
+        user_mod = DB.User.get_by_id(cid) if cid else DB.User()
+        # Only a permissions admin may edit one, or grant a role that makes one.
+        if (not actor.has(P.ADMIN_PERM)
+                and any(P.ADMIN_PERM in P.perms_of(r) for r in (user_mod.role, user_fd.get("role")) if r)):
+            return apiVC.error_json("Only a permissions admin can edit a permissions admin or grant that role!")
+        if (cid == actor.id and actor.has(P.ADMIN_PERM) and "role" in user_fd
+                and P.ADMIN_PERM not in P.perms_of(user_fd["role"])):
+            return apiVC.error_json(f"You cannot change your own role to one without {P.ADMIN_PERM}!")
+
+        # Call the face service before opening the transaction, and off the
+        # event loop.
+        if "photo_new" in fd:
+            img_data_b64 = fd["photo_new"]
+            if not img_data_b64.startswith(apiVC.B64_HDR):
+                raise C.AcadStackException("Expected JPEG images only!")
+            face_enc = await asyncio.to_thread(__encode_face_to_json, img_data_b64)
+
         with DB.db.atomic() as txn:
             if cid:
-                user_mod = DB.User.get_by_id(cid)
                 if user_mod.is_locked and not fd.get("is_locked"):
                     __clear_prk_for_user(user_mod.login_id)
+                    APP.prk_failures.pop(user_mod.login_id, None)
 
-                C.update_model_skip_unknown(user_mod, fd)
-                if user_mod.person:
-                    if user_mod.person.id:
-                        if 1 != apiVC.update_entity(DB.Person, user_mod.person):
-                            return apiVC.error_json("Could not update. Please try again.")
-                    else:
-                        per = DB.Person()
-                        C.update_model_skip_unknown(per, fd["person"])
-                        apiVC.save_entity(per)
-                        user_mod.person = per
+                C.update_model_skip_unknown(user_mod, user_fd)
+                if has_person and user_mod.person_id:
+                    per = user_mod.person
+                    C.update_model_skip_unknown(per, person_fd)
+                    if 1 != apiVC.update_entity(DB.Person, per):
+                        return apiVC.error_json("Could not update. Please try again.")
+                elif has_person:
+                    per = DB.Person()
+                    C.update_model_skip_unknown(per, person_fd)
+                    apiVC.save_entity(per)
+                    user_mod.person = per
                 if apiVC.update_entity(DB.User, user_mod) != 1:
                     return apiVC.error_json("Could not update. Please try again.")
                 logging.debug("Updated DB.User details: {}".format(user_mod))
             else:
                 per = DB.Person()
-                C.update_model_skip_unknown(per, fd["person"])
+                C.update_model_skip_unknown(per, person_fd)
                 apiVC.save_entity(per)
                 logging.debug("Inserted Person: {}".format(per))
                 user_mod.person = per
-                user_mod.password_hashed = pbkdf2_sha256.hash(C.get_rand_str())
-                C.update_model_skip_unknown(user_mod, fd)
-                CM.send_user_creation_email(fd.get("email"), fd.get("login_id"))
+                user_mod.password_hashed = C.hash_password(C.get_rand_str())
+                C.update_model_skip_unknown(user_mod, user_fd)
                 apiVC.save_entity(user_mod)
                 logging.debug("Inserted DB.User: {}".format(user_mod))
 
             # Save the photos
             if "photo_new" in fd:
                 kf_mod = DB.KnownFace()
-                img_data_b64 = fd["photo_new"]
-                if not img_data_b64.startswith(apiVC.B64_HDR):
-                    raise C.AcadStackException("Expected JPEG images only!")
                 img_data = base64.b64decode(img_data_b64[len(apiVC.B64_HDR):])
                 # Save the image to disk
                 kf_mod.photo = apiVC.save_file_to_uploads_folder("photos", img_data)
                 kf_mod.user = user_mod
-                kf_mod.face_enc = __encode_face_to_json(img_data_b64)
+                kf_mod.face_enc = face_enc
                 apiVC.save_entity(kf_mod)
 
-                # Delete the old photo
+                # Delete the old photo, if it belongs to this user
                 if "known_faces" in fd and fd["known_faces"]:
                     kfid = fd["known_faces"][0]["id"]
-                    DB.KnownFace.delete_by_id(kfid)
+                    DB.KnownFace.delete().where((DB.KnownFace.id == kfid) &
+                        (DB.KnownFace.user == user_mod.id)).execute()
 
             txn.commit()
+        if not cid:
+            CM.send_user_creation_email(fd.get("email"), fd.get("login_id"))
         return await user_view(my_id=user_mod.id)
 
     except Exception as ex:
         msg = "Error when saving DB.User details."
         logging.exception(msg)
-        return apiVC.error_json("{0}: {1}".format(msg, ex))
+        return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac
+@P.require("users.lookup")
 async def instructor_lookup(query_str):
     try:
         query = DB.User.select(DB.User.id, DB.Person.id, DB.Person.dept_name,
@@ -368,17 +508,15 @@ def __format_row(row):
     return "{0}, {1}, {2}".format(row["org_id"], row["login_id"], row["email"])
 
 
-@C.rbac(roles=["ACA", "SUP"])
+@P.require("users.bulk_add")
 async def bulk_add_users():
     try:
-        if not apiVC.is_user_in_role(["ACA", "SUP"]):
-            return apiVC.error_json("Operation not allowed due to insufficient privileges!")
         users_file = (await request.files)['users_file']
         if users_file.filename == '':
             return apiVC.error_json("No file supplied!")
         local_file_nm = C.get_rand_str(4) + "_" + secure_filename(users_file.filename)
         file_path = os.path.join(apiVC.get_upload_folder_for_user(), local_file_nm)
-        users_file.save(file_path)
+        await users_file.save(file_path)
         updated = []
         dups = []
         created = 0
@@ -402,7 +540,7 @@ async def bulk_add_users():
                             u = user_qry.execute()[0]
                         else:
                             # Generate random password, user will reset it later
-                            u.password_hashed = pbkdf2_sha256.hash(C.get_rand_str(8))
+                            u.password_hashed = C.hash_password(C.get_rand_str(8))
                             creating = True
 
                         p.org_id = row["org_id"]
@@ -421,7 +559,7 @@ async def bulk_add_users():
                         if creating:
                             created += 1
                     except DB.IntegrityError as ierr:
-                        logging.error("Skipping to next.", ierr)
+                        logging.error(f"Skipping to next. {ierr}")
                         dups.append(__format_row(row))
 
                 txn.commit()
@@ -436,117 +574,14 @@ async def bulk_add_users():
         return apiVC.error_json(msg)
 
 
-@C.rbac
-async def upload_student_doc():
-    try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students not allowed to upload here!")
-        form = await request.form
-        stu_id = form['student_id']
-        doc_desc = form['description']
-        files = await request.files
-        docf = files['doc_file']
-        if docf.filename == '':
-            return apiVC.error_json("No file supplied!")
-
-        u = DB.User.get_by_id(int(stu_id))
-        if not u:
-            return apiVC.error_json("Student record not found!")
-
-        filename = secure_filename(docf.filename)
-        ud = DB.UserDoc(description=doc_desc, category="STU",
-                     user=u, file_name=filename)
-        ud.doc = apiVC.save_file_to_uploads_folder("docs", docf.stream.read())
-
-        apiVC.save_entity(ud)
-        return apiVC.ok_json(apiVC.model_to_dict(ud, exclude=[DB.UserDoc.doc, DB.UserDoc.user]))
-    except Exception as ex:
-        msg = "Error when handling document upload."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-def __is_doc_access_allowed(stu_id):
-    return apiVC.is_user_in_role(["ACA", "DEA"]) or \
-           int(stu_id) == apiVC.logged_in_user().id
-
-
-@C.rbac
-async def get_student_docs(stu_id):
-    try:
-        if __is_doc_access_allowed(stu_id):
-            u = DB.UserDoc.select().where(DB.UserDoc.user == int(stu_id))
-            serialized = [apiVC.model_to_dict(r, exclude=[DB.UserDoc.user]) for r in u]
-            return apiVC.ok_json(serialized)
-        else:
-            return apiVC.error_json("Student documents cannot be displayed.")
-    except Exception as ex:
-        msg = "Error when fetching student documents."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-@C.rbac
-async def delete_doc(doc_id):
-    try:
-        doc = DB.UserDoc.get_by_id(int(doc_id))
-        if __is_doc_access_allowed(doc.user.id):
-            DB.UserDoc.delete_by_id(doc.id)
-            # Remove file from disk
-            if doc.doc:
-                fp = os.path.join(apiVC.get_upload_folder(), "docs", doc.doc)
-                p = Path(fp)
-                p.unlink(missing_ok=True)
-            return apiVC.ok_json("Deleted")
-        else:
-            return apiVC.error_json("Access to documents not allowed!")
-    except Exception as ex:
-        msg = "Error when deleting the documents."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-@C.rbac
-async def get_doc(doc_id):
-    try:
-        u_doc = DB.UserDoc.get_or_none(DB.UserDoc.id == int(doc_id))
-        if u_doc.category == 'FEETXN':
-            docs_folder="FEETXN"
-        else:
-            docs_folder="docs"
-        
-        if u_doc and u_doc.doc:
-            if __is_doc_access_allowed(u_doc.user.id):
-                fp = os.path.join(apiVC.get_upload_folder(),
-                                  docs_folder, secure_filename(u_doc.doc))
-                return await send_file(fp,
-                                 attachment_filename=u_doc.file_name,
-                                 as_attachment=True)
-            else:
-                return apiVC.error_json("Access to documents not allowed!")
-        else:
-            return apiVC.error_json("Document not found!")
-    except Exception as ex:
-        msg = "Error when loading the documents."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
-
-
-@C.rbac
-async def get_fees_txn_image(file_name):
-    try:
-        fp = os.path.join(apiVC.get_upload_folder(),
-                          "FEETXN", secure_filename(file_name))
-        return await send_file(fp, attachment_filename="{}.jpg".format(file_name))
-    except Exception as ex:
-        msg = "Error when loading fees transaction proof image."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
-
-
-@C.rbac
+@P.require("users.view")
 async def get_image(file_name):
     try:
+        actor = P.current_actor()
+        if not actor.allowed("users.view", own=lambda: DB.KnownFace.select().where(
+                (DB.KnownFace.photo == file_name) &
+                (DB.KnownFace.user == actor.id)).exists()):
+            return apiVC.error_json("Access to the image not allowed!")
         fp = os.path.join(apiVC.get_upload_folder(),
                           "photos", secure_filename(file_name))
         return await send_file(fp)
@@ -556,7 +591,7 @@ async def get_image(file_name):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("users.lookup")
 async def student_lookup(query_str):
     try:
         if not apiVC.roll_number_valid(query_str):
@@ -623,11 +658,11 @@ def oauth_verify(token):
     except Exception as ex:
         # Invalid token
         msg = str(ex) if isinstance(ex, C.AcadStackException) else "Error when authrnticating."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["SUP"])
+@P.require("users.delete")
 async def user_delete():
     fd = await request.get_json(force=True)
     user_ids = fd.get("ids")
@@ -640,122 +675,9 @@ async def user_delete():
         return apiVC.error_json("No user specified! Nothing to delete.")
 
 
-@C.rbac
-async def save_registration_fees_txn_info():
-    try:
-        form = await request.form
-        stu_id = int(form['student_id'])
-        if apiVC.is_user_in_role("STU") and stu_id != apiVC.logged_in_user().id:
-            logging.error(
-                "DB.User {0} attempted to submit fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
-            return apiVC.error_json("You are not allowed to submit data for others! This incident has been reported.")
-
-        acadSession = form['acadSession']
-        feesTxnAmt = form['feesTxnAmt']
-        feesTxnNo = form['feesTxnNo']
-        feesTxnDt = form['feesTxnDt']
-        feesTxnBank = form['feesTxnBank']
-        files = await request.files 
-        docf = files['doc_file']
-
-        if not (apiVC.academic_session_valid(acadSession)
-                and feesTxnNo and feesTxnDt and feesTxnBank
-                and docf.filename and feesTxnAmt):
-            return apiVC.error_json("Please supply valid academic session and other inputs!")
-
-        u = DB.User.get_by_id(int(stu_id))
-        if not u:
-            return apiVC.error_json("Student record not found!")
-
-        filename = secure_filename(docf.filename)
-        ud = DB.UserDoc(description="{0}/{1}/{2}/{3}".format(
-            acadSession, feesTxnNo, feesTxnDt, feesTxnBank),
-            category="FEETXN", user=u, file_name=filename)
-        ud.doc = apiVC.save_file_to_uploads_folder(ud.category, docf.stream.read())
-
-        fee_txn = DB.FeesTransaction()
-        fee_txn.student = u
-        fee_txn.acad_session = acadSession
-        fee_txn.fees_txn_amt = feesTxnAmt
-        fee_txn.fees_txn_no = feesTxnNo
-        fee_txn.fees_txn_dt = feesTxnDt
-        fee_txn.fees_txn_bank = feesTxnBank
-        fee_txn.doc_file_name = ud.doc
-
-        with DB.db.atomic() as txn:
-            apiVC.save_entity(ud)
-            apiVC.save_entity(fee_txn)
-
-        return apiVC.ok_json(apiVC.model_to_dict(fee_txn,
-                                     exclude=[DB.FeesTransaction.student]))
-    except IntegrityError as ie:
-        logging.exception(ie)
-        return apiVC.error_json("An old record with same transaction information exists!")
-    except Exception as ex:
-        msg = "Error when handling registration fee details upload."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
-
-
-@C.rbac
-async def get_student_reg_fees_data(stu_id):
-    try:
-        if apiVC.is_user_in_role("STU") and stu_id != apiVC.logged_in_user().id:
-            logging.error(
-                "DB.User {0} attempted to fetch fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
-            return apiVC.error_json("You are not allowed to access others' data! This incident has been reported.")
-
-        qry = DB.FeesTransaction.select().where(
-            (DB.FeesTransaction.student == stu_id) &
-            (DB.FeesTransaction.is_deleted != True))
-        data = [apiVC.model_to_dict(x,
-                              exclude=[DB.FeesTransaction.student])
-                for x in qry]
-        return apiVC.ok_json(data)
-
-    except Exception as ex:
-        msg = "Error when fetching registration fee records."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
-
-
-@C.rbac
-async def delete_student_reg_fees_data(fee_id):
-    try:
-        ftxn = DB.FeesTransaction.get_or_none(int(fee_id))
-        if not ftxn:
-            return apiVC.error_json("Invalid transaction details!")
-
-        if apiVC.is_user_in_role("STU") and ftxn.student.id != apiVC.logged_in_user().id:
-            logging.error("DB.User {0} attempted to delete fees transaction data for user {1}."
-                          .format(apiVC.current_login_id(), ftxn.student.login_id))
-            return apiVC.error_json("You are not allowed to delete others' data! "+
-                                 "This incident has been reported.")
-
-        ftxn.is_deleted = True
-        rc = apiVC.update_entity(DB.FeesTransaction, ftxn)
-        if rc == 1:
-            return apiVC.ok_json("Fees record deleted!")
-        else:
-            return apiVC.error_json("Fees record could not be deleted! "+
-                                 "Please try again, or contact the admin.")
-
-    except IntegrityError as ie:
-        logging.exception(ie)
-        return apiVC.error_json("An old deleted record with same transaction "+
-                             "details for a student exists!")
-
-    except Exception as ex:
-        msg = "Error when deleting registration fee record."
-        logging.exception(ex)
-        return apiVC.error_json(msg)
-
-@C.rbac
+@P.require("students.find")
 async def find_students():
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Operation not allowed!")
-
         fd = await request.get_json(force=True)
         fname, lname, email = fd.get("first_name"), \
             fd.get("last_name"),  fd.get("email")
@@ -821,7 +743,7 @@ def __get_advisor(for_degree, fey, dept_name):
         return None
 
 
-@C.rbac
+@P.require("advisors.view")
 async def find_advisor():
     try:
         fd = await request.get_json(force=True)
@@ -847,7 +769,7 @@ async def find_advisor():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("advisors.assign")
 async def assign_advisor():
     try:
         fd = await request.get_json(force=True)

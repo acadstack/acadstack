@@ -37,7 +37,7 @@
           <div class="col-md-1">Academic Session</div>
           <div class="col-md-2">Offered For</div>
           <div class="col-md-1">Student Strength</div>
-          <div class="col-md-2" v-if="!isStudent">
+          <div class="col-md-2" v-if="hasPermission('reports.student_strength_download')">
               <a class="btn btn-outline-success" :href="`download_degree_wise_students/${search_crit.course_code}/${search_crit.acad_session}`">Download CSV</a>
           </div>
         </div>

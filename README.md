@@ -15,7 +15,7 @@ This application acadstack to efficiently manage information about various **cou
 ### System requirements
 
 1. git client and cmake should be installed on your machine.
-2. The backend code is written using Python 3.9 or higher
+2. The backend runs on Python 3.13 (the version used by the Docker image and the pinned dependencies)
 3. Postgresql (Can be downloaded from https://www.postgresql.org/download/ or installed via your operating system's package manager, or using docker container).
 
 4. NodeJS stable LTS version. (Can be installed by following these steps: https://nodejs.org/en/download/). We use node for setting up VueJS client app (https://cli.vuejs.org/guide/installation.html).
@@ -28,7 +28,11 @@ This application acadstack to efficiently manage information about various **cou
 4. Clone this git repository if you are a contribitor: `git clone https://github.com/bsodhi/acadstack_ce.git`.
 5. Run `cd acadstack_ce` and then `source ~/.venv/AcadStack/bin/activate` to activate the python virtual environment.
 
-7. Run `pip install -r api_service/requirements.txt`.
+7. Run `pip install -r api_service/requirements-dev.txt -c api_service/constraints.txt`.
+   `requirements.txt` lists the runtime dependencies and `requirements-dev.txt` adds the test tools;
+   `constraints.txt` pins every package version. After changing either requirements file, regenerate
+   the pins with `cd api_service && uv pip compile requirements-dev.txt --universal --python-version 3.13 --no-header -o constraints.txt`.
+   To run the backend tests, see the setup notes at the top of `api_service/tests/conftest.py`, then run `cd api_service && pytest`.
 
     > **NOTE:** Some modules may fail to install due to unavailability of certain native libraries or headers on your OS. You can Google the error text to find a solution.
     
@@ -76,7 +80,14 @@ current shell: `source app_env_vars.env`
 1. `cd ./api_service`
 1. `source ~/.venv/AcadStack/bin/activate` to activate the python virtual environment.
 1. Run `python demo_data.py config.json` to create the database and populate with demo data. Check the `demo_data.py`
-script for more details and options.
+script for more details and options. To start with an empty database instead, skip this step: when the
+application starts it creates the schema (see `api_service/migrations/`) and, if there are no users yet,
+a superuser `admin` whose password it prints once.
+The lists that differ between universities (departments, degrees, course slots, course types, minors and
+concentrations) are rows of the `vocabitem` table; edit them with SQL (`is_deleted = true` hides an entry).
+The known thresholds (maximum credits, face-match tolerance, lockout limit, page size, fee check) are listed
+in `api_service/settings.py`; a superuser changes them with `POST /acadstack/setting_save`
+(`{"key": ..., "value": ...}`) and lists them with `GET /acadstack/settings`.
 1. Run `python main.py` to start the web application.
 1. Open `http://localhost:5300/acadstack/app/index.html` Change the port as per your config.json setting.
 1. Login using ID `acad.user` and password `abcd1234`

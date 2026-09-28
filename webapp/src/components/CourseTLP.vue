@@ -79,7 +79,7 @@ export default {
   created: function() {
     console.log("Creating CourseTLP: "+JSON.stringify(this.course));
     let vm = this;
-    vm.viewOnly = vm.isStudent;
+    vm.viewOnly = !vm.hasPermission('courses.edit');
     if (vm.course.teaching == undefined) {
       vm.$set(vm.course, "teaching", []);
     }

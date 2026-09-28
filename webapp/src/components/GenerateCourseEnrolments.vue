@@ -56,7 +56,7 @@
           <div class="col">Dept</div>
           <div class="col">Course</div>
           <div class="col">Enrol type</div>
-          <div class="col-md-2" v-if="!isStudent">
+          <div class="col-md-2" v-if="hasPermission('enrolments.download')">
               <a class="btn btn-outline-success" :href="`download_course_enrolments/${search_crit.dept_name}/${search_crit.entry_year}/${search_crit.acad_session}`">Download CSV</a>
           </div>
         </div>

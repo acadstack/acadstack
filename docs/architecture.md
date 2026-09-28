@@ -102,57 +102,90 @@ def init_routes(bp: Blueprint):
     ...
 ```
 
-## Handling role based access control (RBAC)
-Roles are central to the entire functionality of the AcadStack application.
-RBAC is implemented via the decorator `rbac()` defined in `common.py`.
-Example usage of the decorator is:
+## Access control: permissions
+The code checks permissions, never roles. A role is a named set of
+permissions; each user has one role. Roles, permissions and the grants
+between them are stored in the `role`, `permission` and `rolepermission`
+tables, seeded by the baseline migration, and changed through the
+`/perms` and `/perms_save` endpoints by users who hold `permissions.manage`.
+Checks and the permission cache are in `policy.py`.
+
+A permission is named `area.action`, optionally with a scope that limits the
+records it covers:
+
+| Scope | Covers |
+| ----- | ------ |
+| `:any` | every record |
+| `:dept` | records of the user's own department |
+| `:own` | records the user is linked to: themself, a course they teach, a student they supervise, and so on |
+| `:pg` | PG/PhD records only |
+
+A route names the permission it needs; the request gets through when the user
+holds it at any scope:
 ```python
-@rbac(roles=["ACA", "FAC", "DEA", "HOD", "RES"])
-async def course_save():
+@P.require("offerings.edit")
+async def course_offering_save():
     ...
 ```
-The above usage states that the function `course_save` can be invoked
-only when the logged in user has any of the roles indicated in the
-`roles` attribute of the decorator which in the above example is
-`"ACA", "FAC", "DEA", "HOD", "RES"`.
+The route then checks the record at hand, giving the rule for each scope:
+```python
+actor = P.current_actor()
+if not actor.allowed("offerings.edit",
+                     own=lambda: VAL.validate_course_instructor(cid),
+                     dept=lambda: VAL.is_offering_in_actor_dept(cid, actor)):
+    return apiVC.error_json("...")
+```
+`@P.require(perm, alert=True)` also reports a refusal as an access violation,
+which locks the account of a user who may act only on their own records.
+`actor.has("fees.view:any")` checks an exact code, for example to decide
+whether a query is limited to the user's own rows.
 
-Checking of roles can also be done deeper inside any API functions by invoking
-`is_user_in_role()` function of `api_common.py` which also provides several
-other functions for common tasks.
+Saving is refused if it would take `permissions.manage` away from the saving
+user's own role, or if an admin changes their own role to one without it.
+Only a user holding `permissions.manage` may edit such a user or grant such a
+role.
+
+The default roles:
 
 | Role Code    | Detail |
 | -------- | ------- |
-| ACA  | Role used for university's academics section staff. |
-| DEA | Role for Dean of Academics |
-| HOD | Role for head of an academic department. E.g. HoD or Civil Engineering. |
-| FAC | Role assigned to faculty members. |
-| STU | Role assigned to students. |
-| RES | Role assigned to research section admin staff. |
-| SUP | Superuser role |
+| ACA  | University's academics section staff. |
+| DEA | Dean of Academics |
+| HOD | Head of an academic department. E.g. HoD or Civil Engineering. |
+| FAC | Faculty members. |
+| STU | Students. |
+| RES | Research section admin staff. |
+| SUP | Superuser |
+| GUE | Guest |
+| PLA | Placement cell |
+| ADV | Advisor |
 
-You may add, remove or edir these roles as required. When removing or editing
-an existing role please ensure that you update all the frontend and backend
-references to the role. This includes any references in SQL queries as well.
+Some queries select people by role code, for example the students of a batch
+(`STU`), the instructors in the lookup (`FAC`), a department's HoD (`HOD`)
+for notification emails, and the academic section (`ACA`). Keep those codes
+when editing roles.
 
-### Using roles in the frontend
-The role codes are also used for controlling the visibility/state of UI
-components. For example, the `api_service/nav.json` defines the navigation
-structure for the Vue based frontend app. In the navigation structure we
-use role codes to decide whether to include a navigation item for the current
-logged in user or not. An example entry is shown below:
+`tests/test_permissions.py` holds, for every route, the roles that the
+default grants let in; update it together with any change to the defaults.
+
+### Menus
+`api_service/nav.json` defines the navigation of the Vue app. Each entry names
+the permission of the endpoint its page opens:
 ```json
 {
     "label": "Offer a Course For Enrolment",
     "href": "#/co.detail",
-    "roles": "FAC,ACA",
+    "perm": "offerings.edit",
     "menu": "Courses"
 }
 ```
-This entry implies that the navigation menu named "Courses" will have an item
-named "Offer a Course For Enrolment" only when the logged in user has a role
-`FAC` or `ACA`.
-Functions are provided in `webapp/src/main.js` for checking current user's
-roles from deeper inside the Vue/JavaScript code.
+A plain name must be held at some scope; a scoped name such as
+`students.academics:own` must be held exactly, so pages about the user's own
+records show only to users who act on their own records.
+The frontend follows the same rule: `/login` and `/current_user` send the
+user's permissions, and components call `hasPermission(perm)` (in
+`webapp/src/main.js`) to decide what to show, using the permission of the
+endpoint a control calls. The server remains the enforcement point.
 
 ## Data access layer (DAL)
 The DAL code makes use of the [PeeWee](https://docs.peewee-orm.com/en/latest/) ORM.

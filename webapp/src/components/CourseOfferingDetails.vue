@@ -21,7 +21,7 @@ Component for course offering details.
         <li class="nav-item" role="presentation">
           <a class="nav-link" :class="{active: tab === 'stats', disabled: !coffer.id}" @click="tab='stats'">Stats</a>
         </li>
-        <li class="nav-item" v-if="!isStudent" role="presentation">
+        <li class="nav-item" v-if="hasPermission('wfnotes.edit')" role="presentation">
           <a class="nav-link" :class="{active: tab === 'notes'}" @click="tab='notes'">Notes</a>
         </li>
       </ul>
@@ -246,7 +246,7 @@ Component for course offering details.
           <div class="col">
             <div class="btn-group mt-4">
               <div class="dropdown me-2">
-                <button v-if="!isStudent && isEdit" type="button" 
+                <button v-if="hasPermission('offerings.edit') && isEdit" type="button" 
                   class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" 
                   aria-expanded="false">
                 Change Status
@@ -294,7 +294,7 @@ Component for course offering details.
           </div>
         </div>
       </div>
-      <WorkflowNotes v-if="tab=='notes' && !isStudent" v-bind:ent_name="'offer'" v-bind:ent_key="coffer.id" />
+      <WorkflowNotes v-if="tab=='notes' && hasPermission('wfnotes.edit')" v-bind:ent_name="'offer'" v-bind:ent_key="coffer.id" />
     </div>
   </div>
 </template>
@@ -336,20 +336,15 @@ export default {
         course_categories: []
       },
       /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label and the status of
-       * course that will be set when action is performed.
+       * The actions of each scope of offerings.edit: the label and the
+       * status of the offering that will be set when action is performed.
        */
-      actionsMap: {
-        "HOD": [{label: "Enrolling", status: "E"}, 
+      actionsByScope: {
+        "own": [{label: "Propose", status: "P"},
+                {label: "Cancel", status: "C"}],
+        "dept": [{label: "Enrolling", status: "E"}, 
                 {label: "Return to Faculty", status: "D"}],
-        "DEA": [{label: "Enrolling", status: "E"},
-                {label: "Running", status: "R"}, 
-                {label: "Return to Dept.", status: "D"},
-                {label: "Cancel", status: "C"}],
-        "FAC": [{label: "Propose", status: "P"},
-                {label: "Cancel", status: "C"}],
-        "ACA": [{label: "Enrolling", status: "E"},
+        "any": [{label: "Enrolling", status: "E"},
                 {label: "Running", status: "R"}, 
                 {label: "Return to Dept.", status: "D"},
                 {label: "Cancel", status: "C"}],
@@ -405,7 +400,8 @@ export default {
       return this.$route.params.id > 0;
     },
     actions() {
-      return this.actionsMap[this.userRole];
+      const scope = ["any", "dept", "own"].find(s => this.hasPermission(`offerings.edit:${s}`));
+      return this.actionsByScope[scope];
     },
     nextAcadSessions() {
       return this.SD.AcademicSessions.map(x => x["value"]+" is "+x["id"]).join(", ");
@@ -458,13 +454,13 @@ export default {
       let vm = this;
       if (!vm.isEdit) {
         vm.viewOnly = false;
-      } else if (vm.isStudent) {
+      } else if (!vm.hasPermission('offerings.edit')) {
         vm.viewOnly = true;
-      } else if (vm.isAcad || vm.isDean) {
+      } else if (vm.hasPermission('offerings.edit:any')) {
         vm.viewOnly = false;
       } else if (vm.coffer.status == 'F') {
         vm.viewOnly = true;
-      } else if (vm.isFaculty && !vm.iAmCoordinator()) {
+      } else if (vm.hasPermission('offerings.edit:own') && !vm.iAmCoordinator()) {
         vm.viewOnly = true;
       } else {
         vm.viewOnly = false;

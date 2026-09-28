@@ -9,7 +9,7 @@ Component for PhD progress report
     <div class="card">
       <div class="card-header">
         <span class="float-start">Progress report for student</span>
-        <div v-if="!(isStudent || viewOnly)" class="dropdown me-2 float-end">
+        <div v-if="hasPermission('ppr.edit') && !viewOnly" class="dropdown me-2 float-end">
           <button
             type="button"
             class="btn btn-primary dropdown-toggle"
@@ -82,31 +82,20 @@ export default {
       myStudents: [],
       ppr: {student: 0, status: "DRA"},
       /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label and the status of
-       * course that will be set when action is performed.
+       * The actions of a DC member (ppr.edit:own) and of the academic
+       * section (ppr.edit:any): the label and the report status it sets.
        */
-      actionsMap: {
-        HOD: [
-          { label: "Approve", status: "APP" },
-          { label: "Return to DC", status: "RET" },
-        ],
-        DEA: [
-          { label: "Approve", status: "APP" },
-          { label: "Return to DC", status: "RET" },
-        ],
-        FAC: [
-          { label: "Save as Draft", status: "DRA" },
-          { label: "Submit to DC Chair", status: "SUB" },
-          { label: "Approve as DC Chair", status: "APP" },
-        ],
-        ACA: [
-          { label: "Approve", status: "APP" },
-          { label: "Submit to DC Chair", status: "SUB" },
-          { label: "Return to DC", status: "RET" },
-          { label: "Save as Draft", status: "DRA" },
-        ],
-      },
+      memberActions: [
+        { label: "Save as Draft", status: "DRA" },
+        { label: "Submit to DC Chair", status: "SUB" },
+        { label: "Approve as DC Chair", status: "APP" },
+      ],
+      anyActions: [
+        { label: "Approve", status: "APP" },
+        { label: "Submit to DC Chair", status: "SUB" },
+        { label: "Return to DC", status: "RET" },
+        { label: "Save as Draft", status: "DRA" },
+      ],
     };
   },
   computed: {
@@ -117,7 +106,9 @@ export default {
       return ed;
     },
     actions() {
-      return this.actionsMap[this.userRole];
+      if (this.hasPermission('ppr.edit:any')) return this.anyActions;
+      if (this.hasPermission('ppr.edit:own')) return this.memberActions;
+      return undefined;
     }
   },
   async created() {
@@ -143,7 +134,7 @@ export default {
       /* Editable status for roles */
       const cs = vm.ppr.status;
       let isdcc = false;
-      if ((vm.isAcad || vm.isDean) &&  cs != "DRA") {
+      if (vm.hasPermission('ppr.edit:any') &&  cs != "DRA") {
         vm.viewOnly = false;
       } else {
         const rurl = `isdcc/${vm.thisUser.id}/${vm.ppr.student}`;

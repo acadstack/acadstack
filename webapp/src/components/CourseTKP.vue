@@ -47,7 +47,7 @@ export default {
   },
   created: function() {
     console.log("Creating CourseTKP:"+this.tkp);
-    this.viewOnly = this.isStudent;
+    this.viewOnly = !this.hasPermission('courses.edit');
     let l = this.tkp.length;
     if (l < 8) {
       for (let x=0; x<8-l; x++) this.tkp.push(false);

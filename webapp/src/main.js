@@ -63,6 +63,16 @@ app.mixin({
         isCourseWithdrawOpen(acad_session) {
             return this.$root.eventsStatusMap.includes(`${acad_session}:WITHDRAW`);
         },
+        /**
+         * Whether the user holds the permission: a plain name such as
+         * "offerings.edit" at any scope, a scoped name such as
+         * "fees.view:own" exactly. The same rule gates the menus (nav.json).
+         */
+        hasPermission(perm) {
+            const perms = this.$root.user.perms || [];
+            if (perm.includes(':')) return perms.includes(perm);
+            return perms.some(p => p === perm || p.startsWith(perm + ':'));
+        },
         isCourseAddDropOpen(acad_session) {
             return this.$root.eventsStatusMap.includes(`${acad_session}:ADD_DROP`) ||
                 this.$root.eventsStatusMap.includes(`${acad_session}:COURSE_REG`);
@@ -107,44 +117,34 @@ app.mixin({
         authenticated() {
             return this.$root.user.login_id !== undefined
         },
-        userRole() {
-            return this.$root.user.role
-        },
         loginId() {
             return this.$root.user.login_id
         },
         thisUser() {
             return this.$root.user
         },
+        /** A student acting on their own records. */
         isStudent() {
-            return this.$root.user.role === 'STU'
+            return this.hasPermission('students.academics:own')
         },
-        isSuperuser() {
-            return this.$root.user.role === 'SUP'
-        },
-        isFaculty() {
-            return this.$root.user.role === 'FAC'
-        },
-        isAcad() {
-            return this.$root.user.role === 'ACA'
-        },
-        isDean() {
-            return this.$root.user.role === 'DEA'
-        },
-        isHod() {
-            return this.$root.user.role === 'HOD'
-        },
-        isPlacement() {
-            return this.$root.user.role === 'PLA'
+        /**
+         * The user's step in course approval: the author submits a course to
+         * the HoD, the HoD forwards it to the Dean, who approves it.
+         */
+        courseStage() {
+            if (this.hasPermission('courses.edit:any'))
+                return this.hasPermission('courses.edit_approved') ? 'dean' : 'hod';
+            if (this.hasPermission('courses.edit:own')) return 'author';
+            return undefined;
         },
         isPhdStudent() {
-            return this.$root.user.role === 'STU' && this.$root.user.degree === 'PHD'
+            return this.isStudent && this.$root.user.degree === 'PHD'
         },
         isUGStudent() {
-            return this.$root.user.role === 'STU' && this.$root.user.degree === 'BTE'
+            return this.isStudent && this.$root.user.degree === 'BTE'
         },
         isPGStudent() {
-            return this.$root.user.role === 'STU' &&
+            return this.isStudent &&
                 !"PHD,BTE".includes(this.$root.user.degree)
         },
         acadSessionRegExp() {

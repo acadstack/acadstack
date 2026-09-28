@@ -11,6 +11,7 @@ import logging
 from jinja2 import Environment, FileSystemLoader
 from common import emailer, sql_by_id
 import api_common as apiVC
+import policy as P
 import models as DB
 
 
@@ -169,7 +170,10 @@ def send_credit_violation_email(student_data):
 def send_access_violation_alert(message_txt):
     try:
         to_list=[]
-        if apiVC.is_user_in_role("STU"):
+        # Lock the account of a user who may act only on their own records
+        # (a student).
+        actor = P.current_actor()
+        if actor and actor.own_records_only:
             u = apiVC.logged_in_user()
             u.is_locked = True
             apiVC.save_entity(u)

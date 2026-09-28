@@ -33,6 +33,16 @@ Component for adding the academic event dates.
                         <i class="bi bi-eraser"></i>
                     </button>
                 </div>
+                <div class="float-end me-2">
+                    <span v-if="acad_dates.eventDates.SESSION_CLOSED" class="badge bg-secondary">
+                        Closed on {{ acad_dates.eventDates.SESSION_CLOSED }}
+                    </span>
+                    <button v-else-if="hasPermission('sessions.close') && acad_dates.session"
+                        class="btn btn-outline-warning" type="button" @click="closeSession">
+                        Close session
+                        <i class="bi bi-lock"></i>
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="row hdr-row mb-2 border-info border-bottom">
@@ -219,7 +229,7 @@ export default {
     },
     created: function () {
         let vm = this;
-        vm.viewOnly = !(vm.isAcad || vm.isDean);
+        vm.viewOnly = !vm.hasPermission('calendar.edit');
     },
     methods: {
         onAcadSessionChange(acs) {
@@ -243,6 +253,20 @@ export default {
                 }
             }
             return valid;
+        },
+        async closeSession() {
+            let vm = this;
+            const acs = vm.acad_dates.session;
+            if (!confirm(`Close session ${acs}? This freezes the credits of its enrolments, `
+                + "and grade changes will need a reason. It cannot be undone.")) {
+                vm.setStatusMessage("User canceled closing the session.");
+                return;
+            }
+            await vm.doHttp(false, "close_session", {acad_session: acs}, (msg) => {
+                vm.setStatusMessage(msg);
+                vm.session = acs;
+                vm.search();
+            }, vm.setStatusMessage);
         },
         save() {
             let vm = this;

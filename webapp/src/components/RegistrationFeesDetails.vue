@@ -123,7 +123,7 @@ export default {
     let vm = this;
     if (vm.isStudent) {
       vm.student_id = vm.currentUser.id;
-    } else if (vm.isAcad || vm.isDean) {
+    } else if (vm.hasPermission('fees.view:any')) {
       vm.student_id = vm.$route.params.user_id;
     } else {
       const msg = "You are not allowed to access this screen!";
@@ -168,7 +168,7 @@ export default {
       if (!confirm("Delete the document?")) {
         return;
       }
-      await vm.doHttp(true, 'delete_fees_txn_data/'+doc.id, null,
+      await vm.doHttp(false, 'delete_fees_txn_data/'+doc.id, {},
         ()=>{doc.is_deleted = true;}, vm.setStatusMessage);
     }
   }  

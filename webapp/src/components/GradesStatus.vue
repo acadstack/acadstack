@@ -40,7 +40,7 @@ Component for Creating Feedback Form.
                 <div class="col-md-2">Offering Department</div>
                 <div class="col-md-1">Acad Session</div>
                 <div class="col-md-2">Instructor Name</div>
-                 <div class="col-md-2" v-if="!isStudent">
+                 <div class="col-md-2" v-if="hasPermission('grades.reports')">
                      <a class="btn btn-outline-success" :href="`download_grade_status/${printType}/${grades_status.acad_session}`">Download CSV</a>
                 </div>
                 </div>

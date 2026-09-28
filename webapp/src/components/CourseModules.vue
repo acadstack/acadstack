@@ -54,7 +54,7 @@ export default {
   },
   created: function() {
     console.log("Creating CourseModules:"+this.course.modules);
-    this.viewOnly = this.isStudent;
+    this.viewOnly = !this.hasPermission('courses.edit');
     // if (this.mod.items == undefined) this.mod.items = [];
   },
   methods: {

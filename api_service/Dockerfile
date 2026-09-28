@@ -3,7 +3,7 @@
 # of this folder.
 
 # Stage 1: Build the frontend
-FROM node:20-alpine AS frontend_builder
+FROM node:22-alpine AS frontend_builder
 
 ARG OAUTH_CLIENT_ID
 ENV OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
@@ -29,19 +29,16 @@ WORKDIR /app
 COPY api_service/ .
 
 # Install Python dependencies
-COPY api_service/requirements.txt .
+COPY api_service/requirements.txt api_service/constraints.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
-# Install wkhtmltopdf and required system libs — portable across architectures
+# System libraries WeasyPrint needs to render the PDF reports
 RUN apt-get update && apt-get install -y \
-    wkhtmltopdf \
-    xfonts-75dpi \
-    xfonts-base \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz-subset0 \
     fontconfig \
-    libjpeg62-turbo \
-    libxrender1 \
-    libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built frontend assets into static folder

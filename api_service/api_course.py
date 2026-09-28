@@ -7,8 +7,10 @@ from peewee import IntegrityError
 from create_email import send_course_updated_email
 from validation_checks import is_course_status_valid_for_current_user
 import api_common as apiVC
+import settings as ST
 import models as DB
 import common as C
+import policy as P
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/cour/<int:my_id>', view_func=course_view, methods=['GET'])
@@ -19,7 +21,7 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/save_slot', view_func=save_course_slot_timings, methods=['POST'])
 
 
-@C.rbac
+@P.require("courses.view")
 async def course_view(my_id):
     try:
         cour = DB.Course.get_by_id(my_id)
@@ -34,7 +36,7 @@ async def course_view(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA", "HOD", "RES"])
+@P.require("courses.edit")
 async def course_save():
     try:
         fd = await request.get_json(force=True)
@@ -44,9 +46,14 @@ async def course_save():
         crs = DB.Course()
 
         if crs_id > 0:
-            # Edit case
-            if fd["author"]["id"] != apiVC.logged_in_user().id and \
-                    not apiVC.is_user_in_role(["HOD", "ACA", "DEA", "RES"]):
+            # Edit case: the author stays as stored
+            fd.pop("author", None)
+            actor = P.current_actor()
+            old = DB.Course.get_by_id(crs_id)
+            if not actor.allowed("courses.edit", own=lambda: old.author_id == actor.id,
+                                 pg=lambda: bool(apiVC.course_code_for_pg(old.code))):
+                if actor.has("courses.edit:pg"):
+                    return apiVC.error_json("You can edit only PG/PhD courses!")
                 return apiVC.error_json("Cannot save course authored by another faculty!")
         else:
             # Assign the currently logged in user as the author
@@ -61,10 +68,6 @@ async def course_save():
                 return apiVC.error_json("This course is already in "
                     f"{DB.Course.get_status_label(old_status)} state. "
                     "Please contact the academic section to edit it.")
-
-            # Research section user can edit only PG/PhD courses
-            if apiVC.is_user_in_role("RES") and not apiVC.course_code_for_pg(crs.code):
-                return apiVC.error_json("You can edit only PG/PhD courses!")
 
             C.update_model_skip_unknown(crs, fd)
 
@@ -82,10 +85,10 @@ async def course_save():
     except Exception as ex:
         msg = "Error when saving course details."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("courses.view")
 async def course_find():
     try:
         fd = await request.get_json(force=True)
@@ -113,11 +116,11 @@ async def course_find():
         if dept:
             query = query.where(DB.Person.dept_name == dept)
 
-        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        courses = query.order_by(-DB.Course.id).paginate(pg_no, ST.get("page_size"))
         serialized = [apiVC.model_to_dict(r, exclude=[DB.Course.author]) for r in courses]
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= ST.get("page_size")
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
         return apiVC.ok_json(res)
 
@@ -127,7 +130,7 @@ async def course_find():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("courses.view")
 async def course_lookup(query_str):
     try:
         query = DB.Course.select(DB.Course.id, DB.Course.code, 
@@ -159,7 +162,7 @@ def __do_courses_exist(file_path):
     return [x.code for x in qry]
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("courses.bulk_add")
 async def bulk_add_courses():
     try:
         courses_file = (await request.files)['courses_file']
@@ -170,7 +173,7 @@ async def bulk_add_courses():
             secure_filename(courses_file.filename)
         file_path = os.path.join(apiVC.get_upload_folder_for_user(), 
                                 local_file_nm)
-        courses_file.save(file_path)
+        await courses_file.save(file_path)
 
         existing = __do_courses_exist(file_path)
         if existing:
@@ -204,7 +207,7 @@ async def bulk_add_courses():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles="ACA,DEA")
+@P.require("slots.manage")
 async def save_course_slot_timings():
     try:
         fd = await request.get_json(force=True)

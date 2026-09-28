@@ -167,7 +167,7 @@ export default {
   created: function() {
     let vm = this;
     console.log("Creating CourseMain: "+JSON.stringify(vm.course));
-    vm.viewOnly = vm.isStudent;
+    vm.viewOnly = !vm.hasPermission('courses.edit');
     if (vm.course.evaluation == undefined) {
       vm.$set(vm.course, "evaluation", {});
       for (let k of vm.eval_items) {

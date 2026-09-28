@@ -132,7 +132,7 @@ Component for searching offered courses.
               <span class="label-sm">Slot</span> {{labelFor(SD.CourseSlots, r.slot)}}. 
               <span class="label-sm">Instructor(s)</span> {{r.instructors}}. 
               <br/>
-              <span v-if="isAcad||isDean">
+              <span v-if="hasPermission('feedback.view_instructor:any')">
                 <b>Feedback</b>
                 <ul>
                   <li v-for="ci in r.instructors_info" :key="ci.id">
@@ -177,16 +177,11 @@ export default {
       markedItems: [],
       user:{},
       passed_courses: {codes:[]},
-      /**
-       * Defines the allowed actions to each role. The key is
-       * role and value is the action label.
-       */
-      actionsMap: {
-        "STU": [{label: "Credit", id: "C"}, 
+      /** Enrolment types a student may enrol in. */
+      enrolActions: [{label: "Credit", id: "C"}, 
           {label: "Credit for Minor", id: "CM"},
           {label: "Credit for Concent.", id: "CC"}, 
           {label: "Audit", id: "A"}]
-      }
     };
   },
   computed: {
@@ -194,7 +189,7 @@ export default {
       return this.actions && this.results.courses.length > 0;
     },
     actions() {
-      return this.actionsMap[this.userRole];
+      return this.hasPermission('enrolments.enrol:own') ? this.enrolActions : undefined;
     },
     isCOSearch() {
       return this.$route.name=='co.find';

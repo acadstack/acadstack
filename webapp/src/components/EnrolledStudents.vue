@@ -21,7 +21,7 @@ Component for showing the enrolled student in a course.
               <input class="form-check-input" type="checkbox" id="filterCb" v-model="showEnrolled">
               <label class="form-check-label" for="filterCb">Show only Enrolled</label>
           </div>
-          <div class="col" v-if="!isStudent">
+          <div class="col" v-if="hasPermission('enrolments.download')">
             <div class="btn-group">
               <div class="dropdown">
                 <button
@@ -31,10 +31,10 @@ Component for showing the enrolled student in a course.
                   aria-expanded="false"
                 >Action</button>
                 <div class="dropdown-menu">
-                  <a class="dropdown-item" v-if="tochange.length > 0" @click ="Action('approve')">Approve Add/Drop</a>
-                  <a class="dropdown-item" v-if="tochange.length > 0" @click ="Action('reject')">Reject Add/Drop</a>
+                  <a class="dropdown-item" v-if="tochange.length > 0 && hasPermission('enrolments.approve')" @click ="Action('approve')">Approve Add/Drop</a>
+                  <a class="dropdown-item" v-if="tochange.length > 0 && hasPermission('enrolments.approve')" @click ="Action('reject')">Reject Add/Drop</a>
                   <a class="dropdown-item" :href="`download_course_enrollments/${co_id}`">Download Students List</a>
-                  <a class="dropdown-item" :href="`download_enrollments_for_grades/${co_id}`">Download Grades</a>
+                  <a class="dropdown-item" v-if="hasPermission('grades.upload')" :href="`download_enrollments_for_grades/${co_id}`">Download Grades</a>
                 </div>
               </div>
               <input class="ms-2 form-check-input" type="checkbox" v-model="all_marked" @change="toggleAll"/>
@@ -46,7 +46,7 @@ Component for showing the enrolled student in a course.
         <div class="row row-striped" v-for="(s, i) in filterEnrolments(enrollments)" :key="s.id">
           <div class="col-1">{{i+1}}</div>
           <div class="col">
-            <span v-if="!isStudent">
+            <span v-if="hasPermission('students.academics:any')">
               <a :href="'#/std.detail/'+s.user_id">{{s.org_id}}</a>
             </span>
             <span v-else>{{s.org_id}}</span>
@@ -57,7 +57,7 @@ Component for showing the enrolled student in a course.
             </div>
           <div class="col">{{labelFor(SD.EnrolTypes, s.enrol_type)}}</div>
           <div class="col">
-            <span v-if="isAcad">
+            <span v-if="hasPermission('enrolments.edit:any')">
               <a :href="'#/coe.detail/'+s.id">{{labelFor(SD.EnrolStatuses, s.enrol_status)}}</a>
             </span>
             <span v-else>{{labelFor(SD.EnrolStatuses, s.enrol_status)}}</span>
@@ -65,15 +65,15 @@ Component for showing the enrolled student in a course.
           <div class="col">{{s.acad_session}}</div>
           <div class="col">
             <span v-if="s.attendance">
-              <a v-if="!isStudent" :href="`#/att.detail/${s.id}`">{{s.attendance}}%</a>
+              <a v-if="hasPermission('students.academics:any')" :href="`#/att.detail/${s.id}`">{{s.attendance}}%</a>
               <span v-else>{{s.attendance}}%</span>
             </span>
             <span v-else>--</span>
           </div>
-          <div class="col" v-if="!isStudent">
+          <div class="col" v-if="hasPermission('enrolments.download')">
             <input type="checkbox" class="form-check-input"
             v-model="tochange" :value="s.id"
-            :disabled="!(isAcad || isFaculty || isHod)" />
+            :disabled="!hasPermission('enrolments.approve')" />
           </div>
         </div>
       </div>
@@ -151,7 +151,7 @@ export default {
     },
     Action(act){
       var vm = this;
-      if (vm.isStudent) return;
+      if (!vm.hasPermission('enrolments.approve')) return;
       vm.newenrolled.status=act;
       vm.save();
     },

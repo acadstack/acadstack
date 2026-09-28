@@ -17,6 +17,7 @@ import api_common as apiVC
 import common as C
 import models as DB
 import tasks_helper as TH
+import policy as P
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/dept.wiseavg', view_func=generate_dept_wise_avg, methods=['POST'])
@@ -72,11 +73,9 @@ def __get_total_credits_data(form_data):
     return data
 
 
-@C.rbac
+@P.require("credits.reports")
 async def credits_earned_report():
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students not allowed access!")
         fd = await request.get_json(force=True)
         acad_session = fd.get("acad_session")
 
@@ -92,11 +91,9 @@ async def credits_earned_report():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("credits.reports")
 async def course_lect_in_session(acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students not allowed access!")
         if not apiVC.academic_session_valid(acad_session):
             return apiVC.error_json("Expected academic session in YYYY-S format.")
 
@@ -137,9 +134,6 @@ def __get_earned_credit_data(form_data):
     if max_cr == "-":
        max_cr = ""
        
-    if apiVC.is_user_in_role("STU"):
-        raise C.AcadStackException("Students not allowed access!")
-
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
     
@@ -174,7 +168,7 @@ def __replace_ct_with_labels(creds, ctypes):
     return changed
 
 
-@C.rbac
+@P.require("credits.reports")
 async def earned_credit_check():
     try:
         fd = await request.get_json(force=True)
@@ -189,7 +183,7 @@ async def earned_credit_check():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "SUP"])
+@P.require("credits.notify_violation")
 async def notify_credit_violation():
     try:
         fd = await request.get_json(force=True)
@@ -222,7 +216,7 @@ async def notify_credit_violation():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("fees.report")
 async def get_fees_payment_transactions():
     try:
         form_data = await request.get_json(force=True)
@@ -255,7 +249,7 @@ async def get_fees_payment_transactions():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("reports.course_enrolments")
 async def generate_course_enrolments():
     try:
         form_data = await request.get_json(force=True)
@@ -292,7 +286,7 @@ async def generate_course_enrolments():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def generate_feedback_stats():
     try:
         form_data = await request.get_json(force=True)
@@ -328,7 +322,7 @@ async def generate_feedback_stats():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def get_slotwise_courses(acad_session):
     try:
         if acad_session and not apiVC.academic_session_valid(acad_session):
@@ -355,7 +349,6 @@ async def get_slotwise_courses(acad_session):
 
 def __process_credits_gen_request(acad_session):
     try:
-        DB.db.connect(reuse_if_open=True)
         cursor = DB.db.execute_sql(C.sql_by_id("get_students_having_enrolment"),
                                 [acad_session])
         entry_nos = [(row[0], row[1]) for row in cursor.fetchall()]
@@ -410,7 +403,7 @@ def __process_credits_gen_request(acad_session):
         return msg
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("credits.generate")
 async def generate_students_credits_info(acad_session):
     try:
         job_key = TH.create_task(__process_credits_gen_request, acad_session)
@@ -423,24 +416,24 @@ async def generate_students_credits_info(acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("credits.generate")
 async def get_background_task_status(job_key):
     try:
-        task_result = TH.pop_task_info_if_done(job_key)
+        task_result = TH.get_own_task_info(job_key)
         if not task_result:
             logging.error(f"Background job with key {job_key} not found.")
             return apiVC.error_json(f"Job info not found for {job_key}")
         if task_result["status"] != "done":
             return apiVC.ok_json({"status": task_result["status"], "result": "Job not done yet."})
         
-        return apiVC.ok_json(task_result)
+        return apiVC.ok_json({k: v for k, v in task_result.items() if k != "owner"})
     except Exception as ex:
         msg = f"Failed to get the background job status for {job_key}."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("grades.distribution")
 async def grade_distribution():
     try:
         form_data = await request.get_json(force=True)
@@ -470,7 +463,7 @@ async def grade_distribution():
         logging.exception(msg)
         return apiVC.error_json(msg)
 
-@C.rbac(roles=["ACA", "DEA","GUE"])
+@P.require("grades.cgpa_report")
 async def cgpa_sgpa():
     try:
         form_data = await request.get_json(force=True)
@@ -500,7 +493,7 @@ async def cgpa_sgpa():
         logging.exception(msg)
         return apiVC.error_json(msg)
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def generate_dept_wise_avg():
     try:
         form_data = await request.get_json(force=True)
@@ -530,7 +523,7 @@ async def generate_dept_wise_avg():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def course_wise_faculty_score():
     try:
         form_data = await request.get_json(force=True)
@@ -562,7 +555,7 @@ async def course_wise_faculty_score():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def que_wise_facfeedbkp_score():
     try:
         form_data = await request.get_json(force=True)
@@ -593,7 +586,7 @@ async def que_wise_facfeedbkp_score():
         logging.exception(msg)
         return apiVC.error_json(msg)
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("reports.student_strength")
 async def degree_wise_students():
     try:
         form_data = await request.get_json(force=True)
@@ -625,7 +618,7 @@ async def degree_wise_students():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@P.require("grades.reports")
 async def generate_grade_status():
     try:
         form_data = await request.get_json(force=True)

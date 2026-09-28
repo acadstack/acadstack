@@ -38,7 +38,7 @@
           <div class="col">Dept</div>
           <div class="col">Course</div>
           <div class="col">Enrol type</div>
-          <div class="col-md-2" v-if="!isStudent">
+          <div class="col-md-2" v-if="hasPermission('grades.distribution')">
               <a class="btn btn-outline-success" :href="`download_grade_distribution/${search_crit.acad_session}/${search_crit.degree}`">Download CSV</a>
           </div>
         </div>

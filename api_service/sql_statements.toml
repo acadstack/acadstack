@@ -58,25 +58,6 @@ course_attendance = """
     GROUP BY EXTRACT(WEEK FROM t.dates)
     ORDER BY EXTRACT(WEEK FROM t.dates)::INT;"""
 
-student_cgpa = """SELECT ce.student_id, u.first_name, u.last_name,
-    (SUBSTRING(c.ltp FROM 1 FOR 1) || 
-    SUBSTRING(c.ltp FROM 5 FOR 1)::numeric / 2) AS credits,
-    ce.grade, u.email
-    FROM courseenrollment ce
-    JOIN courseoffering co ON ce.course_offering_id = co.id
-    JOIN course c ON c.id = co.course_id
-    JOIN "user" u ON u.id = ce.student_id
-    WHERE co.acad_session IN (
-            SELECT a.acad_session FROM acadsessions a WHERE a.end_date <= %s
-        )
-        AND ce.enrol_type = %s
-        AND ce.grade NOT IN (%s, %s, %s, %s, %s, %s);"""
-
-cgpa_decline = """SELECT t.acad_session from 
-    (select * from acadsessions where end_date <= %s 
-    order by end_date desc) as t WHERE %s <= 3 
-    order by t.end_date DESC;"""
-
 course_lectures_in_session = """SELECT count(*) as Lecture, 
     lc.acad_session, lc.code, lc.title from
     (SELECT count(*) as student, o.acad_session, c.code,
@@ -91,7 +72,7 @@ course_lectures_in_session = """SELECT count(*) as Lecture,
 credits_earned_report = """
     WITH student_credits AS (
         SELECT u.first_name, u.last_name, u.email, o.acad_session,
-            ROUND(SUM(split_part(c.ltp, '-', 2)::numeric), 2) AS total_credits,
+            ROUND(SUM(COALESCE(e.credits, split_part(c.ltp, '-', 5)::numeric)), 2) AS total_credits,
             u.id,
             p.org_id
         FROM public.courseenrollment e
@@ -175,13 +156,13 @@ student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
     WHERE stu.login_id=%s
     AND ce.enrol_status='ENRO'
     AND ce.enrol_type IN ('C', 'CM', 'CC')
-    AND POSITION(co.acad_session IN %s) > 0
+    AND co.acad_session = ANY(%s::text[])
     AND NOT EXISTS (
         SELECT 1 FROM public.studentfeedbackstatus sfs
         JOIN public.feedbackform ff on ff.id=sfs.feedback_form_id
         WHERE sfs.course_instructor_id=ci.id
         AND sfs.student_id=stu.id
-        AND sfs.is_submitted=1
+        AND sfs.is_submitted
         AND ff.is_active=true
         AND ff.form_type=%s
         );"""
@@ -280,18 +261,6 @@ batch_advisor_for_enrolments = """
     AND e.dept_name=a.dept_name AND e.degree=a.for_degree
     WHERE e.enrolment_id IN (%s);"""
 
-is_hod_for_course_offering = """
-    WITH dept_hod as (SELECT u.id as user_id, p.dept_name
-        FROM public.user u JOIN public.person p on p.id=u.person_id
-        WHERE u.role='HOD')
-    SELECT CASE WHEN EXISTS
-        (SELECT hod.user_id
-        FROM public.courseoffering co 
-        JOIN dept_hod hod on hod.dept_name=co.dept_name
-        WHERE co.id=%s AND hod.user_id=%s)
-        THEN TRUE ELSE FALSE
-        END AS is_hod_for_co;"""
-
 pending_enrolments_hod = """
     SELECT 
     ce.id, (c.title||' '||c.code) as course, stu.id as user_id,
@@ -358,7 +327,7 @@ enrolled_students_for_grades = """
 filtered_categorized_credits_enrolled = """
 WITH category_credits AS (
     SELECT 
-        SUM(split_part(c.ltp, '-', 5)::numeric) AS total_credits,
+        SUM(COALESCE(ce.credits, split_part(c.ltp, '-', 5)::numeric)) AS total_credits,
         COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
         u.email,
         u.id,
@@ -421,7 +390,7 @@ generate_semester_grade_query = """
         from courseoffering cf 
         join course co on cf.course_id = co.id
         join courseenrollment ce on cf.id= ce.course_offering_id
-        join user u on ce.student_id = u.id  
+        join public.user u on ce.student_id = u.id
         join person p on p.id = u.person_id
         where u.login_id=%s AND acad_session=%s;"""
 
@@ -498,9 +467,9 @@ generate_course_enrolments = """
             FROM courseoffering co
         JOIN courseenrollment ce on co.id = ce.course_offering_id
         JOIN course c on c.id = co.course_id
-        JOIN user stu on stu.id = ce.student_id
+        JOIN public.user stu on stu.id = ce.student_id
         JOIN person p on stu.person_id = p.id
-        JOIN user u on p.id=u.person_id
+        JOIN public.user u on p.id=u.person_id
         WHERE ce.enrol_status IN ('ENRO', 'IPEN', 'APEN') 
         AND (p.year_of_entry=%s OR %s = '')
         AND (p.dept_name=%s OR %s = '')
@@ -909,7 +878,7 @@ grades_status_pending = """
                 JOIN public.courseinstructor ci ON ci.offering_id=co.id
                 JOIN public.user ins ON ins.id=ci.instructor_id
                 WHERE co.acad_session= %s and co.status ='R' and 
-                ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I ','W')
+                ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I','W')
                 and ce.enrol_status='ENRO' and ci.is_coordinator=TRUE) as ss
                 GROUP BY ss.code,ss.acad_session, ss.title, 
                 ss.first_name, ss.last_name, ss.dept_name;
@@ -929,7 +898,7 @@ get_dc_students = """
 download_filtered_categorized_credits_enrolled = """
 WITH base_credits AS (
     SELECT 
-        SUM(split_part(c.ltp, '-', 3)::numeric) AS total_credits,
+        SUM(COALESCE(ce.credits, split_part(c.ltp, '-', 5)::numeric)) AS total_credits,
         COALESCE(NULLIF(TRIM(cc.category), ''), 'UnCat') AS c_category,
         u.email,
         u.id,
@@ -992,6 +961,14 @@ GROUP BY
     c.first_name, c.last_name, c.login_id, c.email, c.dept_name
 ORDER BY 
     c.login_id;
+"""
+
+freeze_session_credits = """
+    UPDATE public.courseenrollment ce
+    SET credits = split_part(c.ltp, '-', 5)::numeric
+    FROM public.courseoffering co
+    JOIN public.course c ON c.id = co.course_id
+    WHERE co.id = ce.course_offering_id AND co.acad_session = %s;
 """
 
 credits_enrolled_by_student = """

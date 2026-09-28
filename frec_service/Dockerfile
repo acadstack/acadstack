@@ -2,7 +2,7 @@
 # in context of the docker-compose.yaml file placed in the parent 
 # of this folder.
 
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 

@@ -47,7 +47,7 @@ Component for showing the academics details of a student.
                 <div class="row row-striped" v-for="(c, index) in filterEnrolments(acs_item.courses)" :key="c.id">
                   <div class="col-md-1">{{ index + 1 }}</div>
                   <div class="col">
-                    <a :href="`#/co.detail/${c.co_id}`" v-if="!isStudent && !isPlacement">{{
+                    <a :href="`#/co.detail/${c.co_id}`" v-if="hasPermission('offerings.edit')">{{
                       `${c.code} - ${c.title} (${c.ltp})`
                     }}</a>
                     <span v-else>{{ `${c.code} - ${c.title} (${c.ltp})` }}</span>
@@ -64,7 +64,7 @@ Component for showing the academics details of a student.
                   </div>
                   <div class="col-md-1">{{ c.grade }}</div>
                   <div class="col-md-1">
-                    <a :href="`#/att.detail/${c.id}`" v-if="!isPlacement">{{ c.attendance }}%</a>
+                    <a :href="`#/att.detail/${c.id}`" v-if="hasPermission('attendance.view') || isStudent">{{ c.attendance }}%</a>
                     <span v-else>{{ c.attendance }}%</span>
                   </div>
                   <div class="col-md-1">
@@ -99,7 +99,7 @@ export default {
   },
   methods: {
     show_add_withdraw(c) {
-      return (this.isAcad || this.isDean || this.isStudent) && 
+      return (this.hasPermission('enrolments.edit:any') || this.isStudent) && 
         !['WDRAW', 'DROP'].includes(c.enrol_status) && 
         ['R', 'E'].includes(c.status);
     },

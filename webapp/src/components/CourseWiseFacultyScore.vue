@@ -43,7 +43,7 @@ Component for Creating  Course-wise faculty scores.
                 <div class="col-md-2">Department Name</div>
                 <div class="col-md-1">Faculty Score</div>
                 <div class="col-md-1">Total Votes</div>
-                 <div class="col-md-2" v-if="!isStudent">
+                 <div class="col-md-2" v-if="hasPermission('feedback.reports')">
                      <a class="btn btn-outline-success" :href="`download_course_wise_faculty_score/${form.form_type}/${form.acad_session}`">Download CSV</a>
                 </div>
                 </div>

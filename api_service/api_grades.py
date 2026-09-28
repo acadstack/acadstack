@@ -1,3 +1,4 @@
+import csv
 import logging
 import os
 from pathlib import Path
@@ -5,19 +6,43 @@ import uuid
 from quart import Blueprint, request
 from quart.helpers import send_file
 from io import BytesIO
+from werkzeug.utils import secure_filename
+from create_email import send_grades_submission_email
 
-from validation_checks import is_current_user_in_role_and_id
+import policy as P
 from api_auth import get_user_by_org_id
-from api_course_enrolment import get_student_courses_perf_filtered
+from api_course_enrolment import get_student_courses_perf_filtered, record_grade_change
 
 import datetime
 import shutil
-import pdfkit
 
 import api_common as apiVC
 import common as C
 import models as DB
 import tasks_helper as TH
+import validation_checks as VAL
+
+# The report templates are sized for a canvas about 4/3 wider than the paper,
+# so pages are laid out 4/3 larger than the paper and then zoomed out by 3/4.
+_PDF_ZOOM = 0.75
+
+
+def _html_to_pdf(html, target=None, size_mm=(210, 297), margin_mm=10):
+    """Renders the HTML as a PDF on paper of ``size_mm`` (A4 by default):
+    returns the bytes, or writes them to the file ``target``. Relative file
+    paths in the HTML resolve against the working directory."""
+    # Imported here so the app runs without WeasyPrint's system libraries
+    # (Pango) when no PDF is rendered.
+    from weasyprint import CSS, HTML
+
+    width, height = (d / _PDF_ZOOM for d in size_mm)
+    page_css = (f"@page {{ size: {width:.2f}mm {height:.2f}mm; "
+                f"margin: {margin_mm / _PDF_ZOOM:.2f}mm }}")
+    # presentational_hints: honour HTML layout attributes (width, align, ...)
+    return HTML(string=html, base_url=os.getcwd()).write_pdf(
+        target, stylesheets=[CSS(string=page_css)], zoom=_PDF_ZOOM,
+        presentational_hints=True)
+
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/download_grade_distribution/<string:acad_session>/<string:degree>',
@@ -42,9 +67,11 @@ def init_routes(bp: Blueprint):
                        view_func=download_degree_certifcate, methods=['GET'])
     bp.add_url_rule('/download_consolidated_grade_sheet/<string:entry_no>/<string:enrol_type>',
                        view_func=download_consolidated_grade_sheet, methods=['GET'])
+    bp.add_url_rule('/grades_upload', view_func=grades_upload, methods=['POST'])
+    bp.add_url_rule('/close_session', view_func=close_session, methods=['POST'])
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@P.require("grades.reports")
 async def download_grade_status(grades_st, acad_session):
     try:
         if grades_st == "GS":
@@ -65,7 +92,7 @@ async def download_grade_status(grades_st, acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def download_consolidated_grade_sheet(entry_no,enrol_type):
         try:
             report_data = {}
@@ -132,21 +159,8 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
 
             html = C.fill_template("report_templates", 
                     "consolidatedGradeSheetnew.html", report_data)
-            options = {
-                'page-size': 'Legal',
-                'orientation': 'Portrait',
-                'encoding': "UTF-8",
-                'margin-top': '0.1in',
-                'margin-right': '0.1in',
-                'margin-bottom': '0.1in',
-                'margin-left': '0.1in',
-                'custom-header': [
-                    ('Accept-Encoding', 'gzip')
-                ],
-                'no-outline': None,
-                "enable-local-file-access": ""
-            }
-            pdf_str = pdfkit.from_string(html, False, options=options)
+            # US Legal paper with 0.1in margins
+            pdf_str = _html_to_pdf(html, size_mm=(215.9, 355.6), margin_mm=2.54)
             fp = BytesIO()
             fp.write(pdf_str)
             fp.flush()
@@ -168,8 +182,6 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-    is_current_user_in_role_and_id("STU", "org_id", entry_no, 
-        "Student attempted to access someone else's grades sheet.")
     stu = get_user_by_org_id(entry_no)
     if not stu:
         raise C.AcadStackException(f"Student {entry_no} not found!")
@@ -221,7 +233,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     return report_data
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def generate_semester_grade():
     try:
         fd = await request.get_json(force=True)
@@ -240,7 +252,7 @@ async def generate_semester_grade():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def download_sem_grade(acad_session, entry_no, enrol_type):
     try:
         data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
@@ -248,7 +260,7 @@ async def download_sem_grade(acad_session, entry_no, enrol_type):
         # TODO: Check the HTML and the data's structure
         html = C.fill_template("report_templates", "semester_grades.html", data)
 
-        pdf_str = pdfkit.from_string(html, False, options={"enable-local-file-access": ""})
+        pdf_str = _html_to_pdf(html)
         fp = BytesIO()
         fp.write(pdf_str)
         fp.flush()
@@ -281,7 +293,6 @@ def _get_student_entry_no_data(degree,dept_name,year_of_entry):
 
 def _bulk_download_sem_grade(form_data, job_key):
     try:
-        DB.db.connect(reuse_if_open=True)
         degree = form_data.get("degree")
         dept_name = form_data.get("dept_name")
         acad_session = form_data.get("acad_session")
@@ -302,8 +313,7 @@ def _bulk_download_sem_grade(form_data, job_key):
                 data['enrol_type'] = enrol_type
                 html = C.fill_template("report_templates", "semester_grades.html", data)
                 out_pdf = f"{file_folder}/grades_{entry_no}_{acad_session}.pdf"
-                pdfkit.from_string(html, out_pdf, \
-                                    options={"enable-local-file-access": ""})
+                _html_to_pdf(html, out_pdf)
             else:
                 missing_stu_enrol.append(entry_no)
                 continue
@@ -318,7 +328,7 @@ def _bulk_download_sem_grade(form_data, job_key):
     return zip_file
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@P.require("grades.reports")
 async def bulk_download_sem_grade():
     try:
         job_key = str(uuid.uuid4())
@@ -332,9 +342,11 @@ async def bulk_download_sem_grade():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@P.require("grades.reports")
 async def get_bulk_gradesheets(job_key):
     try:
+        if not TH.get_own_task_info(job_key):
+            return apiVC.error_json(f"Job info not found for {job_key}")
         zip_file = os.path.join(apiVC.get_upload_folder(), f"BULK_GS_PDF_{job_key}.zip")
         return await send_file(zip_file)
 
@@ -344,7 +356,7 @@ async def get_bulk_gradesheets(job_key):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["DEA", "ACA"])
+@P.require("grades.distribution")
 async def download_grade_distribution(acad_session, degree):
     try:
         if degree == "-":
@@ -365,12 +377,9 @@ async def download_grade_distribution(acad_session, degree):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("credits.reports")
 async def download_cgpa_sgpa(acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
-
         if acad_session == "-":
             acad_session = ""
 
@@ -385,7 +394,7 @@ async def download_cgpa_sgpa(acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no):
         try:
             report_data = {}
@@ -431,7 +440,7 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
             report_data["static_file_path"] = file_folder
 
             html = C.fill_template("report_templates", "degree.html", report_data)
-            pdf_str = pdfkit.from_string(html, False, options={"enable-local-file-access": ""})
+            pdf_str = _html_to_pdf(html)
             fp = BytesIO()
             fp.write(pdf_str)
             fp.flush()
@@ -447,13 +456,10 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
                                 "certificate PDF file for download.")
 
 
-@C.rbac
+@P.require("credits.reports")
 async def download_catwise_earned_credits(acad_session,degree,dept_name,course_type,
     for_year,min_credits,max_credits):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
-
         if dept_name == "ALL" or dept_name == "-":
            dept_name = ""
         if degree == "-":
@@ -482,5 +488,171 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
                          as_attachment=True)
     except Exception as ex:
         msg = "Error when download_filtered categorized credits enrolled CSV."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+@P.require("grades.upload")
+async def grades_upload():
+    try:
+        form = await request.form
+        co_id = form.get('course_offering')
+        if not (co_id and co_id.isdigit()):
+            return apiVC.error_json("It seems you have not selected the course for which you want to upload grades. Please retry after selecting the course.")
+        co_id = int(co_id)
+        co_obj = DB.CourseOffering.get_or_none(co_id)
+        if not co_obj:
+            return apiVC.error_json("DB.Course offering not found. Please make sure that you have selected a course when uploading grades.")
+
+        if not VAL.is_today_between_events("GRADE_SUB_S", "GRADE_SUB_E",
+                co_obj.acad_session):
+            return apiVC.error_json("Grades upload is not open!")
+        # Only the course instructor OR dean may upload the course grades            
+        if not P.current_actor().allowed("grades.upload",
+                                         own=lambda: VAL.validate_course_instructor(co_id)):
+            return apiVC.error_json("Only the course coordinator can upload grades for the course!")
+
+        # Raises exception when change not allowed
+        VAL.validate_coff_status(co_id)
+
+        grades_file = (await request.files)['grades_file']
+        if grades_file.filename == '':
+            return apiVC.error_json("No grades .csv file supplied!")
+        filename = secure_filename(grades_file.filename)
+        file_path = os.path.join(apiVC.get_upload_folder_for_user(), filename)
+        await grades_file.save(file_path)
+
+        # Convert all text to uppercase in the grades file
+        with open(file_path, 'r') as inp:
+            y = inp.read().upper().strip()
+            lines = y.splitlines()
+            if len(lines) < 2:
+                return apiVC.error_json("No grades found in the CSV file you uploaded. Please upload a non-empty CSV file!")
+
+            if not lines[0].replace(' ', '').startswith("FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"):
+                return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
+
+            invalid_rows = []
+            for ll in lines[1:]:
+                if ll.split(',')[3].strip() not in C.VALID_GRADES:
+                    invalid_rows.append(ll)
+
+            if invalid_rows:
+                return apiVC.error_json(f"Found invalid grades in rows: {invalid_rows}. "
+                                     f"Allowed grades values are: {C.VALID_GRADES}")
+
+
+        with open(file_path, 'w') as out:
+            out.write(y)
+
+        # Check the uploaded roll numbers against what we have in the DB
+        with open(file_path, newline='') as csvfile:
+            reader = csv.DictReader(csvfile)
+            rolls = [row["ROLL_NO"].upper().strip() for row in reader]
+
+        coe = DB.CourseEnrollment.select().where(
+            (DB.CourseEnrollment.course_offering == co_id) &
+            (DB.CourseEnrollment.enrol_status == "ENRO"))
+        rolls_indb = [x.student.person.org_id.upper().strip() for x in coe]
+        missing = set(rolls_indb) - set(rolls)
+        if bool(missing):
+            return apiVC.error_json(
+                "Grades can be submitted only for enrolled students in "
+                "this course. Following roll numbers are missing in the "
+                f"uploaded .csv file: {missing}")
+        extra = set(rolls) - set(rolls_indb)
+        if bool(extra):
+            return apiVC.error_json(
+                "Grades can be submitted only for enrolled students in this "
+                "course. Following roll numbers are supplied, but not "
+                f"enrolled: {extra}")
+
+        # If all is OK, then update the grades in DB
+        upd_count = 0
+        with DB.db.atomic() as txn:
+            with open(file_path, newline='') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    roll_no = row["ROLL_NO"].upper().strip()
+                    grade = row["GRADE"].upper().strip()
+                    stu = DB.User.select(DB.User.id).join(DB.Person)\
+                        .where(DB.Person.org_id == roll_no)[0]
+                    coe = DB.CourseEnrollment.select().where(
+                        (DB.CourseEnrollment.course_offering == co_id) &
+                        (DB.CourseEnrollment.student == stu.id)
+                    )[0]
+
+                    if coe.enrol_type == "A" and grade not in C.VALID_AUDIT_GRADES:
+                        raise C.AcadStackException(f"Invalid grade {grade} assigned "
+                                f"to {roll_no} for audited course. "
+                                f"Allowed audit grades are: {C.VALID_AUDIT_GRADES}")
+
+                    if coe.grade == grade:
+                        logging.debug("Grade unchanged, skipping the update.")
+                        continue
+
+                    old_grade = coe.grade
+                    coe.grade = grade
+                    record_grade_change(coe, old_grade, P.current_actor())
+                    apiVC.update_entity(DB.CourseEnrollment, coe)
+                    upd_count += 1
+
+            txn.commit()
+        if(apiVC.logged_in_user().role != "ACA"):
+            send_grades_submission_email(co_id, upd_count)
+        return apiVC.ok_json(f"Grades processed successfully! Added/updated {
+            upd_count} records.")
+
+    except C.AcadStackException as ae:
+        logging.exception(ae)
+        return apiVC.error_json(str(ae))
+    except Exception as ex:
+        msg = "Error when handling grades upload request."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@P.require("sessions.close")
+async def close_session():
+    """Closes an academic session: copies each enrolment's credits onto the
+    enrolment, so later changes to courses don't change transcripts. Grades
+    of the session's (finished) offerings stay locked to offerings.edit_closed,
+    and changing one needs a reason from then on."""
+    try:
+        fd = await request.get_json(force=True)
+        acad_session = fd.get("acad_session")
+        if not (acad_session and apiVC.academic_session_valid(acad_session)):
+            return apiVC.error_json("Please supply a valid academic session!")
+        if VAL.is_session_closed(acad_session):
+            return apiVC.error_json(f"Session {acad_session} is already closed.")
+
+        offerings = DB.CourseOffering.select(DB.CourseOffering, DB.Course)\
+            .join(DB.Course).where(DB.CourseOffering.acad_session == acad_session)
+        running = sorted({co.course.code for co in offerings if co.status in ("E", "R")})
+        if running:
+            return apiVC.error_json("These courses are still enrolling or running: "
+                                    f"{', '.join(running)}")
+        pending = DB.CourseEnrollment.select(DB.CourseEnrollment, DB.CourseOffering, DB.Course)\
+            .join(DB.CourseOffering).join(DB.Course).where(
+                (DB.CourseOffering.acad_session == acad_session) &
+                (DB.CourseOffering.status.not_in(["C", "D"])) &
+                (DB.CourseEnrollment.enrol_status == "ENRO") &
+                (DB.CourseEnrollment.grade == "NA"))
+        pending = sorted({ce.course_offering.course.code for ce in pending})
+        if pending:
+            return apiVC.error_json("Grades are pending in these courses: "
+                                    f"{', '.join(pending)}")
+
+        with DB.db.atomic():
+            cursor = DB.db.execute_sql(C.sql_by_id("freeze_session_credits"), [acad_session])
+            frozen = cursor.rowcount
+            apiVC.save_entity(DB.AcademicCalendar(acad_session=acad_session,
+                                                  event_code="SESSION_CLOSED",
+                                                  event_value=C.current_dt_str()))
+        return apiVC.ok_json(f"Closed session {acad_session}: froze the credits "
+                             f"of {frozen} enrolments.")
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception:
+        msg = "Error when closing the session."
         logging.exception(msg)
         return apiVC.error_json(msg)

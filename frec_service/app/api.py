@@ -3,7 +3,9 @@
 from quart import Quart, request, jsonify
 from app import service
 import base64
+import json
 import logging
+import numpy as np
 from app.logging_config import setup_logging
 setup_logging()  # <- call it before anything else
 
@@ -114,8 +116,11 @@ async def find_faces():
         group_photo = files.get("group_photo")
         tolerance = float(form.get("tolerance", 0.45))
 
-        known_faces = []
-        known_names = []
+        # Known faces come as JSON lists of encodings and names, and/or as
+        # photo files named after the person.
+        known_faces = [np.asarray(e) for e in
+                       json.loads(form.get("known_encodings", "[]"))]
+        known_names = json.loads(form.get("known_names", "[]"))
 
         for file in known_files:
             enc = service.get_face_encoding(file.read())

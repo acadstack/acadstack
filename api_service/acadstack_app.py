@@ -8,23 +8,29 @@ __status__ = "Development"
 """
 
 import os
+import secrets
 from bg_tasks import BgTasks
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import api_attendance as apiAT
 import api_auth as apiAU
 import api_course_enrolment as apiCE
 import api_course_offering as apiCO
 import api_course as apiCR
 import api_dc as apiDC
+import api_documents as apiDO
 import api_faces as apiFC
+import api_fees as apiFE
 import api_feedback as apiVF
 import api_grades as apiVG
 import api_reports as apiRP
 import api_wflow as apiWF
 import api_common as apiVC
 import common as C
+import migrate
+import models as M
 
 from quart import Quart
 
@@ -62,7 +68,6 @@ def _load_config_from_env():
             "port": os.environ.get('EMAIL_PORT'),
             "dryrun": os.environ.get('EMAIL_DRYRUN')
         },
-        "hide_course_stats_from": ["STU"],
         "oauth_client_id": os.environ.get('OAUTH_CLIENT_ID'),
         "oauth_domain": os.environ.get('OAUTH_DOMAIN'),
         "upload_folder": os.environ.get('UPLOAD_FOLDER', "./acadstack_upload")
@@ -76,16 +81,31 @@ def setup_app_state(app):
 
 def create_app(is_testing=False):
     myapp = Quart(__name__, static_folder="./app", static_url_path="/acadstack/")
-    myapp.secret_key = C.get_rand_str(size=30)
+    myapp.secret_key = os.environ.get("SECRET_KEY")
+    if not myapp.secret_key:
+        # Sessions signed with a per-process key do not survive a restart.
+        logging.warning("SECRET_KEY is not set; using a random session key.")
+        myapp.secret_key = secrets.token_hex(32)
     myapp.json_encoder = C.JSONEncoderWithDate
     myapp.active_users = {}
+    myapp.prk_failures = {}
 
     cfg = _load_config_from_env()
     myapp.config.update(cfg)
 
+    # The DB is initialised once, when serving starts, not per request:
+    # re-initialising the shared DB object while other requests or scheduled
+    # jobs use it resets their state.
+    async def init_db():
+        M.db.init(myapp.config['db_name'], **myapp.config['db_args'])
+        if not is_testing:
+            # Brings a new or older database up to date before any request.
+            migrate.migrate()
+    myapp.before_serving(init_db)
+
     myapp.context_processor(C.add_user_to_session)
     myapp.before_request(C.init_db_connection)
-    myapp.after_request(C.close_db_connection)
+    myapp.teardown_request(C.close_db_connection)
     myapp.before_request(apiVC.update_active_users)
     myapp.before_serving(lambda: setup_app_state(myapp))
 
@@ -105,6 +125,10 @@ def create_app(is_testing=False):
     apiVC.vbp.add_url_rule('/', view_func=apiVC.index, methods=['GET'])
     apiVC.vbp.add_url_rule('/auc', view_func=apiVC.get_active_users, methods=['GET'])
     apiVC.vbp.add_url_rule('/get_static_data', view_func=apiVC.get_static_data, methods=['GET'])
+    apiVC.vbp.add_url_rule('/settings', view_func=apiVC.get_settings, methods=['GET'])
+    apiVC.vbp.add_url_rule('/setting_save', view_func=apiVC.save_setting, methods=['POST'])
+    apiVC.vbp.add_url_rule('/perms', view_func=apiVC.get_permissions, methods=['GET'])
+    apiVC.vbp.add_url_rule('/perms_save', view_func=apiVC.save_role_permissions, methods=['POST'])
 
     # Attendance related
     apiVC.vbp.add_url_rule('/kface_bulk_add', view_func=apiFC.kface_bulk_add, methods=['POST'])
@@ -113,12 +137,14 @@ def create_app(is_testing=False):
                        view_func=apiFC.get_class_photo, methods=['GET'])
 
     # Initialize the routes defines in each module
-    apiVF.init_routes(apiVC.vbp)
+    apiAT.init_routes(apiVC.vbp)
     apiAU.init_routes(apiVC.vbp)
     apiCE.init_routes(apiVC.vbp)
     apiCO.init_routes(apiVC.vbp)
     apiCR.init_routes(apiVC.vbp)
     apiDC.init_routes(apiVC.vbp)
+    apiDO.init_routes(apiVC.vbp)
+    apiFE.init_routes(apiVC.vbp)
     apiRP.init_routes(apiVC.vbp)
     apiVF.init_routes(apiVC.vbp)
     apiVG.init_routes(apiVC.vbp)
@@ -149,5 +175,3 @@ def create_app(is_testing=False):
     myapp.config['EXECUTOR_PROPAGATE_EXCEPTIONS'] = True
     return myapp
 
-
-app = create_app()
