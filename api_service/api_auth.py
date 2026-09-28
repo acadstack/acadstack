@@ -193,12 +193,15 @@ async def reset_password():
             logging.warning(f"Password reset refused for locked user {login_id}.")
             return apiVC.error_json(PRK_INVALID_MSG)
 
-        res = DB.PasswordResetKey.select().where(
-            DB.PasswordResetKey.login_id == login_id).order_by(
-            -DB.PasswordResetKey.id).limit(1)
-        prk = res[0] if res else None
-        if (prk and key_code and DT.now() - prk.ins_ts < PRK_TTL
-                and hmac.compare_digest(prk.prk.encode(), str(key_code).encode())):
+        # Several outstanding keys can be valid at once (e.g. one an admin
+        # issued and one the user requested themselves), so any unexpired
+        # key for this login should work, not just the most recently issued.
+        candidates = DB.PasswordResetKey.select().where(
+            (DB.PasswordResetKey.login_id == login_id) &
+            (DB.PasswordResetKey.ins_ts > DT.now() - PRK_TTL))
+        matched = key_code and any(hmac.compare_digest(
+            c.prk.encode(), str(key_code).encode()) for c in candidates)
+        if matched:
             u.password_hashed = C.hash_password(new_password)
             apiVC.save_entity(u)
             __clear_prk_for_user(login_id)
