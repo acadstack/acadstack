@@ -278,3 +278,122 @@ async def test_stale_txn_no_is_rejected(client, auth, setup):
                                    "txn_no": 7})
     assert body["status"] == "ERROR"
     assert status_of(setup["ce"]) == "IPEN"
+
+
+# ---- enroll_in_courses ----
+
+import api_course_enrolment as apiCE
+
+
+@pytest.fixture
+def emails(monkeypatch):
+    """Records the enrolments that enrolment emails are sent for."""
+    sent = []
+    monkeypatch.setattr(apiCE, "send_enrolment_email", lambda ce_id, **kw: sent.append(ce_id))
+    return sent
+
+
+@pytest.fixture
+def no_fees_check(app, monkeypatch):
+    monkeypatch.setitem(app.config, "disable_fees_check", True)
+
+
+def enrollable(code, slot, day=0, start=9, end=11, acad_session=SESSION):
+    """An offering the setup student may enrol in, in a slot with one timing."""
+    co = make_offering(code, acad_session=acad_session, slot=slot)
+    M.CourseCategory.create(offering=co, degree="BTE", dept="CSE", category="PC",
+                            for_entry_years="2024")
+    M.CourseSlotTiming.create(slot=slot, week_day=day, start_time=start, end_time=end)
+    return co
+
+
+async def enroll(client, stu, cos, enrol_type="C"):
+    res = await client.post("/acadstack/enroll_in_courses",
+                            json={"user_id": stu.id, "co_ids": [co.id for co in cos],
+                                  "enrol_type": enrol_type})
+    return await res.get_json()
+
+
+def enrolments_in(*cos):
+    return M.CourseEnrollment.select().where(
+        M.CourseEnrollment.course_offering.in_([co.id for co in cos])).count()
+
+
+async def test_student_enrols_and_emails_go_out_after_commit(client, auth, setup, no_fees_check, emails):
+    co = enrollable("CS301", "A")
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [co])
+    assert body == {"status": "OK", "body": "Enrollment requested successfully!"}
+    ce = M.CourseEnrollment.get(M.CourseEnrollment.course_offering == co.id)
+    assert (ce.enrol_status, ce.enrol_type) == ("IPEN", "C")
+    assert emails == [ce.id]
+
+
+async def test_c5_slot_clash_rolls_back_the_whole_request(client, auth, setup, no_fees_check, emails):
+    co1 = enrollable("CS301", "A", start=9, end=11)
+    co2 = enrollable("CS302", "B", start=10, end=12)
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [co1, co2])
+    assert body["status"] == "ERROR"
+    assert enrolments_in(co1, co2) == 0
+    assert emails == []
+
+
+async def test_c6_audit_only_student_can_enrol(client, auth, setup, no_fees_check, emails):
+    # The setup enrolment is the student's only one; make it an audit too, so
+    # the student has no credit enrolments and the credit sum is NULL.
+    M.CourseEnrollment.update(enrol_type="A").execute()
+    set_event_window(SESSION, "WITHDRAW")
+    co = enrollable("CS301", "A")
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [co], enrol_type="A")
+    assert body["status"] == "OK"
+    assert M.CourseEnrollment.get(M.CourseEnrollment.course_offering == co.id).enrol_type == "A"
+
+
+async def test_c19_student_on_trimester_session_passes_fee_check(client, auth, setup, emails):
+    tri = "2026-T1"
+    set_event_window(tri, "SESSION")
+    set_event_window(tri, "COURSE_REG")
+    M.FeesTransaction.create(student=setup["stu"], acad_session=tri, fees_txn_amt=100,
+                             fees_txn_no="T1", fees_txn_dt="2026-01-01",
+                             fees_txn_bank="B", doc_file_name="f")
+    co = enrollable("CS301", "A", acad_session=tri)
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [co])
+    assert body["status"] == "OK"
+    assert enrolments_in(co) == 1
+
+
+async def test_student_without_fee_record_is_blocked(client, auth, setup, emails):
+    set_event_window(SESSION, "SESSION")
+    co = enrollable("CS301", "A")
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [co])
+    assert body["status"] == "ERROR"
+    assert "fees" in body["body"]
+
+
+async def test_c23_no_email_for_approvals_that_are_rolled_back(client, auth, setup, emails):
+    other_co = make_offering("CS999", acad_session=SESSION)
+    other_ce = enrol(setup["stu"], other_co, enrol_status="IPEN")
+    await auth.login("ins")
+    await change_status(client, [setup["ce"].id, other_ce.id], "approve")
+    assert status_of(setup["ce"]) == "IPEN"
+    assert emails == []
+
+
+async def test_approval_email_is_sent(client, auth, setup, emails):
+    await auth.login("ins")
+    await change_status(client, [setup["ce"].id], "approve")
+    assert emails == [setup["ce"].id]
+
+
+async def test_c7_coordinator_downloads_enrolments_for_grades(client, auth, setup):
+    set_status(setup["ce"], "ENRO")
+    await auth.login("ins")
+    res = await client.get(f"/acadstack/download_enrollments_for_grades/{setup['co'].id}")
+    assert res.status_code == 200
+    lines = (await res.get_data(as_text=True)).splitlines()
+    assert lines[0] == "first_name,last_name,roll_no,grade,code"
+    assert lines[1] == "STU,USER,STU,NA,CS101"

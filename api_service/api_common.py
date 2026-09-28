@@ -15,7 +15,7 @@ from typing import Any, Dict, Type
 from pathlib import Path
 from io import BytesIO
 from quart import current_app as APP
-from quart import (jsonify, session)
+from quart import (has_request_context, jsonify, session)
 from quart.blueprints import Blueprint
 from datetime import datetime as DT
 from playhouse.shortcuts import model_to_dict
@@ -111,7 +111,8 @@ def is_user_in_role(role):
     """
     if "user" in session:
         u = session['user']
-        return u["role"] in role
+        roles = role.split(",") if isinstance(role, str) else role
+        return u["role"] in roles
     else:
         return False
 
@@ -181,7 +182,8 @@ def save_entity(obj: M.BaseModel, outside_request=False):
     Returns:
         Any: PK of the record inserted in DB.
     """
-    curr_user = logged_in_user() if not outside_request else None
+    in_request = has_request_context() and not outside_request
+    curr_user = logged_in_user() if in_request else None
     obj.txn_login_id = curr_user.login_id if curr_user else "None"
     obj.upd_ts = DT.now()
     obj.ins_ts = DT.now()
@@ -204,7 +206,8 @@ def update_entity(entity:Type[M.BaseModel], obj:M.BaseModel, exclude=[],
     txn_no = int(obj.txn_no)
     obj.txn_no = 1 + txn_no # For optimistic locking
     obj.upd_ts = DT.now()
-    if not outside_request:
+    # Background tasks run without a request, so without a logged-in user.
+    if has_request_context() and not outside_request:
         obj.txn_login_id = logged_in_user().login_id
     else:
         obj.txn_login_id = "Out of request"

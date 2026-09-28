@@ -1,10 +1,7 @@
 """Characterization tests for the grades CSV upload (``/grades_upload``).
 
-The route calls Quart's async ``FileStorage.save`` without awaiting it, so the
-uploaded file is never written and the route then reads whatever file of that
-name already sits in the uploader's folder. Apart from the test named after
-that bug, the tests put the same CSV in that folder first, so they exercise
-the validation and update logic and will keep passing once the save is fixed.
+Most tests also put the same CSV in the uploader's folder first, which the
+route overwrites with the uploaded file.
 """
 
 import os
@@ -51,11 +48,11 @@ def grades(*ces):
 GOOD_CSV = f"{HEADER}\nA,B,2024CSB1001,A\nC,D,2024csb1002,b-\n"
 
 
-async def test_file_save_not_awaited_so_fresh_upload_fails(client, auth, app, setup):
+async def test_fresh_upload_is_saved_and_processed(client, auth, app, setup):
     await auth.login("ins")
     body = await upload(client, app, "ins", setup["co"].id, GOOD_CSV, seed_file=False)
-    assert body == {"status": "ERROR", "body": "Error when handling grades upload request."}
-    assert grades(setup["ce1"], setup["ce2"]) == ["NA", "NA"]
+    assert body["status"] == "OK"
+    assert grades(setup["ce1"], setup["ce2"]) == ["A", "B-"]
 
 
 async def test_coordinator_uploads_grades(client, auth, app, setup):

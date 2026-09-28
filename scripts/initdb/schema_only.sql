@@ -2427,7 +2427,7 @@ ALTER TABLE ONLY public.studentfeedbackstatus
 --
 
 ALTER TABLE ONLY public.studentfeedbackstatus
-    ADD CONSTRAINT studentfeedbackstatus_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.courseenrollment(id) ON DELETE CASCADE;
+    ADD CONSTRAINT studentfeedbackstatus_student_id_fkey FOREIGN KEY (student_id) REFERENCES public."user"(id) ON DELETE CASCADE;
 
 
 --

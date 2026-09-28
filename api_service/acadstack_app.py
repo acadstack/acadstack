@@ -26,6 +26,7 @@ import api_reports as apiRP
 import api_wflow as apiWF
 import api_common as apiVC
 import common as C
+import models as M
 
 from quart import Quart
 
@@ -89,9 +90,16 @@ def create_app(is_testing=False):
     cfg = _load_config_from_env()
     myapp.config.update(cfg)
 
+    # The DB is initialised once, when serving starts, not per request:
+    # re-initialising the shared DB object while other requests or scheduled
+    # jobs use it resets their state.
+    async def init_db():
+        M.db.init(myapp.config['db_name'], **myapp.config['db_args'])
+    myapp.before_serving(init_db)
+
     myapp.context_processor(C.add_user_to_session)
     myapp.before_request(C.init_db_connection)
-    myapp.after_request(C.close_db_connection)
+    myapp.teardown_request(C.close_db_connection)
     myapp.before_request(apiVC.update_active_users)
     myapp.before_serving(lambda: setup_app_state(myapp))
 
@@ -119,7 +127,6 @@ def create_app(is_testing=False):
                        view_func=apiFC.get_class_photo, methods=['GET'])
 
     # Initialize the routes defines in each module
-    apiVF.init_routes(apiVC.vbp)
     apiAU.init_routes(apiVC.vbp)
     apiCE.init_routes(apiVC.vbp)
     apiCO.init_routes(apiVC.vbp)

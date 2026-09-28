@@ -67,10 +67,9 @@ def test_credit_enrol_types(enrol_type):
     assert compute([course("B", enrol_type=enrol_type)], "BTE")["ec"] == 4
 
 
-def test_c4_enrol_type_substring_match_treats_empty_type_as_credit():
-    # `enrol_type in "C,CM,CC"` is a substring test, so "" and "M" count as credit.
-    assert compute([course("B", enrol_type="")], "BTE")["ec"] == 4
-    assert compute([course("B", enrol_type="M")], "BTE")["ec"] == 4
+def test_c4_enrol_type_must_match_a_credit_type_exactly():
+    assert compute([course("B", enrol_type="")], "BTE")["ec"] == 0
+    assert compute([course("B", enrol_type="M")], "BTE")["ec"] == 0
 
 
 def test_s_grade_earns_credit_but_is_excluded_from_gpa():

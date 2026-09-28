@@ -176,8 +176,6 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Expected academic session in YYYY-S format.")
 
-    is_current_user_in_role_and_id("STU", "org_id", entry_no, 
-        "Student attempted to access someone else's grades sheet.")
     stu = get_user_by_org_id(entry_no)
     if not stu:
         raise C.AcadStackException(f"Student {entry_no} not found!")
@@ -236,6 +234,8 @@ async def generate_semester_grade():
         entry_no = fd.get("entry_no")
         acad_session = fd.get("acad_session")
         enrol_type = fd.get("enrol_type")
+        is_current_user_in_role_and_id("STU", "org_id", entry_no,
+            "Student attempted to access someone else's grades sheet.")
         resp = _get_semester_grade_data(entry_no, acad_session, enrol_type)
         # TODO: Update the UI for this change
         if resp:
@@ -251,6 +251,8 @@ async def generate_semester_grade():
 @C.rbac(roles=["ACA", "DEA","SUP"])
 async def download_sem_grade(acad_session, entry_no, enrol_type):
     try:
+        is_current_user_in_role_and_id("STU", "org_id", entry_no,
+            "Student attempted to access someone else's grades sheet.")
         data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
         data['enrol_type'] = enrol_type
         # TODO: Check the HTML and the data's structure
@@ -289,7 +291,6 @@ def _get_student_entry_no_data(degree,dept_name,year_of_entry):
 
 def _bulk_download_sem_grade(form_data, job_key):
     try:
-        DB.db.connect(reuse_if_open=True)
         degree = form_data.get("degree")
         dept_name = form_data.get("dept_name")
         acad_session = form_data.get("acad_session")

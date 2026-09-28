@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import base64, hashlib, hmac, logging, re, secrets, string, toml
+import base64, hashlib, hmac, inspect, logging, re, secrets, string, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -91,6 +91,8 @@ def rbac(_func:Callable=None, *, roles=None):
         _func (Callable, optional): The function being decorated. Defaults to None.
         roles (list[str], optional): Roles list allowed. Defaults to None.
     """
+    allowed = roles.split(",") if isinstance(roles, str) else roles
+
     def decor_auth(func):
         @wraps(func)
         async def wrapper_auth(*args, **kwargs):
@@ -100,11 +102,15 @@ def rbac(_func:Callable=None, *, roles=None):
                 return jsonify({"status": "ERROR", "body": msg})
 
             user_role = session["user"]["role"]
-            if roles and (user_role not in roles):
+            if allowed and (user_role not in allowed):
                 msg = "You do not have required permissions to access."
                 logging.warning(msg)
                 return jsonify({"status": "ERROR", "body": msg})
-            return await func(*args, **kwargs)
+            # Some views are plain functions; their result is not awaitable.
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
 
         return wrapper_auth
 
@@ -194,23 +200,23 @@ def update_model_skip_unknown(mod, form_data):
     update_model_from_dict(mod, form_data, ignore_unknown=True)
 
 
-def init_db_connection():
+# These hooks are async so that they run on the event loop thread, the same
+# thread as the views: peewee keeps one connection per thread, and a sync hook
+# would open and close connections on executor threads instead, leaving the
+# views' connection open (and dead after a DB restart) forever.
+async def init_db_connection():
     try:
-        if db.is_closed():
-            # DB connection params are configured in config.json
-            db.init(current_app.config['db_name'], **current_app.config['db_args'])
-            db.connect()
+        db.connect(reuse_if_open=True)
     except Exception as ex:
         logging.exception("Failed to connect to DB.")
 
 
-def close_db_connection(http_resp):
+async def close_db_connection(exc=None):
     try:
         if not db.is_closed():
             db.close()
     except Exception as ex:
         logging.exception("Failed to close DB connection.")
-    return http_resp
 
 
 def fill_template(templ_dir:str, templ_name:str, data_dict:dict) -> str:

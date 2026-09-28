@@ -171,7 +171,7 @@ async def bulk_add_courses():
             secure_filename(courses_file.filename)
         file_path = os.path.join(apiVC.get_upload_folder_for_user(), 
                                 local_file_nm)
-        courses_file.save(file_path)
+        await courses_file.save(file_path)
 
         existing = __do_courses_exist(file_path)
         if existing:

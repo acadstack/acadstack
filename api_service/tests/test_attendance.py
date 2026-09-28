@@ -57,11 +57,11 @@ async def test_coordinator_uploads_photo_and_job_is_queued(client, auth, app, se
     assert queued == [ap.id]
 
 
-async def test_photo_file_save_not_awaited_so_file_is_not_written(client, auth, app, setup, queued):
+async def test_photo_file_is_written(client, auth, app, setup, queued):
     await auth.login("ins")
     await post_photos(client, setup["co"].id)
     ap = M.AttendancePhoto.get()
-    assert not os.path.exists(os.path.join(app.config["upload_folder"], "photos", ap.file_name))
+    assert os.path.exists(os.path.join(app.config["upload_folder"], "photos", ap.file_name))
 
 
 async def test_no_photo(client, auth, setup, queued):
@@ -110,17 +110,16 @@ def _process_as(app, login_id, ap_id):
     return run()
 
 
-async def test_c22_photo_processing_fails_outside_a_request(app, setup, monkeypatch):
-    # The task saves through save_entity, which reads the logged-in user from
-    # the session; background tasks have no request, so it always fails.
+async def test_c22_photo_processing_works_outside_a_request(app, setup, monkeypatch):
+    # Background tasks run with the app context but without a request.
     ap = M.AttendancePhoto.create(offering=setup["co"], file_name="x.jpg")
     _stub_face_matching(monkeypatch, [{"enrollment_id": setup["ce1"].id}],
                         [{"enrollment_id": setup["ce2"].id}])
     async with app.app_context():
-        with pytest.raises(Exception):
-            apiDC._process_attendance_photos(ap.id)
-    assert M.StudentAttendance.select().count() == 0
-    assert M.AttendancePhoto.get_by_id(ap.id).status == "PENDING"
+        apiDC._process_attendance_photos(ap.id)
+    att = {a.enrollment_id: a.attend for a in M.StudentAttendance.select()}
+    assert att == {setup["ce1"].id: "P", setup["ce2"].id: "A"}
+    assert M.AttendancePhoto.get_by_id(ap.id).status == "DONE"
 
 
 async def test_photo_processing_marks_present_and_absent(app, setup, monkeypatch):
@@ -216,3 +215,68 @@ async def test_daywise_attendance_denied_to_student(client, auth, setup):
     await auth.login("s1")
     body = await (await client.get(f"/acadstack/daywise_att/{setup['co'].id}")).get_json()
     assert body["status"] == "ERROR"
+
+
+# ---- face service proxy ----
+
+import base64
+import json
+
+import face_api_proxy as fapi
+
+
+class FakeResponse:
+    def __init__(self, body):
+        self.body = body
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self.body
+
+
+def fake_service(monkeypatch, body):
+    """Replaces the HTTP call to the face service; returns the recorded calls."""
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse(body)
+    monkeypatch.setattr(fapi.requests, "post", post)
+    return calls
+
+
+def test_c24_known_faces_are_sent_and_results_mapped_back(monkeypatch, tmp_path):
+    photo = tmp_path / "group.jpg"
+    photo.write_bytes(b"jpeg")
+    calls = fake_service(monkeypatch, {"found": [1], "missing": [0], "total_faces": 3,
+                                       "marked_image": "data:image/jpeg;base64,"})
+    infos = [{"enrollment_id": 10}, {"enrollment_id": 11}]
+    found, missing, faces, _ = fapi.find_persons_in_photo(
+        str(photo), ([[0.1, 0.2], [0.3, 0.4]], infos))
+    assert (found, missing, faces) == ([infos[1]], [infos[0]], 3)
+    url, kwargs = calls[0]
+    assert url.endswith("/find_persons_in_photo")
+    assert json.loads(kwargs["data"]["known_encodings"]) == [[0.1, 0.2], [0.3, 0.4]]
+    assert json.loads(kwargs["data"]["known_names"]) == [0, 1]
+    assert kwargs["timeout"] == fapi.TIMEOUT
+
+
+def test_c24_marked_photo_is_decoded(monkeypatch, tmp_path):
+    for name in ("person.jpg", "group.jpg"):
+        (tmp_path / name).write_bytes(b"jpeg")
+    args = (str(tmp_path / "person.jpg"), str(tmp_path / "group.jpg"))
+    fake_service(monkeypatch, {"marked_image": "data:image/jpeg;base64,"
+                               + base64.b64encode(b"marked").decode()})
+    assert fapi.mark_person_in_photo(*args).getvalue() == b"marked"
+    fake_service(monkeypatch, {"marked_image": None, "message": "Person not found"})
+    assert fapi.mark_person_in_photo(*args) is None
+
+
+def test_c24_text_is_written_on_the_image_field(monkeypatch, tmp_path):
+    (tmp_path / "p.jpg").write_bytes(b"jpeg")
+    calls = fake_service(monkeypatch, {"marked_image": "data:image/jpeg;base64,"
+                                       + base64.b64encode(b"texted").decode()})
+    assert fapi.write_text_on_image(str(tmp_path / "p.jpg"), "hi", (1, 2)).getvalue() == b"texted"
+    assert list(calls[0][1]["files"]) == ["image"]

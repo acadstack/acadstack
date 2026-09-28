@@ -33,7 +33,7 @@ def is_hod_for_course_offering(co_id, user_id):
 
 
 def is_course_status_valid_for_current_user(status_old):
-    if status_old in "APP,RET" and not apiVC.is_user_in_role("DEA,ACA,RES"):
+    if status_old in ("APP", "RET") and not apiVC.is_user_in_role("DEA,ACA,RES"):
         return False
     else:
         return True
@@ -325,6 +325,7 @@ def check_enrolled_credits(user_id,acad_session):
     sql_qry = sql_by_id("credits_enrolled_by_student")
     cursor = DB.db.execute_sql(sql_qry, [user_id,acad_session])
     res = cursor.fetchall()
-    total_credits = res[0][0]
+    # SUM is NULL when the student has no credit enrolments (e.g. audit only).
+    total_credits = res[0][0] or 0
     if total_credits > 24:
         raise AcadStackException("Max. 24 credits allowed! Please remove course enrolments.")

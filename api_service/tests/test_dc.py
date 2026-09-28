@@ -43,11 +43,12 @@ def make_dc(p, status="DRA", effective_from="2026-01-01"):
 
 # ---- dc_save ----
 
-async def test_c9_new_dc_is_saved_but_response_is_500(client, auth, people):
+async def test_c9_new_dc_is_saved_and_returned(client, auth, people):
     await auth.login("sup")
-    status, _ = await dc_save(client, dc_payload(people))
-    assert status == 500
+    status, body = await dc_save(client, dc_payload(people))
+    assert status == 200
     dc = M.DcForStudent.get()
+    assert (body["status"], body["body"]["id"]) == ("OK", dc.id)
     assert (dc.student_id, dc.status) == (people["stu"].id, "DRA")
     assert sorted(m.role for m in dc.dc_members) == ["CP", "ME", "SU"]
     assert [m.milestone for m in dc.acad_milestones] == ["DC Proposed"]
@@ -122,15 +123,15 @@ async def test_faculty_cannot_edit_submitted_dc(client, auth, people):
     assert "Insufficient privileges" in body["body"]
 
 
-async def test_c9_approving_dc_adds_milestone_but_response_is_500(client, auth, people):
+async def test_c9_approving_dc_adds_milestone(client, auth, people):
     dc = make_dc(people, status="SUB")
     members = [{"id": m.id, "txn_no": m.txn_no, "role": m.role, "user_id": m.member_id}
                for m in dc.dc_members]
     make_user("aca", role="ACA")
     await auth.login("aca")
-    status, _ = await dc_save(client, dc_payload(people, id=dc.id, txn_no=1,
-                                                 status="APP", members=members))
-    assert status == 500
+    status, body = await dc_save(client, dc_payload(people, id=dc.id, txn_no=1,
+                                                    status="APP", members=members))
+    assert (status, body["body"]["status"]) == (200, "APP")
     dc = M.DcForStudent.get_by_id(dc.id)
     assert (dc.status, dc.txn_no) == ("APP", 2)
     assert [m.milestone for m in dc.acad_milestones] == ["DC Approved"]

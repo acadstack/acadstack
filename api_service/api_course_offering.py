@@ -115,7 +115,7 @@ def _is_course_approved(cour_dict):
         cq = DB.Course.select().where((DB.Course.id == cid) & (DB.Course.status == "APP"))
         return cq.exists()
     except Exception as ex:
-        logging.exception("Error when checking approved course.", ex)
+        logging.exception("Error when checking approved course.")
         return False
 
 
@@ -176,9 +176,9 @@ async def course_offering_save():
                 _save_co_instructors(fd.get("instructors"), co.id)
                 _save_co_categorization(fd.get("course_categories"), co.id)
 
-            send_offering_updated_email(co.id, old_status, co.status)
             txn.commit()
 
+        send_offering_updated_email(co.id, old_status, co.status)
         return await course_offering_view(co.id)
 
     except C.AcadStackException as ae:
@@ -187,7 +187,7 @@ async def course_offering_save():
 
     except Exception as ex:
         msg = "Error when saving course details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
@@ -218,7 +218,7 @@ async def grades_upload():
             return apiVC.error_json("No grades .csv file supplied!")
         filename = secure_filename(grades_file.filename)
         file_path = os.path.join(apiVC.get_upload_folder_for_user(), filename)
-        grades_file.save(file_path)
+        await grades_file.save(file_path)
 
         # Convert all text to uppercase in the grades file
         with open(file_path, 'r') as inp:
@@ -486,27 +486,26 @@ async def fetch_stats(my_id):
         return apiVC.ok_json(res)
     except Exception as ex:
         msg = "Error when fetching stats details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
 def schedule_course_status(config=None):
     try:
-        DB.db.init(config['db_name'], **config['db_args'])
-        DB.db.connect()
-        cur = DB.db.execute_sql(C.sql_by_id("move_running_co_to_finish"), ['%Y-%m-%d'])
-        rc = DB.db.rows_affected(cur)
-        logging.info(f"Changed {rc} Running course offerings to Completed.")
+        # Runs on a scheduler thread, with its own connection to the DB
+        # that the app initialised.
+        with DB.db.connection_context():
+            cur = DB.db.execute_sql(C.sql_by_id("move_running_co_to_finish"), ['%Y-%m-%d'])
+            rc = DB.db.rows_affected(cur)
+            logging.info(f"Changed {rc} Running course offerings to Completed.")
 
-        cur = DB.db.execute_sql(C.sql_by_id("move_enrolling_co_to_running"), ['%Y-%m-%d'])
-        rc = DB.db.rows_affected(cur)
-        logging.info(f"Changed {rc} Enrolling course offerings to Running.")
+            cur = DB.db.execute_sql(C.sql_by_id("move_enrolling_co_to_running"), ['%Y-%m-%d'])
+            rc = DB.db.rows_affected(cur)
+            logging.info(f"Changed {rc} Enrolling course offerings to Running.")
 
     except Exception as ex:
         msg = "Error when updating course status."
-        logging.exception(msg, ex)
-    finally:
-        DB.db.close()
+        logging.exception(msg)
 
 
 @C.rbac

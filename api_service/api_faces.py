@@ -21,6 +21,13 @@ import face_api_proxy as fapi
 from validation_checks import is_current_user_in_role_and_id
 
 def process_photos_zip(zip_file):
+    # Runs as a background task on a worker thread, which needs its own
+    # DB connection.
+    with DB.db.connection_context():
+        return __process_photos_zip(zip_file)
+
+
+def __process_photos_zip(zip_file):
     recs = 0
     try:
         with ZipFile(zip_file) as myzip:
@@ -82,7 +89,7 @@ async def kface_bulk_add():
             return apiVC.error_json("No file supplied!")
         filename = secure_filename(zipf.filename)
         file_path = os.path.join(apiVC.get_upload_folder_for_user(), filename)
-        zipf.save(file_path)
+        await zipf.save(file_path)
         APP.add_background_task(process_photos_zip, file_path)
         return apiVC.ok_json("Submitted the photos for processing.")
     except Exception as ex:

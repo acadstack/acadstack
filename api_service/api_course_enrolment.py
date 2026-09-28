@@ -44,7 +44,8 @@ def __check_student_fees_status():
         qry = DB.FeesTransaction.select() \
             .where(
             (DB.FeesTransaction.student == apiVC.logged_in_user().id) &
-            (DB.FeesTransaction.acad_session.in_(apiVC.current_acad_session_list())) &
+            # Trimester sessions count too, not just semesters.
+            (DB.FeesTransaction.acad_session.in_(apiVC.current_acad_session_list(sem_only=False))) &
             (DB.FeesTransaction.is_deleted != True) &
             (DB.FeesTransaction.fees_txn_amt > 0)
         )
@@ -261,7 +262,7 @@ def __compute_cgpa_sgpa_ec(courses, degree):
                 raise AcadStackException(
                     f"LTP data not in L-T-P-S-C format for course {c["code"]}")
 
-            is_credit_course = c["enrol_type"] in "C,CM,CC"
+            is_credit_course = c["enrol_type"] in ("C", "CM", "CC")
             # Total registered credits
             creg += cc
             if is_credit_course:
@@ -393,7 +394,7 @@ def get_student_courses_perf_filtered(stu, include_attendance,
 @rbac
 async def drop_withdraw_course(my_id, status):
     try:
-        if status not in "DROP,WDRAW":
+        if status not in ("DROP", "WDRAW"):
             return apiVC.error_json(f"Invalid status {status}! Only drop/withdraw allowed!")
 
         # Raises AcadStackException
@@ -409,11 +410,11 @@ async def drop_withdraw_course(my_id, status):
         return apiVC.ok_json("Course enrollment updated successfully")
     except AcadStackException as ex:
         msg = "Error when dropping/withdrawing the course"
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(str(ex))
     except Exception as ex:
         msg = "Error when dropping/withdrawing the course"
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
@@ -450,7 +451,7 @@ async def get_instructor_courses_enrol():
                         "advisor_enrol": result_adv})
     except Exception as ex:
         msg = "Error when fetching DB.CourseEnrollment details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
@@ -584,7 +585,7 @@ async def download_course_enrollments(co_id, is_grades=False):
 
 @rbac(roles=["FAC", "ACA", "DEA"])
 async def download_enrollments_for_grades(co_id):
-    return download_course_enrollments(co_id, True)
+    return await download_course_enrollments(co_id, True)
 
 
 @rbac
@@ -674,6 +675,7 @@ async def enroll_in_courses():
             __check_student_fees_status()
         CREDIT_NA_ALLOWED_MSG = ""
         ALLOWED_COURSES = []
+        saved_ids = []
         logging.debug("Enrolling student in courses: {}".format(fd))
         if fd["co_ids"]:
             with DB.db.atomic() as txn:
@@ -694,6 +696,9 @@ async def enroll_in_courses():
                         ALLOWED_COURSES.append(ccode)
                     conflicts = __get_slot_conflicts(co_id, std_id)
                     if len(conflicts) > 0:
+                        # Leaving atomic() by return commits, so undo the
+                        # courses already saved in this request.
+                        txn.rollback()
                         return apiVC.error_json(conflicts)
 
                     coe = DB.CourseEnrollment()
@@ -711,10 +716,12 @@ async def enroll_in_courses():
                             apiVC.save_entity(coe)
                         logging.debug("Saved: {}".format(coe))
                         VAL.check_enrolled_credits(std_id,co.acad_session)
-                        send_enrolment_email(coe.id)
+                        saved_ids.append(coe.id)
 
                 # VAL.check_enrolled_credits(std_id)
                 txn.commit()
+            for ce_id in saved_ids:
+                send_enrolment_email(ce_id)
             if CREDIT_NA_ALLOWED_MSG == "":
                 return apiVC.ok_json("Enrollment requested successfully!")
             elif (len(ALLOWED_COURSES) != 0 and len(CREDIT_NA_ALLOWED_MSG)):
@@ -747,6 +754,7 @@ async def change_enroll_status():
         #     return VC.error_json("You do not have privileges to approve one or more of the selected enrolments!")
 
         ce_ownership = __get_ce_ownership(eids)
+        changed_ids = []
         with DB.db.atomic() as txn:
             for eid in eids:
                 ce = DB.CourseEnrollment.get_by_id(eid)
@@ -778,8 +786,10 @@ async def change_enroll_status():
 
                 ce.enrol_status = new_status
                 if apiVC.update_entity(DB.CourseEnrollment, ce) == 1:
-                    send_enrolment_email(eid)
+                    changed_ids.append(eid)
             txn.commit()
+        for eid in changed_ids:
+            send_enrolment_email(eid)
 
         logging.info("Enrolled students in courses: {}".format(fd))
         return apiVC.ok_json("Changed successfully!")
@@ -858,14 +868,14 @@ async def course_enrollment_save():
                 apiVC.save_entity(coe)
                 logging.debug(f"Inserted DB.CourseEnrollment: {coe}")
 
-            send_enrolment_email(coe.id, old_rec=old_data)
             txn.commit()
 
+        send_enrolment_email(coe.id, old_rec=old_data)
         return await course_enrollment_view(coe.id)
     except AcadStackException as ae:
         logging.exception(ae)
         return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when saving course enrollment details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)

@@ -49,7 +49,15 @@ def init_routes(bp: Blueprint):
 
 
 def _process_attendance_photos(ap_id):
+    # Runs as a background task on a worker thread, which needs its own
+    # DB connection.
+    with DB.db.connection_context():
+        __process_attendance_photo(ap_id)
+
+
+def __process_attendance_photo(ap_id):
     logging.info(f"Processing attendance photo ID={ap_id}")
+    ap = None
     try:
         ap = DB.AttendancePhoto.get_by_id(ap_id)
         if ap.status == "DONE":
@@ -100,7 +108,7 @@ def _process_attendance_photos(ap_id):
         logging.info(f"Updated the attendance records for photo ID: {ap_id}")
     except Exception as ex:
         msg = "Error when processing attendance marking task."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         if ap:
             ap.status = "ERROR"
             apiVC.update_entity(DB.AttendancePhoto, ap)
@@ -146,7 +154,7 @@ async def mark_attendance():
             for ph in photos:
                 f_nm = "ATTEND_{0}.jpg".format(uuid.uuid4())
                 file_path = os.path.join(apiVC.get_upload_folder("photos"), f_nm)
-                ph.save(file_path)
+                await ph.save(file_path)
                 ap = DB.AttendancePhoto(attend_dt = DT.now(), 
                         status = "PENDING", offering=int(co),
                         file_name=f_nm)
@@ -163,7 +171,7 @@ async def mark_attendance():
         return apiVC.ok_json(f"Saved {len(photos)} photos for processing.")
     except Exception as ex:
         msg = "Error when saving attendance photos."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
@@ -300,7 +308,7 @@ async def get_student_attendance_details(my_id):
         return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when fetching attendance details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
@@ -366,13 +374,13 @@ async def download_students_list(degree, year_of_entry, dept_name,acad_session):
 
 def schedule_event_alerts(config=None):
     try:
-        DB.db.init(config['db_name'], **config['db_args'])
-        DB.db.connect()
-
-        cur = DB.db.execute_sql(C.sql_by_id("events_today"))
-        events_today = apiVC.result_set_from_cursor(cur)
-        cur = DB.db.execute_sql(C.sql_by_id("events_tomorrow"))
-        events_tomorrow = apiVC.result_set_from_cursor(cur)
+        # Runs on a scheduler thread, with its own connection to the DB
+        # that the app initialised.
+        with DB.db.connection_context():
+            cur = DB.db.execute_sql(C.sql_by_id("events_today"))
+            events_today = apiVC.result_set_from_cursor(cur)
+            cur = DB.db.execute_sql(C.sql_by_id("events_tomorrow"))
+            events_tomorrow = apiVC.result_set_from_cursor(cur)
         if events_today or events_tomorrow:
             send_events_alert_email(events_today, events_tomorrow)
             logging.info("Sent the academic events alert email.")
@@ -380,9 +388,7 @@ def schedule_event_alerts(config=None):
             logging.info("No events alert information to send.")
     except Exception as ex:
         msg = "Error when fetching event alerts."
-        logging.exception(msg, ex)
-    finally:
-        DB.db.close()
+        logging.exception(msg)
 
 @C.rbac(roles=["ACA", "DEA"])
 async def download_dept_wise_avg(form_type, acad_session):
@@ -559,14 +565,14 @@ async def dc_save():
                 return apiVC.error_json("Failed to save details. "
                                      "Please refresh and try again.")
 
-        return dc_details(dc.id)
+        return await dc_details(dc.id)
 
     except C.AcadStackException as ae:
         logging.exception(ae)
         return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when saving DC details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         if "Duplicate entry " in str(ex):
             msg = "Duplicate record! Please check existing DC for the student."
         return apiVC.error_json(msg)
@@ -618,7 +624,7 @@ async def dc_details(dc_id):
 
     except Exception as ex:
         msg = "Error when loading Dc details."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 

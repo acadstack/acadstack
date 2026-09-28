@@ -7,6 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
+import asyncio
 import base64
 import csv
 import hmac
@@ -348,6 +349,14 @@ async def user_save():
                 and "SUP" in (user_mod.role, user_fd.get("role"))):
             return apiVC.error_json("Only a superuser can edit a superuser or grant that role!")
 
+        # Call the face service before opening the transaction, and off the
+        # event loop.
+        if "photo_new" in fd:
+            img_data_b64 = fd["photo_new"]
+            if not img_data_b64.startswith(apiVC.B64_HDR):
+                raise C.AcadStackException("Expected JPEG images only!")
+            face_enc = await asyncio.to_thread(__encode_face_to_json, img_data_b64)
+
         with DB.db.atomic() as txn:
             if cid:
                 if user_mod.is_locked and not fd.get("is_locked"):
@@ -376,21 +385,17 @@ async def user_save():
                 user_mod.person = per
                 user_mod.password_hashed = C.hash_password(C.get_rand_str())
                 C.update_model_skip_unknown(user_mod, user_fd)
-                CM.send_user_creation_email(fd.get("email"), fd.get("login_id"))
                 apiVC.save_entity(user_mod)
                 logging.debug("Inserted DB.User: {}".format(user_mod))
 
             # Save the photos
             if "photo_new" in fd:
                 kf_mod = DB.KnownFace()
-                img_data_b64 = fd["photo_new"]
-                if not img_data_b64.startswith(apiVC.B64_HDR):
-                    raise C.AcadStackException("Expected JPEG images only!")
                 img_data = base64.b64decode(img_data_b64[len(apiVC.B64_HDR):])
                 # Save the image to disk
                 kf_mod.photo = apiVC.save_file_to_uploads_folder("photos", img_data)
                 kf_mod.user = user_mod
-                kf_mod.face_enc = __encode_face_to_json(img_data_b64)
+                kf_mod.face_enc = face_enc
                 apiVC.save_entity(kf_mod)
 
                 # Delete the old photo, if it belongs to this user
@@ -400,6 +405,8 @@ async def user_save():
                         (DB.KnownFace.user == user_mod.id)).execute()
 
             txn.commit()
+        if not cid:
+            CM.send_user_creation_email(fd.get("email"), fd.get("login_id"))
         return await user_view(my_id=user_mod.id)
 
     except Exception as ex:
@@ -447,7 +454,7 @@ async def bulk_add_users():
             return apiVC.error_json("No file supplied!")
         local_file_nm = C.get_rand_str(4) + "_" + secure_filename(users_file.filename)
         file_path = os.path.join(apiVC.get_upload_folder_for_user(), local_file_nm)
-        users_file.save(file_path)
+        await users_file.save(file_path)
         updated = []
         dups = []
         created = 0
@@ -490,7 +497,7 @@ async def bulk_add_users():
                         if creating:
                             created += 1
                     except DB.IntegrityError as ierr:
-                        logging.error("Skipping to next.", ierr)
+                        logging.error(f"Skipping to next. {ierr}")
                         dups.append(__format_row(row))
 
                 txn.commit()
@@ -696,7 +703,7 @@ def oauth_verify(token):
     except Exception as ex:
         # Invalid token
         msg = str(ex) if isinstance(ex, C.AcadStackException) else "Error when authrnticating."
-        logging.exception(msg, ex)
+        logging.exception(msg)
         return apiVC.error_json(msg)
 
 
