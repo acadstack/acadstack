@@ -18,6 +18,7 @@ import api_common as apiVC
 import common as C
 import face_api_proxy as fapi
 import models as M
+import settings
 from acadstack_app import create_app
 from conftest import make_user
 
@@ -241,7 +242,7 @@ async def test_wrong_keys_lock_out_password_reset(client, db):
     make_user("test")
     await request_key(client)
     key = latest_key().prk
-    for _ in range(apiAU.PRK_MAX_WRONG):
+    for _ in range(settings.get("lockout_limit")):
         assert (await reset(client, "BADKEY"))["status"] == "ERROR"
     # The correct key no longer works, and no new key is issued.
     assert (await reset(client, key))["status"] == "ERROR"
@@ -253,9 +254,9 @@ async def test_wrong_keys_lock_out_password_reset(client, db):
 
 async def test_repeated_key_requests_do_not_lock_account(client, db):
     make_user("test")
-    for _ in range(apiAU.PRK_MAX_WRONG + 2):
+    for _ in range(settings.get("lockout_limit") + 2):
         assert (await request_key(client))["status"] == "OK"
-    assert M.PasswordResetKey.select().count() == apiAU.PRK_MAX_WRONG
+    assert M.PasswordResetKey.select().count() == settings.get("lockout_limit")
     assert not M.User.get(M.User.login_id == "test").is_locked
     assert (await reset(client, latest_key().prk))["status"] == "OK"
 

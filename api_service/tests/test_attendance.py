@@ -97,7 +97,7 @@ async def test_student_cannot_upload(client, auth, setup, queued):
 def _stub_face_matching(monkeypatch, found, missing):
     monkeypatch.setattr(apiDC, "_get_face_enc_and_user_info", lambda ap: ([], []))
     monkeypatch.setattr(apiDC.fapi, "find_persons_in_photo",
-                        lambda path, known: (found, missing, len(found) + len(missing), ""))
+                        lambda path, known, tolerance: (found, missing, len(found) + len(missing), ""))
 
 
 def _process_as(app, login_id, ap_id):

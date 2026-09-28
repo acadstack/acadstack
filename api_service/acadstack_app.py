@@ -26,6 +26,7 @@ import api_reports as apiRP
 import api_wflow as apiWF
 import api_common as apiVC
 import common as C
+import migrate
 import models as M
 
 from quart import Quart
@@ -95,6 +96,9 @@ def create_app(is_testing=False):
     # jobs use it resets their state.
     async def init_db():
         M.db.init(myapp.config['db_name'], **myapp.config['db_args'])
+        if not is_testing:
+            # Brings a new or older database up to date before any request.
+            migrate.migrate()
     myapp.before_serving(init_db)
 
     myapp.context_processor(C.add_user_to_session)
@@ -119,6 +123,8 @@ def create_app(is_testing=False):
     apiVC.vbp.add_url_rule('/', view_func=apiVC.index, methods=['GET'])
     apiVC.vbp.add_url_rule('/auc', view_func=apiVC.get_active_users, methods=['GET'])
     apiVC.vbp.add_url_rule('/get_static_data', view_func=apiVC.get_static_data, methods=['GET'])
+    apiVC.vbp.add_url_rule('/settings', view_func=apiVC.get_settings, methods=['GET'])
+    apiVC.vbp.add_url_rule('/setting_save', view_func=apiVC.save_setting, methods=['POST'])
 
     # Attendance related
     apiVC.vbp.add_url_rule('/kface_bulk_add', view_func=apiFC.kface_bulk_add, methods=['POST'])

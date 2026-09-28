@@ -8,7 +8,6 @@ services:
     restart: always
     volumes:
       - ./pgdata:/var/lib/postgresql/data
-      # - ./initdb:/docker-entrypoint-initdb.d
     ports:
       - "${DB_PORT}:5432"
 

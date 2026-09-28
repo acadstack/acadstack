@@ -18,6 +18,7 @@ import create_email as CM
 import models as DB
 import common as C
 import api_common as apiVC
+import settings as ST
 import face_api_proxy as fapi
 
 from datetime import datetime as DT, timedelta
@@ -68,11 +69,11 @@ def __encode_face_to_json(photo_str):
             "Please supply a JPG format image. Mere renaming to .jpg won't work!")
 
 
-# A reset key is valid for PRK_TTL. After PRK_MAX_WRONG wrong keys the
-# outstanding keys are discarded and resets for that login are refused for
-# PRK_TTL. At most PRK_MAX_WRONG keys are issued per login within PRK_TTL.
+# A reset key is valid for PRK_TTL. After the lockout_limit setting's number
+# of wrong keys the outstanding keys are discarded and resets for that login
+# are refused for PRK_TTL. At most that many keys are issued per login within
+# PRK_TTL.
 PRK_TTL = timedelta(minutes=30)
-PRK_MAX_WRONG = 5
 PRK_SENT_MSG = ("If the login id and email match an account, a password "
                 "reset key has been emailed to it.")
 PRK_INVALID_MSG = "Invalid or expired reset key."
@@ -84,7 +85,7 @@ _DUMMY_HASH = C.hash_password(C.get_rand_str(16))
 
 def __prk_locked_out(login_id):
     count, since = APP.prk_failures.get(login_id, (0, None))
-    if count < PRK_MAX_WRONG:
+    if count < ST.get("lockout_limit"):
         return False
     if DT.now() - since < PRK_TTL:
         return True
@@ -95,7 +96,7 @@ def __prk_locked_out(login_id):
 def __record_wrong_prk(login_id):
     count, _ = APP.prk_failures.get(login_id, (0, None))
     APP.prk_failures[login_id] = (count + 1, DT.now())
-    if count + 1 >= PRK_MAX_WRONG:
+    if count + 1 >= ST.get("lockout_limit"):
         logging.warning(f"Too many wrong reset keys for {login_id}; "
                         "password reset locked out.")
         __clear_prk_for_user(login_id)
@@ -122,7 +123,7 @@ async def gen_prk():
             recent = DB.PasswordResetKey.select().where(
                 (DB.PasswordResetKey.login_id == login_id) &
                 (DB.PasswordResetKey.ins_ts > DT.now() - PRK_TTL)).count()
-            if recent >= PRK_MAX_WRONG:
+            if recent >= ST.get("lockout_limit"):
                 logging.warning(f"Too many password reset key requests for {login_id}.")
             else:
                 prk_str = C.get_rand_str(size=8)
@@ -269,15 +270,15 @@ async def user_find():
         if lname:
             query = query.where(DB.User.last_name.contains(lname))
 
-        users = query.order_by(-DB.User.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        users = query.order_by(-DB.User.id).paginate(pg_no, ST.get("page_size"))
         serialized = []
         for r in users:
             uobj = apiVC.model_to_dict(r, exclude=[DB.User.password_hashed])
             uobj["photo"] = r.known_faces[0].photo if r.known_faces else ""
             serialized.append(uobj)
 
-        has_next = len(users) >= apiVC.PAGE_SIZE
-        res = {"users": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(users) >= ST.get("page_size")
+        res = {"users": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
         return apiVC.ok_json(res)
 

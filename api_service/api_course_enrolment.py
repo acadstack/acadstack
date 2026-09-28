@@ -8,6 +8,7 @@ from common import AcadStackException, rbac, sql_by_id
 from create_email import send_enrolment_email
 from playhouse.shortcuts import model_to_dict
 import api_common as apiVC
+import settings as ST
 import validation_checks as VAL
 import models as DB
 import common as C
@@ -671,7 +672,7 @@ async def enroll_in_courses():
         std_id = int(fd["user_id"])
         VAL.is_current_user_in_role_and_id("STU", "user_id", std_id, 
             "Student attempted to enrol someone else in a course.")
-        if not APP.config.get("disable_fees_check"):
+        if ST.get("fees_check_enabled"):
             __check_student_fees_status()
         CREDIT_NA_ALLOWED_MSG = ""
         ALLOWED_COURSES = []

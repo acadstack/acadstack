@@ -80,7 +80,14 @@ current shell: `source app_env_vars.env`
 1. `cd ./api_service`
 1. `source ~/.venv/AcadStack/bin/activate` to activate the python virtual environment.
 1. Run `python demo_data.py config.json` to create the database and populate with demo data. Check the `demo_data.py`
-script for more details and options.
+script for more details and options. To start with an empty database instead, skip this step: when the
+application starts it creates the schema (see `api_service/migrations/`) and, if there are no users yet,
+a superuser `admin` whose password it prints once.
+The lists that differ between universities (departments, degrees, course slots, course types, minors and
+concentrations) are rows of the `vocabitem` table; edit them with SQL (`is_deleted = true` hides an entry).
+The known thresholds (maximum credits, face-match tolerance, lockout limit, page size, fee check) are listed
+in `api_service/settings.py`; a superuser changes them with `POST /acadstack/setting_save`
+(`{"key": ..., "value": ...}`) and lists them with `GET /acadstack/settings`.
 1. Run `python main.py` to start the web application.
 1. Open `http://localhost:5300/acadstack/app/index.html` Change the port as per your config.json setting.
 1. Login using ID `acad.user` and password `abcd1234`

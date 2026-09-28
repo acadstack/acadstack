@@ -11,11 +11,12 @@ import json, logging, os, re, uuid
 import numpy as np
 import common as C
 import models as M
+import settings as ST
 from typing import Any, Dict, Type
 from pathlib import Path
 from io import BytesIO
 from quart import current_app as APP
-from quart import (has_request_context, jsonify, session)
+from quart import (has_request_context, jsonify, request, session)
 from quart.blueprints import Blueprint
 from datetime import datetime as DT
 from playhouse.shortcuts import model_to_dict
@@ -24,8 +25,6 @@ from playhouse.shortcuts import model_to_dict
 # logger.addHandler(logging.StreamHandler())
 # logger.setLevel(logging.DEBUG)
 
-# Query page size
-PAGE_SIZE = 25
 B64_HDR = "data:image/jpeg;base64,"
 
 vbp = Blueprint('bp', __name__, template_folder='templates')
@@ -136,12 +135,25 @@ async def index():
     return await APP.send_static_file('default.html')
 
 
+# Lists that differ between universities. They are stored in the VocabItem
+# table; the lists that code depends on stay in static_data.json.
+DB_VOCABS = ("Departments", "Degrees", "CourseSlots", "CourseTypes",
+             "MinorConcSpecialization")
+
+
 def static_data_dict():
     acs = __acad_sessions_nearby()
     with open(os.path.join(APP.root_path, "static_data.json"), "r") as str_json:
         sd = json.load(str_json)
-        sd["AcademicSessions"] = acs if acs else []
-        return sd
+    sd["AcademicSessions"] = acs if acs else []
+    for v in DB_VOCABS:
+        sd[v] = [{"id": "", "value": "-Select-"}]
+    rows = M.VocabItem.select().where(M.VocabItem.is_deleted == False) \
+        .order_by(M.VocabItem.vocab, M.VocabItem.sort_order, M.VocabItem.id)
+    for r in rows:
+        if r.vocab in DB_VOCABS:
+            sd[r.vocab].append({"id": r.code, "value": r.label})
+    return sd
 
 
 def academic_session_valid(ac_sess:str)->bool:
@@ -161,6 +173,21 @@ async def get_static_data():
         msg = "Error when loading static data."
         logging.exception(msg)
         return error_json(msg)
+
+
+@C.rbac(roles=["SUP"])
+async def get_settings():
+    return ok_json(ST.all_settings())
+
+
+@C.rbac(roles=["SUP"])
+async def save_setting():
+    fd = await request.get_json(force=True)
+    try:
+        ST.save(fd.get("key"), fd.get("value"))
+    except ValueError as ex:
+        return error_json(str(ex))
+    return ok_json(ST.all_settings())
 
 
 def label_for_static_data_item(item_code, items_map):

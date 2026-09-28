@@ -7,7 +7,6 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import logging
 from datetime import datetime as DT
 
 import peewee as ORM
@@ -16,43 +15,6 @@ from playhouse.postgres_ext import JSONField, PooledPostgresqlExtDatabase
 # Deferred initialization
 # db = ORM.PostgresqlDatabase(None)
 db = PooledPostgresqlExtDatabase(None)
-
-# List of degree programs
-DEGREES = [
-    ("BTE", "B.Tech"),
-    ("MTE", "M.Tech"),
-    ("MSR", "M.S (Research)"),
-    ("MSC", "M.Sc"),
-    ("BMD", "B.Tech-M.Tech Dual"),
-    ("PHD", "PhD"),
-    ("MCS_AI", "M.Tech(AI)"),
-    ("MEE_SIGNAL", "M.Tech(Signal Processing)"),
-    ("MEE_MICRO", "M.Tech(Micro. & VLSI)"),
-    ("MEE_POWER", "M.Tech(Power Engg.)"),
-    ("MME_THERM", "M.Tech(Thermal Engg.)"),
-    ("MME_MANUF", "M.Tech(Manufacturing)"),
-    ("MCE_MECHA", "M.Tech(Mechanics And Design)")
-]
-
-
-def create_schema():
-    logging.info("Creating DB tables")
-    with db:
-        db.create_tables([User, KnownFace, Person, Course,
-                          PasswordResetKey, CourseOffering,
-                          CourseCategory, UserDoc,
-                          CourseEnrollment, StudentAttendance,
-                          CourseInstructor, WorkflowNote,
-                          BatchAdvisors, AcademicCalendar,
-                          FeedbackForm, FeedbackQuestion,
-                          CourseInstructorFeedback,
-                          StudentFeedbackStatus,
-                          StudentSupervisor, CourseSlotTiming,
-                          FeesTransaction, StudentCredits, DcForStudent,
-                          DcMember, PhDProgressReport, AcademicMilestone,
-                          AttendancePhoto, SystemSetting])
-        logging.info("DB tables created.")
-
 
 class BaseModel(ORM.Model):
     id = ORM.BigAutoField()
@@ -90,17 +52,14 @@ class Person(BaseModel):
     org_id = ORM.CharField(max_length=40, unique=True)
     gender = ORM.FixedCharField(max_length=1, null=True)
 
-    # Dept. code defined in static_data.json
+    # Dept. code from the Departments list (VocabItem)
     dept_name = ORM.CharField(max_length=10)
     year_of_entry = ORM.CharField(max_length=4, null=True)  # yyyy
-    degree = ORM.CharField(max_length=20, choices=DEGREES, null=True)
+    degree = ORM.CharField(max_length=20, null=True)
     category = ORM.CharField(max_length=10, null=True) # SC, ST, OBC, EWS, GEN, PWD
     deg_type = ORM.CharField(max_length=10, null=True) # REG, DWM, DWC
     deg_type_spec = ORM.CharField(max_length=10, null=True)
     current_status = ORM.CharField(max_length=10, null=True) # REG, WTH, MDL
-
-    def get_degree_label(self):
-        return dict(self.DEGREES)[self.degree]
 
 
 class User(BaseModel):
@@ -267,7 +226,7 @@ class CourseOffering(BaseModel):
                        default="E")
     slot = ORM.CharField(max_length=10, null=True)
     section = ORM.CharField(max_length=2, default="A")
-    # Dept. code defined in static_data.json
+    # Dept. code from the Departments list (VocabItem)
     dept_name = ORM.CharField(max_length=10, null=True)
 
     def get_status_label(self):
@@ -284,7 +243,7 @@ class CourseCategory(BaseModel):
     offering = ORM.ForeignKeyField(CourseOffering, null=True,
                                backref='course_categories',
                                on_delete='SET NULL')
-    degree = ORM.CharField(max_length=20, choices=DEGREES, default="ALL")
+    degree = ORM.CharField(max_length=20, default="ALL")
     dept = ORM.CharField(max_length=4, null=True)
     category = ORM.CharField(max_length=4, null=True)
     for_entry_years = ORM.CharField(max_length=100, null=True)
@@ -606,15 +565,23 @@ class AttendancePhoto(BaseModel):
             (('offering', 'attend_dt', 'file_name'), True),
         )
 
-class SystemSetting(BaseModel):
-    group = ORM.CharField(max_length=60, index=True)
-    name = ORM.CharField(max_length=200, index=True)
-    is_json = ORM.BooleanField(index=True)
-    value_text = ORM.TextField(null=True)
-    value_json = JSONField(default={}, null=True)
+class VocabItem(BaseModel):
+    """An entry of a list that differs between universities, such as the
+    departments or degrees. The lists are served with the static data and are
+    edited with SQL; setting is_deleted hides an entry."""
+    vocab = ORM.CharField(max_length=40)
+    code = ORM.CharField(max_length=20)
+    label = ORM.CharField(max_length=200)
+    sort_order = ORM.IntegerField(default=0)
 
     class Meta:
         indexes = (
-            # Unique index
-            (('group', 'name', 'is_json'), True),
+            (('vocab', 'code'), True),
         )
+
+
+class Setting(BaseModel):
+    """A value of one of the known settings in settings.py. A setting with no
+    row here has its default value."""
+    key = ORM.CharField(max_length=60, unique=True)
+    value = JSONField()

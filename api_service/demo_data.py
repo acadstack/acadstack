@@ -18,6 +18,7 @@ from psycopg2 import sql
 from datetime import timedelta
 
 import common as C
+import migrate
 import models as M
 import api_reports as R
 
@@ -25,16 +26,15 @@ with open('static_data.json', 'r') as file:
     static_data = json.load(file)
 
 
-DEPTS = [entry.get('id') for entry in static_data.get('Departments', []) if entry.get('id')][1:]
 DEG_TYPES = [entry.get('id') for entry in static_data.get('DegreeType', []) if entry.get('id')][1:]
-DEGREES = [entry.get('id') for entry in static_data.get('Degrees', []) if entry.get('id')][1:]
-DEG_SPL = [entry.get('id') for entry in static_data.get('MinorConcSpecialization', []) if entry.get('id')][1:]
-COURSE_CAT = [entry.get('id') for entry in static_data.get('CourseTypes', []) if entry.get('id')][1:]
 PERSON_CAT = [entry.get('id') for entry in static_data.get('PersonCategories', []) if entry.get('id')][1:]
 ENROL_TYPES = [entry.get('id') for entry in static_data.get('EnrolTypes', []) if entry.get('id')][1:]
 ENROL_STATUSES = [entry.get('id') for entry in static_data.get('EnrolStatuses', []) if entry.get('id')][1:]
 CO_STATUSES = [entry.get('id') for entry in static_data.get('OfferingStatuses', []) if entry.get('id')][1:]
 GRADES = [entry.get('id') for entry in static_data.get('CourseGrades', []) if entry.get('id')][2:]
+
+# Filled from the VocabItem table once the schema exists.
+DEPTS, DEGREES, DEG_SPL, COURSE_CAT = [], [], [], []
 
 current_year = C.DT.now().year
 ACAD_YEARS = [str(year) for year in range(current_year - 5, current_year + 1)]
@@ -66,13 +66,24 @@ def recreate_db(config):
     C.db.init(db_name, **db_args)
     print(f"Database '{db_name}' initialized.")
 
-    M.create_schema()
+    migrate.migrate()
     print("Created DB tables.")
+
+
+def _vocab_codes(vocab):
+    rows = M.VocabItem.select().where(M.VocabItem.vocab == vocab) \
+        .order_by(M.VocabItem.sort_order, M.VocabItem.id)
+    return [r.code for r in rows][1:]
 
 
 def setup_db_with_demo_data(config):
     print("========== Setting up DEMO database ==========")
-    recreate_db(config)    
+    recreate_db(config)
+    global DEPTS, DEGREES, DEG_SPL, COURSE_CAT
+    DEPTS = _vocab_codes("Departments")
+    DEGREES = _vocab_codes("Degrees")
+    DEG_SPL = _vocab_codes("MinorConcSpecialization")
+    COURSE_CAT = _vocab_codes("CourseTypes")
     _create_acad_sessions()
     _create_users()
     _create_courses()
@@ -86,18 +97,11 @@ def setup_db_with_demo_data(config):
 
 def setup_prod_db(config):
     print("========== Setting up PRODUCTION database ==========")
-    recreate_db(config)
-    p = M.Person(org_id="acad.user", dept_name="ACA")
-    p.save()
-    u = M.User()
-    u.login_id = "acad.user"
-    u.role = "ACA"
-    u.password_hashed = C.hash_password("abcd1234")
-    u.first_name, u.last_name = "Academic", "Section"
-    u.email = "acad.user@iitrpr.ac.in"
-    u.person = p
-    u.save()
-    print("!!!! Added the academic section user. Login: acad.user, password: abcd1234")
+    # Never drops anything: applies pending migrations and, on an empty
+    # database, creates the superuser and prints its credentials.
+    C.db.init(config["db_name"], **config["db_args"])
+    migrate.migrate()
+
 
 def _create_users():
     print("Creating users...")

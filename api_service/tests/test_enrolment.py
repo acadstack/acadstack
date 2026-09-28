@@ -8,6 +8,7 @@ looks wrong; flip them when fixing it.
 import pytest
 
 import models as M
+import settings
 from conftest import enrol, make_offering, make_user, set_event_window
 
 SESSION = "2026-I"
@@ -294,8 +295,8 @@ def emails(monkeypatch):
 
 
 @pytest.fixture
-def no_fees_check(app, monkeypatch):
-    monkeypatch.setitem(app.config, "disable_fees_check", True)
+def no_fees_check(db):
+    settings.save("fees_check_enabled", False)
 
 
 def enrollable(code, slot, day=0, start=9, end=11, acad_session=SESSION):

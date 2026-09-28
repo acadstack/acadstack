@@ -7,6 +7,7 @@ from peewee import IntegrityError
 from create_email import send_course_updated_email
 from validation_checks import is_course_status_valid_for_current_user
 import api_common as apiVC
+import settings as ST
 import models as DB
 import common as C
 
@@ -114,11 +115,11 @@ async def course_find():
         if dept:
             query = query.where(DB.Person.dept_name == dept)
 
-        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        courses = query.order_by(-DB.Course.id).paginate(pg_no, ST.get("page_size"))
         serialized = [apiVC.model_to_dict(r, exclude=[DB.Course.author]) for r in courses]
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= ST.get("page_size")
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
         return apiVC.ok_json(res)
 

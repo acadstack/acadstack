@@ -7,6 +7,7 @@ from create_email import send_grades_submission_email, send_offering_updated_ema
 from datetime import datetime as DT
 from peewee import IntegrityError
 import api_common as apiVC
+import settings as ST
 import validation_checks as VAL
 import common as C
 import models as DB
@@ -370,14 +371,14 @@ async def course_offering_find():
             query = query.where(DB.CourseOffering.acad_session == acad_session)
 
         courses = query.order_by(-DB.CourseOffering.id).distinct() \
-            .paginate(pg_no, apiVC.PAGE_SIZE)
+            .paginate(pg_no, ST.get("page_size"))
         serialized = []
         for crs, co_dict in zip(courses, courses.dicts()):
             obj = __fill_co_search_result(crs, co_dict["EnrollmentsCount"])
             serialized.append(obj)
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= ST.get("page_size")
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
         return apiVC.ok_json(res)
 

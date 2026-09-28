@@ -18,6 +18,7 @@ from create_email import (send_access_violation_alert,
 import logging
 import validation_checks as VAL
 import api_common as apiVC
+import settings as ST
 import models as DB
 import common as C
 import face_api_proxy as fapi
@@ -68,7 +69,8 @@ def __process_attendance_photo(ap_id):
         face_encs, user_info = _get_face_enc_and_user_info(ap)
         file_path = os.path.join(apiVC.get_upload_folder("photos"), ap.file_name)
         tpl = fapi.find_persons_in_photo(file_path,
-                                         (face_encs, user_info))
+                                         (face_encs, user_info),
+                                         ST.get("face_match_tolerance"))
 
         names_found, names_missing, len_grp_faces, im_b64 = tpl
         logging.info(f"Total faces={len_grp_faces}, known={len(names_found)},"
@@ -202,7 +204,7 @@ async def get_instructor_academics(my_id):
                                                               == DB.CourseOffering.id))\
                                     .where(DB.CourseInstructor.instructor_id == my_id)
 
-        courses = query.order_by(DB.CourseOffering.course_id).paginate(pg_no, apiVC.PAGE_SIZE)
+        courses = query.order_by(DB.CourseOffering.course_id).paginate(pg_no, ST.get("page_size"))
 
         serialized = [{"id": r['course_offering_id'], "code": r['course'], 
                        "session": r['acad_session'], "classSize": r['classSize'], 
@@ -210,8 +212,8 @@ async def get_instructor_academics(my_id):
                        "insId": r['instructor'], "feedback": 'NA'}
                       for r in courses.dicts()]
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= ST.get("page_size")
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
 
         return apiVC.ok_json(res)
@@ -239,12 +241,12 @@ async def attendance_find():
         if title:
             query = query.where(DB.CourseOffering.course.title.contains(title))
 
-        courses = query.order_by(-DB.Course.id).paginate(pg_no, apiVC.PAGE_SIZE)
+        courses = query.order_by(-DB.Course.id).paginate(pg_no, ST.get("page_size"))
         serialized = [apiVC.model_to_dict(r, exclude=[DB.CourseOffering.course.author]) 
                       for r in courses]
 
-        has_next = len(courses) >= apiVC.PAGE_SIZE
-        res = {"courses": serialized, "pg_no": pg_no, "pg_size": apiVC.PAGE_SIZE,
+        has_next = len(courses) >= ST.get("page_size")
+        res = {"courses": serialized, "pg_no": pg_no, "pg_size": ST.get("page_size"),
                "has_next": has_next}
         return apiVC.ok_json(res)
 

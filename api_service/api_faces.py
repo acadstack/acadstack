@@ -15,6 +15,7 @@ from quart import request, send_file, current_app as APP
 from werkzeug.utils import secure_filename
 
 import api_common as apiVC
+import settings as ST
 import models as DB
 import common as C
 import face_api_proxy as fapi
@@ -130,7 +131,7 @@ async def get_class_photo(file_name, user_id):
         for kf in qry:
             fp = os.path.join(apiVC.get_upload_folder("photos"),
                                 secure_filename(kf.photo))
-            marked = fapi.mark_person_in_photo(fp, gp)
+            marked = fapi.mark_person_in_photo(fp, gp, ST.get("face_match_tolerance"))
             if not marked:
                 continue
             return await send_file(marked,
