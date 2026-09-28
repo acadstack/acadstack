@@ -5,6 +5,7 @@ import Login from "../components/Login.vue";
 import Help from "../components/Help.vue";
 import Home from "../components/Home.vue";
 import PasswordReset from "../components/PasswordReset.vue";
+import ChangePassword from "../components/ChangePassword.vue";
 import UserDetails from "../components/UserDetails.vue";
 import UserSearch from "../components/UserSearch.vue";
 import KnownFaceZipUpload from "../components/KnownFaceZipUpload.vue";
@@ -70,6 +71,11 @@ const appRoutes = [{
   name: 'pass.reset',
   path: '/pass.reset',
   component: PasswordReset
+},
+{
+  name: 'my.password',
+  path: '/my.password',
+  component: ChangePassword
 },
 {
   path: '/help',

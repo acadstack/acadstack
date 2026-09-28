@@ -240,14 +240,6 @@ def _create_offerings(acs):
             co.status = "F" # Mark past courses as completed
         co.save()
 
-        cc = M.CourseCategory()
-        cc.category = random.choice(COURSE_CAT)
-        cc.degree = random.choice(DEGREES)
-        cc.dept = random.choice(DEPTS)
-        cc.for_entry_years = random.choice(ENTRY_YEARS)
-        cc.offering = co
-        cc.save()
-
         ci = M.CourseInstructor()
         ci.is_coordinator = True
         ci.offering = co
@@ -261,6 +253,24 @@ def _create_offerings(acs):
         sc = random.choice([25, 30, 40])
         lc = random.choice([5, 10])
         students_in_course = random.sample(stu, sc)
+
+        # Seed a CourseCategory row for every dept/degree/entry-year
+        # combination actually enrolled below, so the lookup in
+        # api_course_enrolment.py finds a match instead of warning
+        # "Course categorization not found" for most enrollments.
+        combos = {}
+        for s in students_in_course:
+            combos.setdefault((s.person.degree, s.person.dept_name), set()) \
+                  .add(s.person.year_of_entry)
+        for (degree, dept), years in combos.items():
+            cc = M.CourseCategory()
+            cc.category = random.choice(COURSE_CAT)
+            cc.degree = degree
+            cc.dept = dept
+            cc.for_entry_years = ",".join(sorted(years))
+            cc.offering = co
+            cc.save()
+
         for idx2, s in enumerate(students_in_course):
             ce = M.CourseEnrollment()
             ce.student = s

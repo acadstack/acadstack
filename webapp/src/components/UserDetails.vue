@@ -242,6 +242,20 @@ Component for user details.
               </div>
             </div>
           </div>
+          <div class="row mb-2" v-if="hasPermission('users.edit:any') && user.id != undefined">
+            <div class="col">
+              <button class="btn btn-outline-warning" type="button" @click="genResetKey">
+                Generate Password Reset Key
+                <i class="bi bi-key"></i>
+              </button>
+              <div class="alert alert-info mt-2" v-if="resetKeyInfo">
+                Reset key for <strong>{{resetKeyInfo.login_id}}</strong>:
+                <strong>{{resetKeyInfo.key_code}}</strong> (valid 30 minutes).
+                Share it with the user; they can enter it on the Password Reset screen
+                along with their login ID and email to set a new password.
+              </div>
+            </div>
+          </div>
         </form>
         <div v-if="user.id != undefined">
           <div v-show="tab=='Academics' && user.id">
@@ -281,7 +295,8 @@ export default {
       photo_new: undefined,
       user: { person: { known_faces: [] } } ,
       student_enrollments: {},
-      acad_sessions: []
+      acad_sessions: [],
+      resetKeyInfo: null
     };
   },
   computed: {
@@ -372,7 +387,20 @@ export default {
       this.user = { person: { known_faces: [] } };
       this.photo_new = undefined;
       this.enrollments_loaded = false;
+      this.resetKeyInfo = null;
       console.log("Clearing user details.");
+    },
+    async genResetKey() {
+      let vm = this;
+      if (!confirm(`Generate a password reset key for ${vm.user.login_id}?`)) {
+        vm.setStatusMessage("User canceled.");
+        return;
+      }
+      await vm.doHttp(false, "admin_gen_prk", { id: vm.user.id },
+        (b) => {
+          vm.resetKeyInfo = b;
+          vm.setStatusMessage("Reset key generated.");
+        }, vm.setStatusMessage);
     },
     photo_selected(file) {
       console.log("Adding image.");

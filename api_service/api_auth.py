@@ -35,6 +35,8 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/current_user', view_func=apiVC.get_current_user_and_nav, methods=['GET'])
     bp.add_url_rule('/reset_password', view_func=reset_password, methods=['POST'])
     bp.add_url_rule('/gen_prk', view_func=gen_prk, methods=['POST'])
+    bp.add_url_rule('/change_password', view_func=change_password, methods=['POST'])
+    bp.add_url_rule('/admin_gen_prk', view_func=admin_gen_prk, methods=['POST'])
     bp.add_url_rule('/add_users', view_func=bulk_add_users, methods=['POST'])
     bp.add_url_rule('/user_find', view_func=user_find, methods=['POST'])
     bp.add_url_rule('/user/<int:my_id>', view_func=user_view, methods=['GET'])
@@ -92,6 +94,20 @@ def __record_wrong_prk(login_id):
         __clear_prk_for_user(login_id)
 
 
+def __issue_prk(login_id):
+    """Creates a fresh reset key for login_id, unless too many were issued
+    recently (within PRK_TTL). Returns the key, or None if rate-limited."""
+    recent = DB.PasswordResetKey.select().where(
+        (DB.PasswordResetKey.login_id == login_id) &
+        (DB.PasswordResetKey.ins_ts > DT.now() - PRK_TTL)).count()
+    if recent >= ST.get("lockout_limit"):
+        logging.warning(f"Too many password reset key requests for {login_id}.")
+        return None
+    prk_str = C.get_rand_str(size=8)
+    apiVC.save_entity(DB.PasswordResetKey(login_id=login_id, prk=prk_str))
+    return prk_str
+
+
 async def gen_prk():
     try:
         lf = await request.get_json(force=True)
@@ -110,20 +126,48 @@ async def gen_prk():
             logging.warning(f"Password reset key not issued to {login_id}: "
                             "account or password reset locked.")
         else:
-            recent = DB.PasswordResetKey.select().where(
-                (DB.PasswordResetKey.login_id == login_id) &
-                (DB.PasswordResetKey.ins_ts > DT.now() - PRK_TTL)).count()
-            if recent >= ST.get("lockout_limit"):
-                logging.warning(f"Too many password reset key requests for {login_id}.")
-            else:
-                prk_str = C.get_rand_str(size=8)
-                obj = DB.PasswordResetKey(login_id=login_id, prk=prk_str)
-                apiVC.save_entity(obj)
+            prk_str = __issue_prk(login_id)
+            if prk_str:
                 CM.send_password_reset_code(email, prk_str)
         return apiVC.ok_json(PRK_SENT_MSG)
 
     except Exception as ex:
         msg = "Error when generating password reset key."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@P.require("users.edit")
+async def admin_gen_prk():
+    """Lets an admin (users.edit:any) issue a password reset key for another
+    user, e.g. for onboarding or when the user's email is unreachable. The
+    key is returned in the response so the admin can relay it out of band;
+    the user still sets their own new password via the existing reset-key
+    screen, so the admin never sees or sets the actual password."""
+    try:
+        actor = P.current_actor()
+        if not actor.has("users.edit:any"):
+            return apiVC.error_json("Insufficient privileges to perform the operation!")
+
+        fd = await request.get_json(force=True)
+        u = DB.User.get_or_none(DB.User.id == int(fd.get("id") or 0))
+        if not u:
+            return apiVC.error_json("User not found.")
+
+        prk_str = __issue_prk(u.login_id)
+        if not prk_str:
+            return apiVC.error_json(
+                "Too many reset keys were issued recently for this user. Please try again later.")
+
+        # A fresh admin-issued key should not be blocked by past reset attempts.
+        __clear_prk_for_user(u.login_id)
+        APP.prk_failures.pop(u.login_id, None)
+        CM.send_password_reset_code(u.email, prk_str)
+        logging.info(f"{actor.login_id} issued a password reset key for {u.login_id}.")
+        return apiVC.ok_json({"login_id": u.login_id, "key_code": prk_str})
+
+    except Exception as ex:
+        msg = "Error when generating password reset key for user."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
@@ -167,6 +211,32 @@ async def reset_password():
 
     except Exception as ex:
         msg = "Error when resetting password."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+async def change_password():
+    try:
+        u = apiVC.logged_in_user()
+        if not u:
+            return apiVC.error_json("User not logged in.")
+
+        lf = await request.get_json(force=True)
+        old_password = lf.get("old_password")
+        new_password = lf.get("new_password")
+
+        if not C.verify_password(old_password, u.password_hashed):
+            logging.warning(
+                "Wrong current password given while changing password for {}".format(u.login_id))
+            return apiVC.error_json("Current password is incorrect.")
+
+        u.password_hashed = C.hash_password(new_password)
+        apiVC.save_entity(u)
+        CM.send_password_changed_alert(u.email, u.first_name)
+        return apiVC.ok_json("Your password has been changed!")
+
+    except Exception as ex:
+        msg = "Error when changing password."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
