@@ -154,14 +154,16 @@ async def admin_gen_prk():
         if not u:
             return apiVC.error_json("User not found.")
 
+        # Clear stale keys and lockout state before issuing a fresh key -
+        # doing this after would delete the key just issued below.
+        __clear_prk_for_user(u.login_id)
+        APP.prk_failures.pop(u.login_id, None)
+
         prk_str = __issue_prk(u.login_id)
         if not prk_str:
             return apiVC.error_json(
                 "Too many reset keys were issued recently for this user. Please try again later.")
 
-        # A fresh admin-issued key should not be blocked by past reset attempts.
-        __clear_prk_for_user(u.login_id)
-        APP.prk_failures.pop(u.login_id, None)
         CM.send_password_reset_code(u.email, prk_str)
         logging.info(f"{actor.login_id} issued a password reset key for {u.login_id}.")
         return apiVC.ok_json({"login_id": u.login_id, "key_code": prk_str})
