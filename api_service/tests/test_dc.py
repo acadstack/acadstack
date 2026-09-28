@@ -102,6 +102,14 @@ async def test_overlapping_dc_dates_are_rejected(client, auth, people):
     assert body["body"] == "DC dates overlap with an existing DC of the same student!"
 
 
+async def test_existing_dc_enclosing_the_new_dates_overlaps(client, auth, people):
+    dc = make_dc(people, effective_from="2025-06-01")
+    M.DcForStudent.update(effective_to="2027-01-01").where(M.DcForStudent.id == dc.id).execute()
+    await auth.login("sup")
+    _, body = await dc_save(client, dc_payload(people, effective_to="2026-06-01"))
+    assert body["body"] == "DC dates overlap with an existing DC of the same student!"
+
+
 async def test_open_ended_existing_dc_is_not_seen_as_overlapping(client, auth, people):
     make_dc(people, effective_from="2025-06-01")
     await auth.login("sup")

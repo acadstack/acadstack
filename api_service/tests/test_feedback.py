@@ -69,3 +69,17 @@ async def test_pending_feedback_lists_course_until_submitted(client, auth, setup
     assert [r["enrolment_id"] for r in body["body"]] == [setup["ce"].id]
     await submit(client, setup)
     assert (await pending_feedback(client))["body"] == []
+
+
+async def test_instructor_feedback_without_scaled_answers(client, auth, setup):
+    set_event_window(SESSION, "SHOW_ENDSEM_FB")
+    M.CourseInstructorFeedback.create(acad_session=SESSION, submission_id="s1",
+                                      instructor=setup["ci"], question=setup["q"],
+                                      feedback="yes")
+    await auth.login("ins")
+    co_id = setup["ce"].course_offering_id
+    res = await client.get(f"/acadstack/get_instructor_feedback/{co_id}/"
+                           f"{setup['ci'].instructor_id}/END_SEM_FB")
+    body = await res.get_json()
+    assert body["status"] == "OK"
+    assert body["body"]["score"] == "No questions on the 1 - 5 scale."

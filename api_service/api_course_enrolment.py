@@ -74,13 +74,29 @@ def __check_student_fees_status():
                 "submit the necessary details first.")
 
 
+def slot_conflicts(new_timings, existing_timings):
+    """The existing slot timings that overlap any of the new ones: same week
+    day and time ranges that intersect (touching ranges don't)."""
+    return [x for x in existing_timings
+            if any(n.week_day == x.week_day and
+                   n.start_time < x.end_time and x.start_time < n.end_time
+                   for n in new_timings)]
+
+
 def __get_slot_conflicts(co_id, student_id):
     stu = DB.User.get_or_none(int(student_id))
     if not stu:
         raise AcadStackException("User record not found for student.")
+    co = DB.CourseOffering.get_or_none(int(co_id))
+    if not co:
+        return []
+
+    # Only the student's other offerings in the same session can clash.
     slots = []
-    for ce in stu.enrollments.where(DB.CourseEnrollment.
-                                    enrol_status.in_(["IPEN", "APEN", "ENRO"])):
+    for ce in stu.enrollments.join(DB.CourseOffering).where(
+            DB.CourseEnrollment.enrol_status.in_(["IPEN", "APEN", "ENRO"]) &
+            (DB.CourseOffering.acad_session == co.acad_session) &
+            (DB.CourseOffering.id != co.id)):
         if ce.course_offering.slot:
             slots.append(ce.course_offering.slot)
 
@@ -88,26 +104,21 @@ def __get_slot_conflicts(co_id, student_id):
         (DB.CourseSlotTiming.slot.in_(slots))
         & (DB.CourseSlotTiming.is_deleted != True)))
 
-    co = DB.CourseOffering.get_or_none(int(co_id))
+    course_slots = apiVC.static_data_item("CourseSlots")
+    new_timings = list(DB.CourseSlotTiming.select().where(
+        (DB.CourseSlotTiming.slot == co.slot)
+        & (DB.CourseSlotTiming.is_deleted != True)))
+    if not new_timings:
+        slot_nm = apiVC.label_for_static_data_item(co.slot, course_slots)
+        raise AcadStackException(
+            f"Slot timing not setup for slot: '{slot_nm}'. "
+            "Please contact the administrator.")
     conflicts = []
-    if co:
-        course_slots = apiVC.static_data_item("CourseSlots")
-        cst_qry = DB.CourseSlotTiming.select().where(
-            DB.CourseSlotTiming.slot == co.slot)
-        if not cst_qry.exists():
-            course_slots = apiVC.static_data_item("CourseSlots")
-            slot_nm = apiVC.label_for_static_data_item(co.slot, course_slots)
-            raise AcadStackException(
-                f"Slot timing not setup for slot: '{slot_nm}'. "
-                "Please contact the administrator.")
-        for x in cst_list:
-            if cst_qry[0].week_day == x.week_day and \
-                    ((x.start_time < cst_qry[0].start_time < x.end_time) or
-                     (x.start_time < cst_qry[0].end_time < x.end_time)):
-                slot = apiVC.label_for_static_data_item(x.slot, course_slots)
-                msg = (f"{slot} : {C.WEEK_DAY_NAMES[x.week_day]} "
-                        f"{x.start_time}-{x.end_time}")
-                conflicts.append(msg)
+    for x in slot_conflicts(new_timings, cst_list):
+        slot = apiVC.label_for_static_data_item(x.slot, course_slots)
+        msg = (f"{slot} : {C.WEEK_DAY_NAMES[x.week_day]} "
+                f"{x.start_time}-{x.end_time}")
+        conflicts.append(msg)
 
     return conflicts
 
@@ -382,9 +393,9 @@ async def get_passed_courses(user_id):
         if stu:
             res = []
             enrols = stu.enrollments
-            pass_grades = "A,A-,B,B-,C,C-,D,S"
+            pass_grades = TR.PASS_GRADES | {"S"}
             for se in enrols:
-                if se.grade in pass_grades:
+                if se.grade.strip().upper() in pass_grades:
                     res.append(se.course_offering.course.code)
 
             records = {}

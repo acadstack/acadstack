@@ -1,4 +1,3 @@
-import json
 import uuid
 from quart.helpers import send_file
 from create_email import send_access_violation_alert
@@ -294,9 +293,8 @@ async def get_instructor_feedback(co_id, user_id, fb_type):
         questions_data = []
         scores = []
         for row in cursor.fetchall():
-            ques, votes, feedbacks = row[0], row[1], row[2]
-            v_arr = json.loads(votes)
-            fb_arr = json.loads(feedbacks)
+            # psycopg2 decodes the JSON_AGG columns into lists.
+            ques, v_arr, fb_arr = row[0], row[1], row[2]
             total = sum(v_arr)
             pct_votes = [round(100 * p / total, 2) for p in v_arr]
             q_score = _compute_fbq_score(pct_votes, fb_arr)
@@ -330,8 +328,11 @@ async def get_instructor_feedback(co_id, user_id, fb_type):
 
                 text_data[fq].append(obj.feedback)
 
-        avg_score = round(sum(scores)/len(scores), 2)
-        score_exp = "Avg({0}) = {1} (out of 5)".format(" + ".join([str(x) for x in scores]), avg_score)
+        if scores:
+            avg_score = round(sum(scores)/len(scores), 2)
+            score_exp = "Avg({0}) = {1} (out of 5)".format(" + ".join([str(x) for x in scores]), avg_score)
+        else:
+            score_exp = "No questions on the 1 - 5 scale."
         res = {"course": co.course.title,
                "acad_session": co.acad_session,
                "questions_data": questions_data,

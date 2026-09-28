@@ -398,3 +398,66 @@ async def test_c7_coordinator_downloads_enrolments_for_grades(client, auth, setu
     lines = (await res.get_data(as_text=True)).splitlines()
     assert lines[0] == "first_name,last_name,roll_no,grade,code"
     assert lines[1] == "STU,USER,STU,NA,CS101"
+
+
+# ---- slot conflicts ----
+
+from types import SimpleNamespace
+
+
+def timing(day, start, end, slot="X"):
+    return SimpleNamespace(week_day=day, start_time=start, end_time=end, slot=slot)
+
+
+@pytest.mark.parametrize("new,existing,clash", [
+    ((0, 9, 11), (0, 9, 11), True),     # identical times (same slot)
+    ((0, 9, 12), (0, 10, 11), True),    # new range encloses existing
+    ((0, 10, 11), (0, 9, 12), True),    # existing encloses new
+    ((0, 10, 12), (0, 9, 11), True),    # partial overlap
+    ((0, 9, 11), (0, 11, 12), False),   # touching
+    ((0, 9, 11), (1, 9, 11), False),    # other day
+])
+def test_slot_conflicts(new, existing, clash):
+    assert bool(apiCE.slot_conflicts([timing(*new)], [timing(*existing)])) == clash
+
+
+def test_slot_conflicts_checks_every_day_of_the_new_slot():
+    new = [timing(0, 9, 10), timing(2, 9, 10)]
+    assert apiCE.slot_conflicts(new, [timing(2, 9, 10)]) != []
+
+
+async def test_same_slot_in_same_session_clashes(client, auth, setup, no_fees_check, emails):
+    co1 = enrollable("CS301", "A")
+    co2 = make_offering("CS302", acad_session=SESSION, slot="A")
+    M.CourseCategory.create(offering=co2, degree="BTE", dept="CSE", category="PC",
+                            for_entry_years="2024")
+    enrol(setup["stu"], co1, enrol_status="ENRO")
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [co2])
+    assert body["status"] == "ERROR"
+    assert enrolments_in(co2) == 0
+
+
+async def test_same_slot_in_an_earlier_session_does_not_clash(client, auth, setup, no_fees_check, emails):
+    old = enrollable("CS301", "A", acad_session="2025-II")
+    enrol(setup["stu"], old, enrol_status="ENRO")
+    co = make_offering("CS302", acad_session=SESSION, slot="A")
+    M.CourseCategory.create(offering=co, degree="BTE", dept="CSE", category="PC",
+                            for_entry_years="2024")
+    await auth.login("stu")
+    assert (await enroll(client, setup["stu"], [co]))["status"] == "OK"
+
+
+async def test_re_requesting_a_pending_enrolment_does_not_clash_with_itself(client, auth, setup, no_fees_check, emails):
+    co = enrollable("CS301", "A")
+    enrol(setup["stu"], co, enrol_status="IPEN")
+    await auth.login("stu")
+    assert (await enroll(client, setup["stu"], [co]))["status"] == "OK"
+
+
+async def test_passed_courses_match_whole_grades(client, auth, setup):
+    enrol(setup["stu"], make_offering("CS301"), grade="B")
+    enrol(setup["stu"], make_offering("CS302"), grade="")
+    await auth.login("stu")
+    res = await client.get(f"/acadstack/get_passed_courses/{setup['stu'].id}")
+    assert (await res.get_json())["body"] == {"codes": ["CS301"]}

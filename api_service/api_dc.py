@@ -278,11 +278,8 @@ def _raise_on_invalid_dc_dates(dc_id, stu_id, from_dt, to_dt):
     qry = DB.DcForStudent.select().where((DB.DcForStudent.id != dc_id) & \
         (DB.DcForStudent.student == stu_id))
     if to_dt and to_dt != '0000-00-00':
-        qry = qry.where(
-            ((DB.DcForStudent.effective_from.between(from_dt, to_dt)) | \
-            (DB.DcForStudent.effective_to.between(from_dt, to_dt))))
-    else:
-        qry = qry.where((DB.DcForStudent.effective_to >= from_dt))
+        qry = qry.where(DB.DcForStudent.effective_from <= to_dt)
+    qry = qry.where(DB.DcForStudent.effective_to >= from_dt)
     
     if qry.exists():
         raise C.AcadStackException("DC dates overlap with an existing DC of the same student!")
