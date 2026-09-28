@@ -261,18 +261,6 @@ batch_advisor_for_enrolments = """
     AND e.dept_name=a.dept_name AND e.degree=a.for_degree
     WHERE e.enrolment_id IN (%s);"""
 
-is_hod_for_course_offering = """
-    WITH dept_hod as (SELECT u.id as user_id, p.dept_name
-        FROM public.user u JOIN public.person p on p.id=u.person_id
-        WHERE u.role='HOD')
-    SELECT CASE WHEN EXISTS
-        (SELECT hod.user_id
-        FROM public.courseoffering co 
-        JOIN dept_hod hod on hod.dept_name=co.dept_name
-        WHERE co.id=%s AND hod.user_id=%s)
-        THEN TRUE ELSE FALSE
-        END AS is_hod_for_co;"""
-
 pending_enrolments_hod = """
     SELECT 
     ce.id, (c.title||' '||c.code) as course, stu.id as user_id,

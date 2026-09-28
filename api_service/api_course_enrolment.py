@@ -4,7 +4,7 @@ from quart import Blueprint, request
 from quart import current_app as APP
 from quart.helpers import send_file
 from peewee import IntegrityError
-from common import AcadStackException, rbac, sql_by_id
+from common import AcadStackException, sql_by_id
 from create_email import send_enrolment_email
 from playhouse.shortcuts import model_to_dict
 import api_common as apiVC
@@ -12,6 +12,7 @@ import settings as ST
 import validation_checks as VAL
 import models as DB
 import common as C
+import policy as P
 
 
 def __get_ce_ownership(eids):
@@ -41,7 +42,8 @@ def __get_existing_enrolment(co_id, student_id):
 
 
 def __check_student_fees_status():
-    if apiVC.is_user_in_role("STU"):
+    # Applies to users who may enrol only themselves (students).
+    if not P.current_actor().has("enrolments.enrol:any"):
         qry = DB.FeesTransaction.select() \
             .where(
             (DB.FeesTransaction.student == apiVC.logged_in_user().id) &
@@ -392,7 +394,7 @@ def get_student_courses_perf_filtered(stu, include_attendance,
     return {"enrollments": enrol_data, "acad_sessions": acad_sessions}
 
 
-@rbac
+@P.require("enrolments.change")
 async def drop_withdraw_course(my_id, status):
     try:
         if status not in ("DROP", "WDRAW"):
@@ -401,7 +403,7 @@ async def drop_withdraw_course(my_id, status):
         # Raises AcadStackException
         VAL.validate_enrolment_change(my_id, status)
 
-        if apiVC.is_user_in_role("ACA,DEA"):
+        if P.current_actor().has("enrolments.edit:any"):
             status = "ASREJ"
 
         ce = DB.CourseEnrollment.get_by_id(my_id)
@@ -419,7 +421,7 @@ async def drop_withdraw_course(my_id, status):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["FAC", "ACA", "DEA"])
+@P.require("enrolments.pending_instructor")
 async def get_instructor_courses_enrol():
     try:
         res = DB.CourseEnrollment.select(). \
@@ -456,11 +458,11 @@ async def get_instructor_courses_enrol():
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ADV", "ACA", "DEA", "HOD"])
+@P.require("enrolments.pending_advisor")
 async def get_advisor_courses_enrol():
     try:
         qry = sql_by_id("pending_enrolments_advisor")
-        if apiVC.is_user_in_role("HOD"):
+        if P.current_actor().has("enrolments.pending_advisor:dept"):
             qry = sql_by_id("pending_enrolments_hod")
 
         cursor = DB.db.execute_sql(qry, [apiVC.logged_in_user().id])
@@ -474,10 +476,10 @@ async def get_advisor_courses_enrol():
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("students.academics")
 async def get_passed_courses(user_id):
     try:
-        VAL.is_current_user_in_role_and_id("STU", "user_id", user_id, 
+        VAL.check_own_or_any("students.academics", "user_id", user_id, 
             "Student attempted to access passed courses data for someone else.")
 
         stu = DB.User.get_by_id(user_id)
@@ -502,7 +504,7 @@ async def get_passed_courses(user_id):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ACA", "DEA"])
+@P.require("enrolments.bulk_enrol")
 async def bulk_enrol_in_course(entry_no_pattern, co_id):
     try:
         if not apiVC.roll_number_valid(entry_no_pattern):
@@ -514,7 +516,6 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
             DB.Person.org_id.startswith(entry_no_pattern)))
 
         co = DB.CourseOffering.get_by_id(co_id)
-        VAL.check_enrollment_allowed(co)
         num = 0
         with DB.db.atomic() as txn:
             for stu in query:
@@ -538,17 +539,14 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("enrolments.download")
 async def download_course_enrollments(co_id, is_grades=False):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
         sql_id = "enrolled_students"
         co = DB.CourseOffering.get_by_id(co_id)
         if is_grades:
-            if VAL.validate_course_instructor(co_id,
-                    allowed_role=["ACA", "DEA", "HOD"],
-                    coordinator_only=False):
+            if P.current_actor().allowed("grades.upload", own=lambda:
+                    VAL.validate_course_instructor(co_id, coordinator_only=False)):
                 sql_id = "get_course_grades"
             else:
                 sql_id = "enrolled_students_for_grades"
@@ -584,16 +582,14 @@ async def download_course_enrollments(co_id, is_grades=False):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["FAC", "ACA", "DEA"])
+@P.require("grades.upload")
 async def download_enrollments_for_grades(co_id):
     return await download_course_enrollments(co_id, True)
 
 
-@rbac
+@P.require("enrolments.download")
 async def download_course_enrolments(dept_name, entry_year, acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
         if dept_name == "-":
             dept_name = ""
         if entry_year == "-":
@@ -613,10 +609,10 @@ async def download_course_enrolments(dept_name, entry_year, acad_session):
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("students.academics")
 async def get_student_academics(my_id):
     try:
-        VAL.is_current_user_in_role_and_id("STU", "user_id", my_id, 
+        VAL.check_own_or_any("students.academics", "user_id", my_id, 
             "Student attempted to access other's academics details.")
 
         stu = DB.User.get_by_id(my_id)
@@ -633,13 +629,14 @@ async def get_student_academics(my_id):
         return apiVC.error_json(msg)
 
 
-@rbac
+@P.require("students.academics")
 async def get_course_enrollments(my_id):
     try:
         res = DB.CourseEnrollment.select().where(
             DB.CourseEnrollment.course_offering == my_id)
-        if apiVC.is_user_in_role("STU"):
-            res = res.where(DB.CourseEnrollment.student == apiVC.logged_in_user().id)
+        actor = P.current_actor()
+        if not actor.has("students.academics:any"):
+            res = res.where(DB.CourseEnrollment.student == actor.id)
         if res:
             result = []
             for coe in res:
@@ -665,12 +662,12 @@ async def get_course_enrollments(my_id):
         return apiVC.error_json(msg)
 
 
-@rbac(roles=["ACA", "STU"])
+@P.require("enrolments.enrol")
 async def enroll_in_courses():
     try:
         fd = await request.get_json(force=True)
         std_id = int(fd["user_id"])
-        VAL.is_current_user_in_role_and_id("STU", "user_id", std_id, 
+        VAL.check_own_or_any("enrolments.enrol", "user_id", std_id, 
             "Student attempted to enrol someone else in a course.")
         if ST.get("fees_check_enabled"):
             __check_student_fees_status()
@@ -743,7 +740,7 @@ async def enroll_in_courses():
         logging.exception(msg)
         return apiVC.error_json("{0}".format(msg))
 
-@rbac(roles=["ACA", "DEA", "FAC", "HOD"])
+@P.require("enrolments.approve")
 async def change_enroll_status():
     try:
         fd = await request.get_json(force=True)
@@ -751,9 +748,10 @@ async def change_enroll_status():
         status = fd.get("status")
         if len(eids) == 0:
             return apiVC.error_json("Select students to enrol first!")
-        # if VC.is_user_in_role("FAC") and not validate_ce_approver(fd.get("ids")):
-        #     return VC.error_json("You do not have privileges to approve one or more of the selected enrolments!")
-
+        actor = P.current_actor()
+        # Instructors and batch advisors approve their step through
+        # enrolments.approve:own.
+        own = actor.has("enrolments.approve:own")
         ce_ownership = __get_ce_ownership(eids)
         changed_ids = []
         with DB.db.atomic() as txn:
@@ -761,27 +759,26 @@ async def change_enroll_status():
                 ce = DB.CourseEnrollment.get_by_id(eid)
                 enrol_status = ce.enrol_status
                 new_status = ""
-                if apiVC.is_user_in_role(["ACA", "DEA"]):
+                if actor.has("enrolments.edit:any"):
                     new_status = "ENRO" if status == "approve" else "ASREJ"
-                elif apiVC.is_user_in_role(["FAC", "HOD"]):
+                else:
                     ceos = ce_ownership[eid]
                     # User is course instructor
-                    if ceos[0] and not(ceos[1]):
+                    if own and ceos[0] and not(ceos[1]):
                         new_status = "APEN" if status == "approve" else "IREJ"
                     # User is batch advisor
-                    elif ceos[1] and not(ceos[0]):
+                    elif own and ceos[1] and not(ceos[0]):
                         new_status = "ENRO" if status == "approve" else "AREJ"
                     # User is both instrcutor and batch advisor
-                    elif ceos[0] and ceos[1] and enrol_status =="IPEN":
+                    elif own and ceos[0] and ceos[1] and enrol_status =="IPEN":
                         new_status = "APEN" if status == "approve" else "AREJ"
-                    elif ceos[0] and ceos[1] and enrol_status =="APEN":
+                    elif own and ceos[0] and ceos[1] and enrol_status =="APEN":
                         new_status = "ENRO" if status == "approve" else "AREJ"
-                    elif apiVC.is_user_in_role("HOD") and enrol_status =="APEN":
+                    # Advisor's step for any enrolment
+                    elif actor.has("enrolments.approve:any") and enrol_status =="APEN":
                         new_status = "ENRO" if status == "approve" else "AREJ"
                     else:
                         raise AcadStackException("You do not have privileges to change one or more enrollments!")
-                else:
-                    raise AcadStackException("Unexpected user role: "+apiVC.logged_in_user().role)
 
                 VAL.validate_enrolment_change(ce, new_status)
 
@@ -805,7 +802,7 @@ async def change_enroll_status():
         return apiVC.error_json("{0}".format(msg))
 
 
-@rbac
+@P.require("enrolments.change")
 async def course_enrollment_view(my_id):
     try:
         res = DB.CourseEnrollment.get_by_id(my_id)
@@ -824,15 +821,16 @@ async def course_enrollment_view(my_id):
         return apiVC.error_json(msg)
 
 
-# Request fields that coe_save copies onto an enrolment. Students may only
-# drop or withdraw their own enrolment; only ACA/DEA may create one here.
+# Request fields that coe_save copies onto an enrolment. Users allowed only
+# through enrolments.change:own (students) may only drop or withdraw their own
+# enrolment; only holders of enrolments.edit:any may create one here.
 COE_EDIT_FIELDS = ["enrol_type", "enrol_status", "grade", "current_score",
                    "remarks", "txn_no"]
 COE_STUDENT_FIELDS = ["enrol_status", "txn_no"]
 COE_STUDENT_STATUSES = ["DROP", "WDRAW"]
 
 
-@rbac
+@P.require("enrolments.change")
 async def course_enrollment_save():
     try:
         fd = await request.get_json(force=True)
@@ -848,10 +846,11 @@ async def course_enrollment_save():
                 # Raises AcadStackException
                 VAL.validate_enrolment_change(coe, fd.get("enrol_status"))
 
-                if not VAL.is_enrollment_owner_valid(coe):
+                access = VAL.is_enrollment_owner_valid(coe)
+                if not access:
                     return apiVC.error_json("User not allowed to change enrollment!")
 
-                if apiVC.is_user_in_role("STU"):
+                if access == "own":
                     if fd.get("enrol_status") not in COE_STUDENT_STATUSES + [coe.enrol_status]:
                         return apiVC.error_json("Students can only drop or withdraw a course!")
                     allowed = COE_STUDENT_FIELDS
@@ -862,7 +861,7 @@ async def course_enrollment_save():
                     return apiVC.error_json("Could not update. Please try again.")
                 logging.debug(f"Updated DB.CourseEnrollment details: {coe}")
             else:
-                if not apiVC.is_user_in_role(["ACA", "DEA"]):
+                if not P.current_actor().has("enrolments.edit:any"):
                     return apiVC.error_json("User not allowed to create enrollment!")
                 allowed = COE_EDIT_FIELDS + ["course_offering", "student"]
                 C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})

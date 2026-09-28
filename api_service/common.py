@@ -7,13 +7,12 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import base64, hashlib, hmac, inspect, logging, re, secrets, string, toml
-from typing import Any, Callable, Optional
+import base64, hashlib, hmac, logging, re, secrets, string, toml
+from typing import Any, Optional
 from datetime import datetime as DT
 from datetime import date
-from functools import wraps
 from quart import current_app
-from quart import (jsonify, session)
+from quart import session
 
 from jinja2 import Environment, FileSystemLoader
 from argon2 import PasswordHasher
@@ -76,48 +75,6 @@ def add_user_to_session():
     else:
         logging.info("User not in session!")
         return dict()
-
-
-def rbac(_func:Callable=None, *, roles=None):
-    """Decorator that can be applied to a function to perform the role 
-    based access checks for the current user if available in the session.
-    If no authenticated user available in the session, the decorated 
-    function wll not be called and an error JSON message will be returned.
-    If the logged in user has at least one of the roles specified in the
-    list, then the decorated function is called. If the roles list is not
-    supplied then only the presence of the authenticated user in the session
-    is checked before allowing the decorated function invocation.
-    Args:
-        _func (Callable, optional): The function being decorated. Defaults to None.
-        roles (list[str], optional): Roles list allowed. Defaults to None.
-    """
-    allowed = roles.split(",") if isinstance(roles, str) else roles
-
-    def decor_auth(func):
-        @wraps(func)
-        async def wrapper_auth(*args, **kwargs):
-            if "user" not in session:
-                msg = "Login required to access this operation."
-                logging.warning(msg)
-                return jsonify({"status": "ERROR", "body": msg})
-
-            user_role = session["user"]["role"]
-            if allowed and (user_role not in allowed):
-                msg = "You do not have required permissions to access."
-                logging.warning(msg)
-                return jsonify({"status": "ERROR", "body": msg})
-            # Some views are plain functions; their result is not awaitable.
-            result = func(*args, **kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-            return result
-
-        return wrapper_auth
-
-    if _func is None:
-        return decor_auth
-    else:
-        return decor_auth(_func)
 
 
 def jinja2_filter_datefmt(dt, fmt=None):

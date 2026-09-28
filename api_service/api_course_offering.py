@@ -1,7 +1,7 @@
 import csv
 import math
 import os
-from quart import request, Blueprint, current_app as APP
+from quart import request, Blueprint
 from werkzeug.utils import secure_filename
 from create_email import send_grades_submission_email, send_offering_updated_email
 from datetime import datetime as DT
@@ -11,6 +11,7 @@ import settings as ST
 import validation_checks as VAL
 import common as C
 import models as DB
+import policy as P
 import logging
 
 def init_routes(bp:Blueprint):
@@ -76,7 +77,7 @@ def _save_co_categorization(cats, co_id):
             apiVC.save_entity(cc_obj)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_view(my_id):
     try:
 
@@ -120,7 +121,7 @@ def _is_course_approved(cour_dict):
         return False
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA", "HOD"])
+@P.require("offerings.edit")
 async def course_offering_save():
     try:
         fd = await request.get_json(force=True)
@@ -128,11 +129,12 @@ async def course_offering_save():
         cid = int(fd.get("id") or 0)
 
         if cid:
-            if apiVC.is_user_in_role("HOD") and \
-                    not VAL.is_hod_for_course_offering(cid, apiVC.logged_in_user().id):
-                return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
-
-            if not VAL.validate_course_instructor(cid, ["ACA", "DEA", "HOD"]):
+            actor = P.current_actor()
+            if not actor.allowed("offerings.edit",
+                                 own=lambda: VAL.validate_course_instructor(cid),
+                                 dept=lambda: VAL.is_offering_in_actor_dept(cid, actor)):
+                if actor.has("offerings.edit:dept"):
+                    return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
                 return apiVC.error_json("Only the course cordinator can make changes.")
 
         acad_session = (fd.get("acad_session") or "").upper()
@@ -192,7 +194,7 @@ async def course_offering_save():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA"])
+@P.require("grades.upload")
 async def grades_upload():
     try:
         form = await request.form
@@ -208,7 +210,8 @@ async def grades_upload():
                 co_obj.acad_session):
             return apiVC.error_json("Grades upload is not open!")
         # Only the course instructor OR dean may upload the course grades            
-        if not VAL.validate_course_instructor(co_id, allowed_role=["ACA", "DEA"]):
+        if not P.current_actor().allowed("grades.upload",
+                                         own=lambda: VAL.validate_course_instructor(co_id)):
             return apiVC.error_json("Only the course coordinator can upload grades for the course!")
 
         # Raises exception when change not allowed
@@ -322,7 +325,7 @@ def __fill_co_search_result(row, enrol_count):
     return obj
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_find():
     try:
         fd = await request.get_json(force=True)
@@ -413,17 +416,17 @@ def _do_course_offering_lookup(query_str, all_statuses):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_lookup(query_str):
     return _do_course_offering_lookup(query_str, False)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def course_offering_lookup_all(query_str):
     return _do_course_offering_lookup(query_str, True)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def offerings_of_course(my_id):
     try:
         c = DB.Course.get_by_id(my_id)
@@ -441,12 +444,10 @@ async def offerings_of_course(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("offerings.view_stats")
 async def fetch_stats(my_id):
     try:
         res = {"data_att": [], "Weeks": [], "grades": [], "data": []}
-        if apiVC.logged_in_user().role in APP.config["hide_course_stats_from"]:
-            return apiVC.error_json("DB.Course stats are not visible for you!")
 
         cursor = DB.db.execute_sql(C.sql_by_id("course_grades"), [int(my_id)])
         grades = []
@@ -509,13 +510,13 @@ def schedule_course_status(config=None):
         logging.exception(msg)
 
 
-@C.rbac
+@P.require("offerings.view_running")
 async def get_running_courses():
     try:
         cu = apiVC.logged_in_user()
         coq = DB.CourseOffering.select().join(DB.CourseInstructor)
         coq = coq.where(DB.CourseOffering.status=="R")
-        if not apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+        if not P.current_actor().has("offerings.view_running:any"):
             coq = coq.where(DB.CourseInstructor.instructor==cu.id)
         data = []
         for x in coq:

@@ -13,8 +13,7 @@ import uuid
 from quart import Blueprint, request, current_app as APP
 from quart.helpers import send_file
 from datetime import datetime as DT
-from create_email import (send_access_violation_alert, 
-                          send_events_alert_email)
+from create_email import send_events_alert_email
 import logging
 import validation_checks as VAL
 import api_common as apiVC
@@ -22,6 +21,7 @@ import settings as ST
 import models as DB
 import common as C
 import face_api_proxy as fapi
+import policy as P
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/download_degree_wise_students/<string:course_code>/<string:acad_session>',
@@ -137,7 +137,7 @@ def _get_face_enc_and_user_info(ap):
     return face_encs,user_info
 
 
-@C.rbac(roles=["ACA", "FAC"])
+@P.require("attendance.mark")
 async def mark_attendance():
     try:
         form = await request.form
@@ -146,7 +146,8 @@ async def mark_attendance():
         photos = files.getlist("group_photos")
         if not photos:
             return apiVC.error_json("Please select at least one photo.")
-        if not VAL.validate_course_instructor(co, allowed_role=["ACA", "DEA"]):
+        if not P.current_actor().allowed("attendance.mark",
+                                         own=lambda: VAL.validate_course_instructor(co)):
             return apiVC.error_json("Insufficient privileges. Only the course coordinator can upload attendance.")
 
         # Raises exception when change not allowed
@@ -177,10 +178,10 @@ async def mark_attendance():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "FAC", "HOD", "DEA"])
+@P.require("instructors.view")
 async def get_instructor_academics(my_id):
     try:
-        VAL.is_current_user_in_role_and_id("FAC", "user_id", my_id, 
+        VAL.check_own_or_any("instructors.view", "user_id", my_id, 
                                       ("Instructor attempted to access other's"
                                       " academic information."))
 
@@ -225,7 +226,7 @@ async def get_instructor_academics(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("offerings.view")
 async def attendance_find():
     try:
         fd = await request.get_json(force=True)
@@ -256,7 +257,7 @@ async def attendance_find():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["FAC", "ACA", "DEA", "HOD"])
+@P.require("instructors.view")
 async def get_advisor_detail(my_id):
     try:
         res = DB.BatchAdvisors.select().where(
@@ -280,13 +281,13 @@ def __get_attendance_photos(co, attend_dt):
             (DB.AttendancePhoto.attend_dt == attend_dt))
     return [p.file_name for p in res]
 
-@C.rbac
+@P.require("students.academics")
 async def get_student_attendance_details(my_id):
     try:
         ce = DB.CourseEnrollment.select().where(DB.CourseEnrollment.id == my_id)
         if ce:
             roll_no = ce[0].student.person.org_id
-            VAL.is_current_user_in_role_and_id("STU", "org_id", roll_no, 
+            VAL.check_own_or_any("students.academics", "org_id", roll_no, 
                                       "Student attempted to view other's attendance records.")
             attendance = list(ce[0].attendance)  # A list of DB.StudentAttendance objects
             course_title = ce[0].course_offering.course.title
@@ -314,7 +315,7 @@ async def get_student_attendance_details(my_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles="ACA,DEA")
+@P.require("slots.manage")
 async def load_course_slot_timings():
     try:
         cst = DB.CourseSlotTiming.select().where(
@@ -326,7 +327,7 @@ async def load_course_slot_timings():
         return apiVC.error_json("Error occurred when loading course slot timings.")
 
 
-@C.rbac()
+@P.require("calendar.view")
 async def get_open_events():
     try:
         qry = C.sql_by_id("get_open_events")
@@ -343,12 +344,9 @@ async def get_open_events():
         return apiVC.error_json("Failed to fetch open events.")
 
 
-@C.rbac(roles=["PLA"])
+@P.require("reports.students_list")
 async def download_students_list(degree, year_of_entry, dept_name,acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
-        
         if degree == "-":
             degree = ""
         if year_of_entry == "-":
@@ -392,7 +390,7 @@ def schedule_event_alerts(config=None):
         msg = "Error when fetching event alerts."
         logging.exception(msg)
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def download_dept_wise_avg(form_type, acad_session):
     try:
         if form_type == "-":
@@ -412,7 +410,7 @@ async def download_dept_wise_avg(form_type, acad_session):
         logging.exception(msg)
         return apiVC.error_json(msg)
 
-@C.rbac(roles=["ACA", "DEA", "HOD"])
+@P.require("reports.student_strength_download")
 async def download_degree_wise_students(course_code, acad_session):
     try:
         if course_code == "-":
@@ -464,13 +462,14 @@ def _save_dcm(dcm, dc_id):
 
 
 def _raise_on_invalid_dc_change(sup_id, stu_id, old_status):
+    actor = P.current_actor()
+    # DC statuses a supervisor (dc.edit:own) and a department (dc.edit:dept)
+    # may still change; dc.edit:any changes any.
+    editable = (["DRA", "RTS"] if actor.has("dc.edit:own") else []) + \
+               (["SUB", "RTH"] if actor.has("dc.edit:dept") else [])
 
-    #  Editable DC status for roles
-    editable = {"HOD": "SUB,RTH", "FAC": "DRA,RTS"}
-    my_role = apiVC.logged_in_user().role
-
-    if (old_status and not apiVC.is_user_in_role("ACA,DEA")) \
-        and (old_status not in editable.get(my_role)):
+    if (old_status and not actor.has("dc.edit:any")) \
+        and (old_status not in editable):
         raise C.AcadStackException("Insufficient privileges to change  "
                               "Please contact academic section.")
 
@@ -486,11 +485,11 @@ def _raise_on_invalid_dc_change(sup_id, stu_id, old_status):
     if sup.person.dept_name != stu_per.dept_name:
         raise C.AcadStackException("Supervisor and student must be from same department!")
     
-    if apiVC.is_user_in_role("FAC") and sup_id != apiVC.logged_in_user().id:
+    if not actor.allowed("dc.edit", own=lambda: sup_id == actor.id,
+                         dept=lambda: actor.dept == stu_per.dept_name):
+        if actor.has("dc.edit:dept"):
+            raise C.AcadStackException("Only HOD of student's own dept. can make changes!")
         raise C.AcadStackException("You must be the supervisor/HoD/Dean to make changes to ")
-    
-    if apiVC.is_user_in_role("HOD") and apiVC.logged_in_user().person.dept_name != stu_per.dept_name:
-        raise C.AcadStackException("Only HOD of student's own dept. can make changes!")
     
 
 def _raise_on_invalid_dc_dates(dc_id, stu_id, from_dt, to_dt):
@@ -507,7 +506,7 @@ def _raise_on_invalid_dc_dates(dc_id, stu_id, from_dt, to_dt):
         raise C.AcadStackException("DC dates overlap with an existing DC of the same student!")
 
 
-@C.rbac(roles=["ACA", "FAC", "DEA", "HOD"])
+@P.require("dc.edit")
 async def dc_save():
     try:
         fd = await request.get_json(force=True)
@@ -609,12 +608,13 @@ def __to_dc_dict(dc, excl_list=None):
     dc_dict["members"] = dcm_list
     return dc_dict
 
-@C.rbac()
+@P.require("dc.view")
 async def dc_details(dc_id):
     try:
         dc_qry = DB.DcForStudent.select().where(DB.DcForStudent.id == int(dc_id))
-        if apiVC.is_user_in_role("STU"):
-            dc_qry = dc_qry.where(DB.DcForStudent.student == apiVC.logged_in_user().id)
+        actor = P.current_actor()
+        if not actor.has("dc.view:any"):
+            dc_qry = dc_qry.where(DB.DcForStudent.student == actor.id)
         dcd = {}
         if dc_qry.exists():
             dcd = __to_dc_dict(dc_qry[0])
@@ -630,13 +630,14 @@ async def dc_details(dc_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("dc.view")
 async def dc_search():
     try:
         fd = await request.get_json(force=True)
         stu_id = fd.get("student_id") or 0
-        if apiVC.is_user_in_role("STU"):
-            stu_id = apiVC.logged_in_user().id
+        actor = P.current_actor()
+        if not actor.has("dc.view:any"):
+            stu_id = actor.id
         mem_id = fd.get("member_id") or 0
         mem_role = fd.get("member_role") or ""
         dept_name = fd.get("dept_name") or ""
@@ -687,11 +688,9 @@ async def dc_search():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("ppr.edit")
 async def get_dc_students():
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("You are not allowed to access this data.")
         uid = apiVC.logged_in_user().id
         cursor = DB.db.execute_sql(C.sql_by_id("get_dc_students"),[uid])
         data = []
@@ -706,9 +705,7 @@ async def get_dc_students():
         return apiVC.error_json("Failed to fetch DC students.")
 
 
-def __is_dc_member_or_admin(uid, student_id):
-    if apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
-        return True
+def __is_dc_member(uid, student_id):
     q1 = DB.DcMember.select().join(DB.DcForStudent)
     q1 = q1.where(DB.DcMember.member==uid)
     q1 = q1.where(DB.DcForStudent.student==student_id)
@@ -716,7 +713,7 @@ def __is_dc_member_or_admin(uid, student_id):
 
 
 def __raise_on_invalid_ppr_status(old_st, new_st):
-    if old_st == new_st or apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+    if old_st == new_st or P.current_actor().has("ppr.edit:any"):
         return
     tran = "{0}>{1}".format(old_st, new_st)
     allowed = ["DRA>SUB", "SUB>APP"]
@@ -733,19 +730,15 @@ def __ppr_exists(stu_id, acad_sess, dcm_id):
     return q1.exists()
 
 
-@C.rbac
+@P.require("ppr.edit")
 async def save_progress_report():
     try:
-        if apiVC.is_user_in_role("STU"):
-            msg = (f"Student {apiVC.current_login_id()} attempted to "
-                    "submit progress report.")
-            send_access_violation_alert(msg)
-            return apiVC.error_json("You are not allowed to access this data.")
-        uid = apiVC.logged_in_user().id
+        actor = P.current_actor()
+        uid = actor.id
         fd = await request.get_json(force=True)
         pprid = fd.get("id") or 0
         ppr = DB.PhDProgressReport()
-        if not __is_dc_member_or_admin(uid, fd.get("student")):
+        if not actor.allowed("ppr.edit", own=lambda: __is_dc_member(uid, fd.get("student"))):
             raise C.AcadStackException("You must be a DC member!")
         rc = 0
         with DB.db.atomic() as txn:
@@ -781,18 +774,13 @@ async def save_progress_report():
         return apiVC.error_json("Error occurred when saving progress report.")
 
 
-@C.rbac
+@P.require("ppr.view")
 async def get_ppr(myid):
     try:
-        uid = apiVC.logged_in_user().id
+        actor = P.current_actor()
+        uid = actor.id
         ppr = DB.PhDProgressReport.get_by_id(myid)
-        if ppr.student.id != uid and apiVC.is_user_in_role("STU"):
-            msg = (f"Student {apiVC.current_login_id()} attempted to access "
-                    "other's progress report.")
-            send_access_violation_alert(msg)
-            return apiVC.error_json("You are not allowed to access other's report.")
-        
-        if not __is_dc_member_or_admin(uid, ppr.student.id):
+        if not actor.allowed("ppr.view", own=lambda: __is_dc_member(uid, ppr.student.id)):
             raise C.AcadStackException("You must be a DC member!")
         obj = apiVC.model_to_dict(ppr, recurse=False)
         return apiVC.ok_json(obj)
@@ -803,17 +791,12 @@ async def get_ppr(myid):
         return apiVC.error_json("Error occurred when fetching progress report.")
 
 
-@C.rbac
+@P.require("ppr.view")
 async def get_pprs_for_student(myid):
     try:
-        uid = apiVC.logged_in_user().id        
-        if myid != uid and apiVC.is_user_in_role("STU"):
-            msg = (f"Student {apiVC.current_login_id()} attempted to access "
-                    "other's progress reports.")
-            send_access_violation_alert(msg)
-            return apiVC.error_json("You are not allowed to access other's reports.")
-
-        if not __is_dc_member_or_admin(uid, myid):
+        actor = P.current_actor()
+        uid = actor.id
+        if not actor.allowed("ppr.view", own=lambda: __is_dc_member(uid, myid)):
             raise C.AcadStackException("You must be a DC member!")
 
         q1 = DB.PhDProgressReport.select().join(DB.User).where(
@@ -841,11 +824,11 @@ def __is_dc_chair(uid, std_id):
     return q1.exists()
 
 
-@C.rbac
+@P.require("ppr.view")
 async def is_dc_chair(uid, std_id):
     try:
-        if uid != apiVC.logged_in_user().id and \
-                not apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+        actor = P.current_actor()
+        if not actor.allowed("ppr.view", own=lambda: uid == actor.id):
             return apiVC.error_json("You can check only your own DC role!")
         return apiVC.ok_json(__is_dc_chair(uid, std_id))
     except Exception as ex:
@@ -854,11 +837,11 @@ async def is_dc_chair(uid, std_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("attendance.view")
 async def get_daywise_attendance(co_id):
     try:
-        if not VAL.validate_course_instructor(co_id, 
-                                ["SUP", "ACA", "DEA", "HOD"], False):
+        if not P.current_actor().allowed("attendance.view", own=lambda:
+                VAL.validate_course_instructor(co_id, coordinator_only=False)):
             return apiVC.error_json("You cannot access this attendance data!")
         sql = C.sql_by_id("daywise_attendance")
         cursor = DB.db.execute_sql(sql, [co_id])
@@ -873,11 +856,11 @@ async def get_daywise_attendance(co_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("attendance.view")
 async def get_course_attd_on_date(co_id, att_dt):
     try:
-        if not VAL.validate_course_instructor(co_id, 
-                                ["SUP", "ACA", "DEA", "HOD"], False):
+        if not P.current_actor().allowed("attendance.view", own=lambda:
+                VAL.validate_course_instructor(co_id, coordinator_only=False)):
             return apiVC.error_json("You cannot access this attendance data!")
         aq = DB.StudentAttendance.select().join(DB.CourseEnrollment)
         aq = aq.join(DB.User).join(DB.Person)

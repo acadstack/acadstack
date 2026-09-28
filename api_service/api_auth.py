@@ -20,6 +20,7 @@ import common as C
 import api_common as apiVC
 import settings as ST
 import face_api_proxy as fapi
+import policy as P
 
 from datetime import datetime as DT, timedelta
 from quart import Blueprint, request, current_app as APP
@@ -186,7 +187,7 @@ def __clear_prk_for_user(login_id):
         DB.PasswordResetKey.login_id == login_id).execute()
 
 
-@C.rbac
+@P.require("users.view")
 async def get_my_photo():
     try:
         cu = apiVC.logged_in_user()
@@ -232,7 +233,7 @@ async def login():
                         "deg_type_spec": u.person.deg_type_spec, 
                         "current_status": u.person.current_status}
             apiVC.session['user'] = user_obj
-            nav = apiVC.init_navbar_items(u.role, u.person.degree)
+            nav = apiVC.init_navbar_items(P.current_actor(), u.person.degree)
             APP.active_users[C.this_user_name_login_id()] = DT.now()
             return apiVC.ok_json({"user": user_obj, "nav": nav})
     except Exception as ex:
@@ -241,12 +242,9 @@ async def login():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("users.find")
 async def user_find():
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("DB.User search not allowed!")
-
         fd = await request.get_json(force=True)
         dept_name, org_id, fname, lname, role = fd.get("dept_name"), \
                                                 fd.get("org_id"), fd.get("first_name"), fd.get("last_name"), \
@@ -288,11 +286,11 @@ async def user_find():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("users.view")
 async def user_view(my_id):
     try:
-        cu = apiVC.logged_in_user()
-        if (apiVC.is_user_in_role(["STU"])) and my_id != cu.id:
+        actor = P.current_actor()
+        if not actor.allowed("users.view", own=lambda: my_id == actor.id):
             return apiVC.error_json("You cannot access other users' information!")
 
         res = DB.User.select(DB.User, DB.Person).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER).where(DB.User.id == my_id)
@@ -315,14 +313,14 @@ async def user_view(my_id):
 
 
 # Request fields that user_save copies onto the user and person records.
-# Users who are not ACA/SUP may edit only their own names.
+# Users without users.edit:any may edit only their own names.
 USER_ADMIN_FIELDS = ["login_id", "email", "first_name", "last_name", "role",
                      "is_locked", "txn_no"]
 USER_SELF_FIELDS = ["first_name", "last_name", "txn_no"]
 PERSON_EXCLUDED_FIELDS = ["id", "is_deleted", "ins_ts", "upd_ts", "txn_login_id"]
 
 
-@C.rbac
+@P.require("users.edit")
 async def user_save():
     try:
         fd = await request.get_json(force=True)
@@ -330,9 +328,9 @@ async def user_save():
         logging.info("Saving user details: {}".format(
             {k: v for k, v in fd.items() if k != "photo_new"}))
         cid = int(fd.get("id") or 0)
-        cu = apiVC.logged_in_user()
-        is_admin = apiVC.is_user_in_role(["ACA", "SUP"])
-        if (not is_admin) and cid != cu.id:
+        actor = P.current_actor()
+        is_admin = actor.has("users.edit:any")
+        if (not is_admin) and cid != actor.id:
             return apiVC.error_json("Insufficient privileges to perform the operation!")
         if not is_admin and "photo_new" in fd:
             return apiVC.error_json("Only the academic section can change the photo!")
@@ -342,13 +340,17 @@ async def user_save():
         has_person = is_admin and "person" in fd
         person_fd = {k: v for k, v in (fd.get("person") or {}).items()
                      if k not in PERSON_EXCLUDED_FIELDS} if has_person else {}
-        if "role" in user_fd and user_fd["role"] not in dict(DB.User.ROLES):
+        if "role" in user_fd and not DB.Role.get_or_none(DB.Role.code == user_fd["role"]):
             return apiVC.error_json("Invalid role!")
 
         user_mod = DB.User.get_by_id(cid) if cid else DB.User()
-        if (not apiVC.is_user_in_role(["SUP"])
-                and "SUP" in (user_mod.role, user_fd.get("role"))):
-            return apiVC.error_json("Only a superuser can edit a superuser or grant that role!")
+        # Only a permissions admin may edit one, or grant a role that makes one.
+        if (not actor.has(P.ADMIN_PERM)
+                and any(P.ADMIN_PERM in P.perms_of(r) for r in (user_mod.role, user_fd.get("role")) if r)):
+            return apiVC.error_json("Only a permissions admin can edit a permissions admin or grant that role!")
+        if (cid == actor.id and actor.has(P.ADMIN_PERM) and "role" in user_fd
+                and P.ADMIN_PERM not in P.perms_of(user_fd["role"])):
+            return apiVC.error_json(f"You cannot change your own role to one without {P.ADMIN_PERM}!")
 
         # Call the face service before opening the transaction, and off the
         # event loop.
@@ -416,7 +418,7 @@ async def user_save():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac
+@P.require("users.lookup")
 async def instructor_lookup(query_str):
     try:
         query = DB.User.select(DB.User.id, DB.Person.id, DB.Person.dept_name,
@@ -445,11 +447,9 @@ def __format_row(row):
     return "{0}, {1}, {2}".format(row["org_id"], row["login_id"], row["email"])
 
 
-@C.rbac(roles=["ACA", "SUP"])
+@P.require("users.bulk_add")
 async def bulk_add_users():
     try:
-        if not apiVC.is_user_in_role(["ACA", "SUP"]):
-            return apiVC.error_json("Operation not allowed due to insufficient privileges!")
         users_file = (await request.files)['users_file']
         if users_file.filename == '':
             return apiVC.error_json("No file supplied!")
@@ -513,11 +513,9 @@ async def bulk_add_users():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("student_docs.upload")
 async def upload_student_doc():
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students not allowed to upload here!")
         form = await request.form
         stu_id = form['student_id']
         doc_desc = form['description']
@@ -544,11 +542,11 @@ async def upload_student_doc():
 
 
 def __is_doc_access_allowed(stu_id):
-    return apiVC.is_user_in_role(["ACA", "DEA"]) or \
-           int(stu_id) == apiVC.logged_in_user().id
+    actor = P.current_actor()
+    return actor.allowed("student_docs.access", own=lambda: int(stu_id) == actor.id)
 
 
-@C.rbac
+@P.require("student_docs.access")
 async def get_student_docs(stu_id):
     try:
         if __is_doc_access_allowed(stu_id):
@@ -563,7 +561,7 @@ async def get_student_docs(stu_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("student_docs.access")
 async def delete_doc(doc_id):
     try:
         doc = DB.UserDoc.get_by_id(int(doc_id))
@@ -583,7 +581,7 @@ async def delete_doc(doc_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("student_docs.access")
 async def get_doc(doc_id):
     try:
         u_doc = DB.UserDoc.get_or_none(DB.UserDoc.id == int(doc_id))
@@ -609,7 +607,7 @@ async def get_doc(doc_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("fees.view")
 async def get_fees_txn_image(file_name):
     try:
         fp = os.path.join(apiVC.get_upload_folder(),
@@ -621,12 +619,13 @@ async def get_fees_txn_image(file_name):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("users.view")
 async def get_image(file_name):
     try:
-        if apiVC.is_user_in_role("STU") and not DB.KnownFace.select().where(
+        actor = P.current_actor()
+        if not actor.allowed("users.view", own=lambda: DB.KnownFace.select().where(
                 (DB.KnownFace.photo == file_name) &
-                (DB.KnownFace.user == apiVC.logged_in_user().id)).exists():
+                (DB.KnownFace.user == actor.id)).exists()):
             return apiVC.error_json("Access to the image not allowed!")
         fp = os.path.join(apiVC.get_upload_folder(),
                           "photos", secure_filename(file_name))
@@ -637,7 +636,7 @@ async def get_image(file_name):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("users.lookup")
 async def student_lookup(query_str):
     try:
         if not apiVC.roll_number_valid(query_str):
@@ -708,7 +707,7 @@ def oauth_verify(token):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["SUP"])
+@P.require("users.delete")
 async def user_delete():
     fd = await request.get_json(force=True)
     user_ids = fd.get("ids")
@@ -721,12 +720,13 @@ async def user_delete():
         return apiVC.error_json("No user specified! Nothing to delete.")
 
 
-@C.rbac
+@P.require("fees.submit")
 async def save_registration_fees_txn_info():
     try:
         form = await request.form
         stu_id = int(form['student_id'])
-        if apiVC.is_user_in_role("STU") and stu_id != apiVC.logged_in_user().id:
+        actor = P.current_actor()
+        if not actor.allowed("fees.submit", own=lambda: stu_id == actor.id):
             logging.error(
                 "DB.User {0} attempted to submit fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
             return apiVC.error_json("You are not allowed to submit data for others! This incident has been reported.")
@@ -778,10 +778,11 @@ async def save_registration_fees_txn_info():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("fees.view")
 async def get_student_reg_fees_data(stu_id):
     try:
-        if apiVC.is_user_in_role("STU") and stu_id != apiVC.logged_in_user().id:
+        actor = P.current_actor()
+        if not actor.allowed("fees.view", own=lambda: stu_id == actor.id):
             logging.error(
                 "DB.User {0} attempted to fetch fees transaction data for user {1}.".format(apiVC.current_login_id(), stu_id))
             return apiVC.error_json("You are not allowed to access others' data! This incident has been reported.")
@@ -800,15 +801,15 @@ async def get_student_reg_fees_data(stu_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("fees.delete")
 async def delete_student_reg_fees_data(fee_id):
     try:
         ftxn = DB.FeesTransaction.get_or_none(int(fee_id))
         if not ftxn:
             return apiVC.error_json("Invalid transaction details!")
 
-        if not apiVC.is_user_in_role(["ACA", "DEA", "SUP"]) and \
-                ftxn.student.id != apiVC.logged_in_user().id:
+        actor = P.current_actor()
+        if not actor.allowed("fees.delete", own=lambda: ftxn.student.id == actor.id):
             logging.error("DB.User {0} attempted to delete fees transaction data for user {1}."
                           .format(apiVC.current_login_id(), ftxn.student.login_id))
             return apiVC.error_json("You are not allowed to delete others' data! "+
@@ -832,12 +833,9 @@ async def delete_student_reg_fees_data(fee_id):
         logging.exception(ex)
         return apiVC.error_json(msg)
 
-@C.rbac
+@P.require("students.find")
 async def find_students():
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Operation not allowed!")
-
         fd = await request.get_json(force=True)
         fname, lname, email = fd.get("first_name"), \
             fd.get("last_name"),  fd.get("email")
@@ -903,7 +901,7 @@ def __get_advisor(for_degree, fey, dept_name):
         return None
 
 
-@C.rbac
+@P.require("advisors.view")
 async def find_advisor():
     try:
         fd = await request.get_json(force=True)
@@ -929,7 +927,7 @@ async def find_advisor():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("advisors.assign")
 async def assign_advisor():
     try:
         fd = await request.get_json(force=True)

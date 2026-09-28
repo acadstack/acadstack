@@ -25,6 +25,7 @@ import pytest
 import common as C
 import migrate
 import models as M
+import policy
 import settings
 from acadstack_app import create_app
 
@@ -61,12 +62,15 @@ def app():
 def db(app):
     """The model database bound to the test schema, with all tables but the
     default list entries empty."""
-    # The default list entries come from the baseline migration; keep them.
+    # The default list entries, roles and permissions come from the baseline
+    # migration; keep them.
+    seeded = (M.VocabItem, M.Role, M.Permission, M.RolePermission)
     tables = ", ".join(f'"{m._meta.table_name}"' for m in M.BaseModel.__subclasses__()
-                       if m is not M.VocabItem)
+                       if m not in seeded)
     M.db.connect(reuse_if_open=True)
     M.db.execute_sql(f'TRUNCATE {tables} RESTART IDENTITY CASCADE')
     settings._cache.clear()
+    policy.clear_cache()
     yield M.db
     M.db.close()
 

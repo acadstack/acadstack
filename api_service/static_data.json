@@ -68,18 +68,6 @@
         {"id": "P", "value": "Present"},
         {"id": "L", "value": "On Leave"}
     ],
-    "UserRoles": [
-        {"id": "", "value": "-Select-"},
-        {"id": "STU", "value": "Student"},
-        {"id": "RES", "value": "Research Section"},
-        {"id": "ACA", "value": "Academic Section"},
-        {"id": "FAC", "value": "Faculty"},
-        {"id": "HOD", "value": "Head of Dept."},
-        {"id": "DEA", "value": "Dean of Academics"},
-        {"id": "SUP", "value": "Superuser"},
-        {"id": "GUE", "value": "Guest"},
-        {"id": "PLA", "value": "Placement Cell"}
-    ],
     "FormTypes": [
         {"id": "END_SEM_FB", "value": "End-semester feedback"},
         {"id": "MID_SEM_FB", "value": "Mid-semester feedback"}

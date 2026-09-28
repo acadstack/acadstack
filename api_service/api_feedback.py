@@ -2,7 +2,7 @@ import json
 import uuid
 from quart.helpers import send_file
 from create_email import send_access_violation_alert
-from validation_checks import (is_current_user_in_role_and_id, 
+from validation_checks import (check_own_or_any, 
                                get_event_date, 
                                is_feedback_open)
 from quart import Blueprint, request
@@ -10,6 +10,7 @@ import logging
 import api_common as apiVC
 import models as DB
 import common as C
+import policy as P
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/form_save', view_func=save_feedback_form, methods=['POST'])
@@ -30,7 +31,7 @@ def init_routes(bp: Blueprint):
                        view_func=download_quewise_facfeedbk_score, methods=['GET'])
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.manage_forms")
 async def save_feedback_form():
     try:
         fd = await request.get_json(force=True)
@@ -69,7 +70,7 @@ async def save_feedback_form():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("feedback.view_forms")
 def get_feedback_forms():
     try:
         res = DB.FeedbackForm.select()
@@ -112,7 +113,7 @@ def __fetch_feedback_form(qry_type, qry_param):
     return res
 
 
-@C.rbac
+@P.require("feedback.view_forms")
 def load_feedback_form(form_id):
     try:
         return apiVC.ok_json(__fetch_feedback_form("BY_FORM_ID", form_id))
@@ -122,7 +123,7 @@ def load_feedback_form(form_id):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("feedback.view_forms")
 def get_active_feedback_form(form_type):
     try:
         return apiVC.ok_json(__fetch_feedback_form("BY_FORM_TYPE", form_type))
@@ -136,7 +137,7 @@ def get_active_feedback_form(form_type):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("feedback.view_forms")
 def student_enrolments_for_fb(form_type):
     try:
         stu = apiVC.current_login_id()
@@ -157,16 +158,9 @@ def student_enrolments_for_fb(form_type):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("feedback.submit")
 async def save_course_instructor_feedback():
     try:
-        if not apiVC.is_user_in_role("STU"):
-            msg = "Non-student user ({0}) attempted to submit course feedback.".format(apiVC.current_login_id())
-            logging.error(msg)
-            send_access_violation_alert(msg)
-            return apiVC.error_json(
-                "Only students can submit the feedback! Your attempt to submit feedback will be reported.")
-
         fd = await request.get_json(force=True)
         ff_id = int(fd["form"]["id"])
         fform = DB.FeedbackForm.get_or_none(ff_id)
@@ -255,10 +249,10 @@ def _compute_fbq_score(pct_votes, fbs):
     return round(score, 2)
 
 
-@C.rbac(roles=["FAC", "ACA", "DEA"])
+@P.require("feedback.view_instructor")
 async def get_instructor_feedback(co_id, user_id, fb_type):
     try:
-        is_current_user_in_role_and_id("FAC", "user_id", user_id, "Instructor attempted to access other's feedback.")
+        check_own_or_any("feedback.view_instructor", "user_id", user_id, "Instructor attempted to access other's feedback.")
         # if VC.is_user_in_role("HOD") and not is_hod_for_course_offering(
         #     co_id, VC.logged_in_user().id):
         #     logging.error("HOD {0} attempted to access other's feedback. CO_ID={1}".format(VC.current_login_id(), co_id))
@@ -282,7 +276,7 @@ async def get_instructor_feedback(co_id, user_id, fb_type):
 
         ci = co.instructors.where(DB.CourseInstructor.instructor == user_id)
         if not ci.exists():
-            if apiVC.is_user_in_role("FAC"):
+            if not P.current_actor().has("feedback.view_instructor:any"):
                 return apiVC.error_json("Cannot access other course's feedback! This incident will be reported.")
             else:
                 return apiVC.error_json("Course instructor not found!")
@@ -354,7 +348,7 @@ async def get_instructor_feedback(co_id, user_id, fb_type):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def download_feedback_stats(form_type, acad_session):
     try:
         if form_type == "-":
@@ -375,7 +369,7 @@ async def download_feedback_stats(form_type, acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def download_course_wise_faculty_score(form_type, acad_session):
     try:
         if form_type == "-":
@@ -396,7 +390,7 @@ async def download_course_wise_faculty_score(form_type, acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA"])
+@P.require("feedback.reports")
 async def download_quewise_facfeedbk_score(form_type, acad_session):
     try:
         if form_type == "-":

@@ -70,22 +70,12 @@ class User(BaseModel):
     last_name = ORM.CharField(max_length=100, null=True)
     is_locked = ORM.BooleanField(default=False)
     person = ORM.ForeignKeyField(Person, backref='users', unique=True, null=True)
-    ROLES = [
-        ("STU", 'Student'),
-        ("ACA", 'Academic Section'),
-        ("FAC", 'Faculty'),
-        ("HOD", 'Head of Dept.'),
-        ("DEA", 'Dean of Academics'),
-        ("SUP", 'Superuser'),
-        ("GUE", 'Guest'),
-        ("PLA", 'Placement Cell'),
-        ("ADV", 'Advisor'),
-        ("RES", 'Research Section')
-    ]
-    role = ORM.CharField(max_length=4, choices=ROLES, default="GUE")
+    # Role codes are rows of the Role table.
+    role = ORM.CharField(max_length=4, default="GUE")
 
     def get_role_label(self):
-        return dict(self.ROLES)[self.role]
+        r = Role.get_or_none(Role.code == self.role)
+        return r.label if r else self.role
 
     def get_full_name(self):
         return "{0} {1}".format(self.first_name, self.last_name)
@@ -585,3 +575,26 @@ class Setting(BaseModel):
     row here has its default value."""
     key = ORM.CharField(max_length=60, unique=True)
     value = JSONField()
+
+
+class Role(BaseModel):
+    """A named set of permissions; each user has one role."""
+    code = ORM.CharField(max_length=4, unique=True)
+    label = ORM.CharField(max_length=100)
+
+
+class Permission(BaseModel):
+    """A permission that the code checks; see policy.py for the naming."""
+    code = ORM.CharField(max_length=60, unique=True)
+    description = ORM.CharField(max_length=200)
+
+
+class RolePermission(BaseModel):
+    """Grants a permission to a role."""
+    role = ORM.CharField(max_length=4)
+    permission = ORM.CharField(max_length=60)
+
+    class Meta:
+        indexes = (
+            (('role', 'permission'), True),
+        )

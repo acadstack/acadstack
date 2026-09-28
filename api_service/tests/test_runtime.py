@@ -1,4 +1,4 @@
-"""Tests for request plumbing: role checks, DB connections per request, and
+"""Tests for request plumbing: permission checks, DB connections per request, and
 background tasks."""
 
 import asyncio
@@ -8,38 +8,43 @@ from quart import current_app, session
 import api_common as apiVC
 import common as C
 import models as M
+import policy as P
 import tasks_helper as TH
 import validation_checks as VAL
 from conftest import make_user
 
 
-async def test_c4_role_checks_match_whole_codes(app):
-    async with app.test_request_context("/"):
-        session["user"] = {"role": "CA"}
-        assert not apiVC.is_user_in_role("ACA,DEA")
-        assert not apiVC.is_user_in_role("ACA")
-        session["user"] = {"role": "DEA"}
-        assert apiVC.is_user_in_role("ACA,DEA")
-        assert apiVC.is_user_in_role(["ACA", "DEA"])
+def _session_user(role):
+    return {"id": 1, "login_id": "u", "role": role, "dept": "CSE"}
 
 
-async def test_c4_course_status_check_matches_whole_codes(app):
+async def test_permission_checks_match_whole_names(app):
+    actor = P.Actor(1, "u", "X", "CSE", frozenset({"users.view:any", "fees.view:own"}))
+    assert actor.can("users.view") and actor.can("fees.view")
+    assert not actor.can("users") and not actor.can("users.vie")
+    assert actor.allowed("users.view")
+    assert not actor.allowed("fees.view")
+    assert actor.allowed("fees.view", own=lambda: True)
+    assert not actor.allowed("fees.view", dept=lambda: True)
+
+
+async def test_c4_course_status_check_matches_whole_codes(app, db):
     async with app.test_request_context("/"):
-        session["user"] = {"role": "FAC"}
+        session["user"] = _session_user("FAC")
         assert VAL.is_course_status_valid_for_current_user("DRA")
         assert VAL.is_course_status_valid_for_current_user("")
         assert not VAL.is_course_status_valid_for_current_user("APP")
 
 
-async def test_c4_rbac_roles_string_matches_whole_codes(app):
-    @C.rbac(roles="ACA,DEA")
+async def test_require_checks_the_role_permissions(app, db):
+    @P.require("users.find")
     def view():
         return "ran"
 
     async with app.test_request_context("/"):
-        session["user"] = {"role": "CA"}
+        session["user"] = _session_user("STU")
         assert (await (await view()).get_json())["status"] == "ERROR"
-        session["user"] = {"role": "DEA"}
+        session["user"] = _session_user("DEA")
         assert await view() == "ran"
 
 

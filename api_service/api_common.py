@@ -12,6 +12,7 @@ import numpy as np
 import common as C
 import models as M
 import settings as ST
+import policy as P
 from typing import Any, Dict, Type
 from pathlib import Path
 from io import BytesIO
@@ -92,30 +93,6 @@ def roll_number_valid(rollno:str)->bool:
     return re.match(r"^20\d{2}[A-Za-z]{2,4}\d{0,4}$", rollno, re.IGNORECASE)
 
 
-def is_user_in_role(role):
-    """Checks whether the currently logged in user has at least
-    one of the given role(s).
-
-    The supplied argument can be a single role code string, e.g., "STU",
-    or it can be a list of such codes, e.g., ["HOD", "ACA"]
-    or even a comma-separated list of role codes such as:
-    "HOD,ACA,DEA".
-    The role codes must be unique strings.
-    
-    Args:
-        role (str or list of str): Role code or a list of role codes.
-
-    Returns:
-        bool: True if the user has any one of the role(s) supplied, else False
-    """
-    if "user" in session:
-        u = session['user']
-        roles = role.split(",") if isinstance(role, str) else role
-        return u["role"] in roles
-    else:
-        return False
-
-
 def logged_in_user():
     if "user" in session:
         u = session['user']
@@ -125,7 +102,7 @@ def logged_in_user():
 def get_current_user_and_nav():
     if "user" in session:
         u = session['user']
-        nav = init_navbar_items(u["role"], u["degree"])
+        nav = init_navbar_items(P.current_actor(), u["degree"])
         return ok_json({"user": u, "nav": nav})
     else:
         return error_json("User not logged in.")
@@ -153,6 +130,8 @@ def static_data_dict():
     for r in rows:
         if r.vocab in DB_VOCABS:
             sd[r.vocab].append({"id": r.code, "value": r.label})
+    sd["UserRoles"] = [{"id": "", "value": "-Select-"}] + [
+        {"id": r.code, "value": r.label} for r in M.Role.select().order_by(M.Role.id)]
     return sd
 
 
@@ -165,7 +144,7 @@ def static_data_item(item_key):
     return sd[item_key]
 
 
-@C.rbac
+@P.require("app.access")
 async def get_static_data():
     try:
         return ok_json(static_data_dict())
@@ -175,12 +154,12 @@ async def get_static_data():
         return error_json(msg)
 
 
-@C.rbac(roles=["SUP"])
+@P.require("settings.manage")
 async def get_settings():
     return ok_json(ST.all_settings())
 
 
-@C.rbac(roles=["SUP"])
+@P.require("settings.manage")
 async def save_setting():
     fd = await request.get_json(force=True)
     try:
@@ -188,6 +167,21 @@ async def save_setting():
     except ValueError as ex:
         return error_json(str(ex))
     return ok_json(ST.all_settings())
+
+
+@P.require(P.ADMIN_PERM)
+async def get_permissions():
+    return ok_json(P.all_grants())
+
+
+@P.require(P.ADMIN_PERM)
+async def save_role_permissions():
+    fd = await request.get_json(force=True)
+    try:
+        P.save(fd.get("role"), fd.get("label"), fd.get("permissions"), P.current_actor())
+    except ValueError as ex:
+        return error_json(str(ex))
+    return ok_json(P.all_grants())
 
 
 def label_for_static_data_item(item_code, items_map):
@@ -270,12 +264,12 @@ def get_upload_folder_for_user():
     return uf
 
 
-@C.rbac
+@P.require("app.access")
 async def home():
     return ok_json("Welcome HOME!")
 
 
-@C.rbac(roles=["ACA", "SUP", "DEA"])
+@P.require("users.view_active")
 async def get_active_users():
     try:
         users = []
@@ -307,13 +301,15 @@ def logout(send_response=True):
         return ok_json("Logged out.")
 
 
-def init_navbar_items(role_code:str, degree:str)->Dict[str, Any]:
-    """Initializes the navigation bar menus/items for the given role code
-    and degree (relevant for only student roles).
+def init_navbar_items(actor:P.Actor, degree:str)->Dict[str, Any]:
+    """Builds the navigation menus for the given user. Each nav.json entry
+    names the permission of the endpoint its page opens: a scoped code such
+    as "fees.view:own" must be held exactly, a plain one at any scope.
 
     Args:
-        role_code (str): User's role
-        degree (str): Degree code if student.
+        actor (P.Actor): The logged-in user.
+        degree (str): The user's degree; the PhD menu is shown to users who
+            act only on their own records (students) only if it is PHD.
 
     Returns:
         Dict[str, Any]: JSON object containing the nav bar items.
@@ -321,26 +317,21 @@ def init_navbar_items(role_code:str, degree:str)->Dict[str, Any]:
     try:
         with open(os.path.join(APP.root_path, "nav.json"), "r") as nd:
             nav = json.load(nd)
-            links = []
-            menus = {}
-            for n in nav:
-                r = n.pop("roles")
-                if "-{}".format(role_code) in r:
+        links = []
+        menus = {}
+        for n in nav:
+            perm = n.pop("perm")
+            if not (actor.has(perm) if ":" in perm else actor.can(perm)):
+                continue
+            m = n.pop("menu")
+            if m:
+                if m.upper() == "PHD" and actor.own_records_only and degree != "PHD":
                     continue
+                menus.setdefault(m, []).append(n)
+            else:
+                links.append(n)
 
-                if "*" in r or role_code in r:
-                    m = n.pop("menu")
-                    if m:
-                        if role_code == "STU" and degree != "PHD" and \
-                            m.upper() == "PHD":
-                            continue
-                        if m not in menus:
-                            menus[m] = []
-                        menus[m].append(n)
-                    else:
-                        links.append(n)
-
-            return {"menus": menus, "links": links}
+        return {"menus": menus, "links": links}
 
     except Exception as ex:
         logging.exception("Error occurred when loading nav data.")

@@ -65,7 +65,6 @@ def _load_config_from_env():
             "port": os.environ.get('EMAIL_PORT'),
             "dryrun": os.environ.get('EMAIL_DRYRUN')
         },
-        "hide_course_stats_from": ["STU"],
         "oauth_client_id": os.environ.get('OAUTH_CLIENT_ID'),
         "oauth_domain": os.environ.get('OAUTH_DOMAIN'),
         "upload_folder": os.environ.get('UPLOAD_FOLDER', "./acadstack_upload")
@@ -125,6 +124,8 @@ def create_app(is_testing=False):
     apiVC.vbp.add_url_rule('/get_static_data', view_func=apiVC.get_static_data, methods=['GET'])
     apiVC.vbp.add_url_rule('/settings', view_func=apiVC.get_settings, methods=['GET'])
     apiVC.vbp.add_url_rule('/setting_save', view_func=apiVC.save_setting, methods=['POST'])
+    apiVC.vbp.add_url_rule('/perms', view_func=apiVC.get_permissions, methods=['GET'])
+    apiVC.vbp.add_url_rule('/perms_save', view_func=apiVC.save_role_permissions, methods=['POST'])
 
     # Attendance related
     apiVC.vbp.add_url_rule('/kface_bulk_add', view_func=apiFC.kface_bulk_add, methods=['POST'])

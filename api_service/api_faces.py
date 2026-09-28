@@ -19,7 +19,8 @@ import settings as ST
 import models as DB
 import common as C
 import face_api_proxy as fapi
-from validation_checks import is_current_user_in_role_and_id
+from validation_checks import check_own_or_any
+import policy as P
 
 def process_photos_zip(zip_file):
     # Runs as a background task on a worker thread, which needs its own
@@ -82,7 +83,7 @@ def __encode_and_save_face(photo_buff, user_id):
         apiVC.save_entity(kf)
 
 
-@C.rbac(roles=["ACA"])
+@P.require("faces.bulk_add")
 async def kface_bulk_add():
     try:
         zipf = (await request.files)['zip_file']
@@ -99,7 +100,7 @@ async def kface_bulk_add():
         return apiVC.error_json(msg)
 
 
-@C.rbac()
+@P.require("faces.add")
 async def kface_add():
     try:
         ph_file = (await request.files)['photo_file']
@@ -107,9 +108,9 @@ async def kface_add():
             return apiVC.error_json("No file supplied!")
         photo = ph_file.read()
         cu = apiVC.logged_in_user()
-        # The photo is the reference for attendance matching, so students
-        # may add their first one but only the academic section replaces it.
-        if apiVC.is_user_in_role("STU") and cu.known_faces.exists():
+        # The photo is the reference for attendance matching, so a user
+        # without faces.replace (a student) may add only their first one.
+        if not P.current_actor().can("faces.replace") and cu.known_faces.exists():
             return apiVC.error_json("Your photo is already on record. Please "
                                     "contact the academic section to change it.")
         __encode_and_save_face(photo, cu.id)
@@ -120,10 +121,10 @@ async def kface_add():
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("students.academics")
 async def get_class_photo(file_name, user_id):
     try:
-        is_current_user_in_role_and_id("STU", "user_id", user_id,
+        check_own_or_any("students.academics", "user_id", user_id,
             "Cannot access other's data! Your attempt has been reported.")
         qry = DB.KnownFace.select().where(DB.KnownFace.user == user_id)
         gp = os.path.join(apiVC.get_upload_folder("photos"),

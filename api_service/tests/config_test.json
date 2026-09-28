@@ -12,6 +12,5 @@
         "password": "****",
         "host": "localhost",
         "port": 587
-    },
-    "hide_course_stats_from": ["STU"]
+    }
 }

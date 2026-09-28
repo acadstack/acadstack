@@ -6,7 +6,7 @@ from quart import Blueprint, request
 from quart.helpers import send_file
 from io import BytesIO
 
-from validation_checks import is_current_user_in_role_and_id
+import policy as P
 from api_auth import get_user_by_org_id
 from api_course_enrolment import get_student_courses_perf_filtered
 
@@ -65,7 +65,7 @@ def init_routes(bp: Blueprint):
                        view_func=download_consolidated_grade_sheet, methods=['GET'])
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@P.require("grades.reports")
 async def download_grade_status(grades_st, acad_session):
     try:
         if grades_st == "GS":
@@ -86,7 +86,7 @@ async def download_grade_status(grades_st, acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def download_consolidated_grade_sheet(entry_no,enrol_type):
         try:
             report_data = {}
@@ -227,15 +227,13 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     return report_data
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def generate_semester_grade():
     try:
         fd = await request.get_json(force=True)
         entry_no = fd.get("entry_no")
         acad_session = fd.get("acad_session")
         enrol_type = fd.get("enrol_type")
-        is_current_user_in_role_and_id("STU", "org_id", entry_no,
-            "Student attempted to access someone else's grades sheet.")
         resp = _get_semester_grade_data(entry_no, acad_session, enrol_type)
         # TODO: Update the UI for this change
         if resp:
@@ -248,11 +246,9 @@ async def generate_semester_grade():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def download_sem_grade(acad_session, entry_no, enrol_type):
     try:
-        is_current_user_in_role_and_id("STU", "org_id", entry_no,
-            "Student attempted to access someone else's grades sheet.")
         data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
         data['enrol_type'] = enrol_type
         # TODO: Check the HTML and the data's structure
@@ -326,7 +322,7 @@ def _bulk_download_sem_grade(form_data, job_key):
     return zip_file
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@P.require("grades.reports")
 async def bulk_download_sem_grade():
     try:
         job_key = str(uuid.uuid4())
@@ -340,7 +336,7 @@ async def bulk_download_sem_grade():
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA", "SUP"])
+@P.require("grades.reports")
 async def get_bulk_gradesheets(job_key):
     try:
         if not TH.get_own_task_info(job_key):
@@ -354,7 +350,7 @@ async def get_bulk_gradesheets(job_key):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["DEA", "ACA"])
+@P.require("grades.distribution")
 async def download_grade_distribution(acad_session, degree):
     try:
         if degree == "-":
@@ -375,12 +371,9 @@ async def download_grade_distribution(acad_session, degree):
         return apiVC.error_json(msg)
 
 
-@C.rbac
+@P.require("credits.reports")
 async def download_cgpa_sgpa(acad_session):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
-
         if acad_session == "-":
             acad_session = ""
 
@@ -395,7 +388,7 @@ async def download_cgpa_sgpa(acad_session):
         return apiVC.error_json(msg)
 
 
-@C.rbac(roles=["ACA", "DEA","SUP"])
+@P.require("grades.reports")
 async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no):
         try:
             report_data = {}
@@ -457,13 +450,10 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
                                 "certificate PDF file for download.")
 
 
-@C.rbac
+@P.require("credits.reports")
 async def download_catwise_earned_credits(acad_session,degree,dept_name,course_type,
     for_year,min_credits,max_credits):
     try:
-        if apiVC.is_user_in_role("STU"):
-            return apiVC.error_json("Students cannot download!")
-
         if dept_name == "ALL" or dept_name == "-":
            dept_name = ""
         if degree == "-":
