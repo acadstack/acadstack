@@ -1,7 +1,7 @@
 """Characterization tests for enrolment approval (``change_enroll_status``)
 and the enrolment save route (``coe_save``).
 
-Tests whose name starts with a bug code (C11, S5, ...) pin behaviour that
+Tests whose name starts with a bug code (C11, ...) pin behaviour that
 looks wrong; flip them when fixing it.
 """
 
@@ -192,22 +192,42 @@ async def coe_save(client, payload):
     return await (await client.post("/acadstack/coe_save", json=payload)).get_json()
 
 
-async def test_s5_student_can_insert_enrolment_with_any_grade(client, auth, setup):
+async def test_student_cannot_insert_enrolment(client, auth, setup):
     co = make_offering("CS200", acad_session=SESSION)
     await auth.login("stu")
     body = await coe_save(client, {"course_offering": co.id, "student": setup["stu"].id,
                                    "enrol_type": "C", "enrol_status": "ENRO", "grade": "A"})
-    assert body["status"] == "OK"
-    ce = M.CourseEnrollment.get((M.CourseEnrollment.course_offering == co.id))
-    assert (ce.enrol_status, ce.grade) == ("ENRO", "A")
+    assert body["status"] == "ERROR"
+    assert not M.CourseEnrollment.select().where(
+        M.CourseEnrollment.course_offering == co.id).exists()
 
 
-async def test_s5_student_can_set_own_grade_on_update(client, auth, setup):
+async def test_student_cannot_approve_own_enrolment(client, auth, setup):
     await auth.login("stu")
     body = await coe_save(client, {"id": setup["ce"].id, "enrol_status": "ENRO", "grade": "A"})
+    assert body["status"] == "ERROR"
+    ce = M.CourseEnrollment.get_by_id(setup["ce"].id)
+    assert (ce.enrol_status, ce.grade) == ("IPEN", "NA")
+
+
+async def test_student_can_drop_own_enrolment_but_not_set_grade(client, auth, setup):
+    await auth.login("stu")
+    body = await coe_save(client, {"id": setup["ce"].id, "enrol_status": "DROP",
+                                   "grade": "A", "student": 999})
     assert body["status"] == "OK"
     ce = M.CourseEnrollment.get_by_id(setup["ce"].id)
-    assert (ce.enrol_status, ce.grade) == ("ENRO", "A")
+    assert (ce.enrol_status, ce.grade, ce.student_id) == ("DROP", "NA", setup["stu"].id)
+
+
+async def test_academic_section_can_insert_enrolment(client, auth, setup):
+    co = make_offering("CS200", acad_session=SESSION)
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await coe_save(client, {"course_offering": co.id, "student": setup["stu"].id,
+                                   "enrol_type": "C", "enrol_status": "ENRO"})
+    assert body["status"] == "OK"
+    ce = M.CourseEnrollment.get(M.CourseEnrollment.course_offering == co.id)
+    assert (ce.student_id, ce.enrol_status) == (setup["stu"].id, "ENRO")
 
 
 async def test_student_cannot_update_others_enrolment(client, auth, setup):

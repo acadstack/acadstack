@@ -426,14 +426,14 @@ async def generate_students_credits_info(acad_session):
 @C.rbac(roles=["ACA", "DEA"])
 async def get_background_task_status(job_key):
     try:
-        task_result = TH.pop_task_info_if_done(job_key)
+        task_result = TH.get_own_task_info(job_key)
         if not task_result:
             logging.error(f"Background job with key {job_key} not found.")
             return apiVC.error_json(f"Job info not found for {job_key}")
         if task_result["status"] != "done":
             return apiVC.ok_json({"status": task_result["status"], "result": "Job not done yet."})
         
-        return apiVC.ok_json(task_result)
+        return apiVC.ok_json({k: v for k, v in task_result.items() if k != "owner"})
     except Exception as ex:
         msg = f"Failed to get the background job status for {job_key}."
         logging.exception(msg)

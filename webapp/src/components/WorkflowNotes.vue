@@ -82,7 +82,7 @@ export default {
     },
     removeItem(x) {
       let vm = this;
-      vm.$http.get(`wfnote_delete/${x.id}`)
+      vm.$http.post(`wfnote_delete/${x.id}`)
       .then(function (res) {
         if (res.data.status == "OK") {
           vm.items = vm.items.filter(y => y!=x);

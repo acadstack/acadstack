@@ -8,6 +8,7 @@ __status__ = "Development"
 """
 
 import os
+import secrets
 from bg_tasks import BgTasks
 import logging
 from logging.handlers import RotatingFileHandler
@@ -76,9 +77,14 @@ def setup_app_state(app):
 
 def create_app(is_testing=False):
     myapp = Quart(__name__, static_folder="./app", static_url_path="/acadstack/")
-    myapp.secret_key = C.get_rand_str(size=30)
+    myapp.secret_key = os.environ.get("SECRET_KEY")
+    if not myapp.secret_key:
+        # Sessions signed with a per-process key do not survive a restart.
+        logging.warning("SECRET_KEY is not set; using a random session key.")
+        myapp.secret_key = secrets.token_hex(32)
     myapp.json_encoder = C.JSONEncoderWithDate
     myapp.active_users = {}
+    myapp.prk_failures = {}
 
     cfg = _load_config_from_env()
     myapp.config.update(cfg)

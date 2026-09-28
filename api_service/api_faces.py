@@ -99,6 +99,11 @@ async def kface_add():
             return apiVC.error_json("No file supplied!")
         photo = ph_file.read()
         cu = apiVC.logged_in_user()
+        # The photo is the reference for attendance matching, so students
+        # may add their first one but only the academic section replaces it.
+        if apiVC.is_user_in_role("STU") and cu.known_faces.exists():
+            return apiVC.error_json("Your photo is already on record. Please "
+                                    "contact the academic section to change it.")
         __encode_and_save_face(photo, cu.id)
         return apiVC.ok_json("Photos processed.")
     except Exception as ex:

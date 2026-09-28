@@ -342,6 +342,8 @@ async def bulk_download_sem_grade():
 @C.rbac(roles=["ACA", "DEA", "SUP"])
 async def get_bulk_gradesheets(job_key):
     try:
+        if not TH.get_own_task_info(job_key):
+            return apiVC.error_json(f"Job info not found for {job_key}")
         zip_file = os.path.join(apiVC.get_upload_folder(), f"BULK_GS_PDF_{job_key}.zip")
         return await send_file(zip_file)
 

@@ -605,6 +605,8 @@ def __to_dc_dict(dc, excl_list=None):
 async def dc_details(dc_id):
     try:
         dc_qry = DB.DcForStudent.select().where(DB.DcForStudent.id == int(dc_id))
+        if apiVC.is_user_in_role("STU"):
+            dc_qry = dc_qry.where(DB.DcForStudent.student == apiVC.logged_in_user().id)
         dcd = {}
         if dc_qry.exists():
             dcd = __to_dc_dict(dc_qry[0])
@@ -625,6 +627,8 @@ async def dc_search():
     try:
         fd = await request.get_json(force=True)
         stu_id = fd.get("student_id") or 0
+        if apiVC.is_user_in_role("STU"):
+            stu_id = apiVC.logged_in_user().id
         mem_id = fd.get("member_id") or 0
         mem_role = fd.get("member_role") or ""
         dept_name = fd.get("dept_name") or ""
@@ -741,7 +745,7 @@ async def save_progress_report():
                 ppr = DB.PhDProgressReport.get_by_id(pprid)
                 __raise_on_invalid_ppr_status(ppr.status, fd.get("status"))
                 C.update_model_skip_unknown(ppr, fd)
-                if ppr.status == "APP" and not is_dc_chair(uid, ppr.student.id):
+                if ppr.status == "APP" and not __is_dc_chair(uid, ppr.student.id):
                     return apiVC.error_json("Only DC chair can approve the report!")
                 
                 rc = apiVC.update_entity(DB.PhDProgressReport, ppr)
@@ -821,14 +825,21 @@ async def get_pprs_for_student(myid):
         return apiVC.error_json("Error occurred when fetching progress reports.")
 
 
+def __is_dc_chair(uid, std_id):
+    q1 = DB.DcMember.select().join(DB.DcForStudent)
+    q1 = q1.where(DB.DcMember.member==uid)
+    q1 = q1.where(DB.DcMember.role=="CP")
+    q1 = q1.where(DB.DcForStudent.student==std_id)
+    return q1.exists()
+
+
 @C.rbac
 async def is_dc_chair(uid, std_id):
     try:
-        q1 = DB.DcMember.select().join(DB.DcForStudent)
-        q1 = q1.where(DB.DcMember.member==uid)
-        q1 = q1.where(DB.DcMember.role=="CP")
-        q1 = q1.where(DB.DcForStudent.student==std_id)
-        return apiVC.ok_json(q1.exists())
+        if uid != apiVC.logged_in_user().id and \
+                not apiVC.is_user_in_role(["ACA", "DEA", "SUP"]):
+            return apiVC.error_json("You can check only your own DC role!")
+        return apiVC.ok_json(__is_dc_chair(uid, std_id))
     except Exception as ex:
         msg = "Error occurred when checking DC chair."
         logging.exception(msg)
@@ -857,6 +868,9 @@ async def get_daywise_attendance(co_id):
 @C.rbac
 async def get_course_attd_on_date(co_id, att_dt):
     try:
+        if not VAL.validate_course_instructor(co_id, 
+                                ["SUP", "ACA", "DEA", "HOD"], False):
+            return apiVC.error_json("You cannot access this attendance data!")
         aq = DB.StudentAttendance.select().join(DB.CourseEnrollment)
         aq = aq.join(DB.User).join(DB.Person)
         aq = aq.where(DB.StudentAttendance.attend_dt == att_dt)

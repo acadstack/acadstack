@@ -168,7 +168,7 @@ export default {
       if (!confirm("Delete the document?")) {
         return;
       }
-      await vm.doHttp(true, 'delete_fees_txn_data/'+doc.id, null,
+      await vm.doHttp(false, 'delete_fees_txn_data/'+doc.id, {},
         ()=>{doc.is_deleted = true;}, vm.setStatusMessage);
     }
   }  

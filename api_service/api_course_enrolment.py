@@ -346,7 +346,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/get_student_academics/<int:my_id>', view_func=get_student_academics, methods=['GET'])
     bp.add_url_rule('/get_passed_courses/<int:user_id>', view_func=get_passed_courses, methods=['GET'])
     bp.add_url_rule('/drop_withdraw_course/<int:my_id>/<string:status>',
-                       view_func=drop_withdraw_course, methods=['GET'])
+                       view_func=drop_withdraw_course, methods=['POST'])
     bp.add_url_rule('/download_course_enrollments/<int:co_id>', 
                         view_func=download_course_enrollments,
                        methods=['GET'])
@@ -636,6 +636,8 @@ async def get_course_enrollments(my_id):
     try:
         res = DB.CourseEnrollment.select().where(
             DB.CourseEnrollment.course_offering == my_id)
+        if apiVC.is_user_in_role("STU"):
+            res = res.where(DB.CourseEnrollment.student == apiVC.logged_in_user().id)
         if res:
             result = []
             for coe in res:
@@ -811,6 +813,14 @@ async def course_enrollment_view(my_id):
         return apiVC.error_json(msg)
 
 
+# Request fields that coe_save copies onto an enrolment. Students may only
+# drop or withdraw their own enrolment; only ACA/DEA may create one here.
+COE_EDIT_FIELDS = ["enrol_type", "enrol_status", "grade", "current_score",
+                   "remarks", "txn_no"]
+COE_STUDENT_FIELDS = ["enrol_status", "txn_no"]
+COE_STUDENT_STATUSES = ["DROP", "WDRAW"]
+
+
 @rbac
 async def course_enrollment_save():
     try:
@@ -830,12 +840,21 @@ async def course_enrollment_save():
                 if not VAL.is_enrollment_owner_valid(coe):
                     return apiVC.error_json("User not allowed to change enrollment!")
 
-                C.update_model_skip_unknown(coe, fd)
+                if apiVC.is_user_in_role("STU"):
+                    if fd.get("enrol_status") not in COE_STUDENT_STATUSES + [coe.enrol_status]:
+                        return apiVC.error_json("Students can only drop or withdraw a course!")
+                    allowed = COE_STUDENT_FIELDS
+                else:
+                    allowed = COE_EDIT_FIELDS
+                C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})
                 if apiVC.update_entity(DB.CourseEnrollment, coe) != 1:  # if rc != 1:
                     return apiVC.error_json("Could not update. Please try again.")
                 logging.debug(f"Updated DB.CourseEnrollment details: {coe}")
             else:
-                C.update_model_skip_unknown(coe, fd)
+                if not apiVC.is_user_in_role(["ACA", "DEA"]):
+                    return apiVC.error_json("User not allowed to create enrollment!")
+                allowed = COE_EDIT_FIELDS + ["course_offering", "student"]
+                C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})
                 apiVC.save_entity(coe)
                 logging.debug(f"Inserted DB.CourseEnrollment: {coe}")
 

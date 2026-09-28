@@ -1,7 +1,9 @@
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from quart import current_app
+from quart import current_app, session
+from common import AcadStackException
 
 TASK_TTL_SECONDS = 60  # TTL for completed tasks
 
@@ -28,21 +30,15 @@ def get_task_info(task_id):
     """
     return current_app.extensions['tasks'].get(task_id)
 
-def pop_task_info_if_done(task_id):
+def get_own_task_info(task_id):
     """
-    Returns the task info if found.
-    If the task status is "done", removes it from the store.
-    Otherwise, leaves it in place.
-    Returns None if task_id not found.
+    Returns the task info for the given task_id if the task was created by
+    the logged-in user, else None.
     """
-    task_info = current_app.extensions['tasks'].get(task_id)
-    if not task_info:
-        return None
-
-    if task_info.get("status") == "done":
-        return current_app.extensions['tasks'].pop(task_id)
-    
-    return task_info
+    task_info = get_task_info(task_id)
+    if task_info and task_info.get("owner") == session.get("user", {}).get("login_id"):
+        return task_info
+    return None
 
 
 def create_task(func, *args, task_id=None, **kwargs):
@@ -58,6 +54,7 @@ def create_task(func, *args, task_id=None, **kwargs):
         current_app.extensions["tasks"] = {}
     
     current_app.extensions['tasks'][task_id] = {
+        "owner": session["user"]["login_id"],
         "status": "running",
         "result": None,
         "completed_at": None,
@@ -79,11 +76,12 @@ def create_task(func, *args, task_id=None, **kwargs):
                 "error": None,
             })
         except Exception as e:
+            logging.exception(f"Background task {task_id} failed.")
             current_app.extensions['tasks'][task_id].update({
                 "status": "done",
                 "result": None,
                 "completed_at": datetime.now(timezone.utc),
-                "error": str(e),
+                "error": str(e) if isinstance(e, AcadStackException) else "Task failed.",
             })
 
     current_app.add_background_task(task_wrapper)

@@ -98,7 +98,7 @@ export default {
       if (!confirm("Delete the document?")) {
         return;
       }
-      vm.$http.get('delete_doc/'+doc.id)
+      vm.$http.post('delete_doc/'+doc.id)
         .then(function (res) {
           if (res.data.status == "OK") {
             doc.is_deleted = true;

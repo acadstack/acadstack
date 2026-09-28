@@ -21,7 +21,7 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/wfnote_find/<string:entity_name>/<int:entity_key>', 
                         view_func=wfnote_find, methods=['GET'])
     bp.add_url_rule('/wfnote_delete/<int:my_id>', 
-                        view_func=wfnote_delete, methods=['GET'])
+                        view_func=wfnote_delete, methods=['POST'])
     bp.add_url_rule('/wfnote_save', view_func=wfnote_save, methods=['POST'])
     bp.add_url_rule('/dates_save', view_func=dates_save, methods=['POST'])
     bp.add_url_rule('/dates_search', view_func=dates_search, methods=['POST'])
@@ -53,7 +53,7 @@ async def wfnote_save():
     except Exception as ex:
         msg = "Error when saving workflow note details."
         logging.exception(msg)
-        return apiVC.error_json("{0}: {1}".format(msg, ex))
+        return apiVC.error_json(msg)
 
 
 @C.rbac
@@ -71,7 +71,7 @@ async def wfnote_find(entity_name, entity_key):
     except Exception as ex:
         msg = "Error when finding workflow note details."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)
 
 
 @C.rbac
@@ -112,7 +112,7 @@ async def dates_save():
     except Exception as ex:
         msg = "Error when saving academic dates."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)
 
 
 @C.rbac
@@ -133,4 +133,4 @@ async def dates_search():
     except Exception as ex:
         msg = "Error when saving academic dates."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)

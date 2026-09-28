@@ -1,7 +1,7 @@
 """Characterization tests for doctoral committee (DC) save and PhD progress
 reports.
 
-Tests whose name starts with a bug code (C9, S6, ...) pin behaviour that
+Tests whose name starts with a bug code (C9, ...) pin behaviour that
 looks wrong; flip them when fixing it.
 """
 
@@ -221,15 +221,28 @@ async def test_chair_approves_submitted_report(client, auth, people):
     assert M.PhDProgressReport.get_by_id(ppr.id).status == "APP"
 
 
-async def test_s6_non_chair_member_can_approve_report(client, auth, people):
-    # is_dc_chair is async but called without await; the coroutine is truthy.
+async def test_non_chair_member_cannot_approve_report(client, auth, people):
     dc = make_dc(people)
     ppr = make_ppr(people, dc, status="SUB")
     await auth.login("mem")
     body = await ppr_save(client, {"id": ppr.id, "student": people["stu"].id,
                                    "status": "APP", "txn_no": 1})
-    assert body["status"] == "OK"
-    assert M.PhDProgressReport.get_by_id(ppr.id).status == "APP"
+    assert body == {"status": "ERROR", "body": "Only DC chair can approve the report!"}
+    assert M.PhDProgressReport.get_by_id(ppr.id).status == "SUB"
+
+
+async def test_student_can_view_only_own_dc(client, auth, people):
+    dc = make_dc(people)
+    other = make_user("stu2", role="STU", degree="PHD")
+    other_dc = M.DcForStudent.create(student=other, status="DRA", effective_from="2026-01-01")
+    await auth.login("stu")
+    own = await (await client.get(f"/acadstack/dc_view/{dc.id}")).get_json()
+    assert own["body"]["id"] == dc.id
+    body = await (await client.get(f"/acadstack/dc_view/{other_dc.id}")).get_json()
+    assert body == {"status": "OK", "body": {}}
+    found = await (await client.post("/acadstack/dc_find",
+                                     json={"student_id": other.id})).get_json()
+    assert [d["id"] for d in found["body"]] == [dc.id]
 
 
 async def test_academic_section_can_make_any_transition(client, auth, people):

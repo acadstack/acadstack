@@ -1,7 +1,7 @@
 """Characterization tests for attendance: class-photo upload, the photo
 processing task, and the attendance read routes.
 
-Tests whose name starts with a bug code (S7, C22, ...) pin behaviour that
+Tests whose name starts with a bug code (C22, ...) pin behaviour that
 looks wrong; flip them when fixing it.
 """
 
@@ -169,14 +169,36 @@ async def test_student_cannot_read_others_attendance(client, auth, setup):
     assert body["status"] == "ERROR"
 
 
-async def test_s7_any_student_can_read_class_attendance_on_date(client, auth, setup):
+async def test_student_cannot_read_class_attendance_on_date(client, auth, setup):
     M.StudentAttendance.create(enrollment=setup["ce2"], attend_dt=date(2026, 8, 1), attend="P")
     make_user("outsider", role="STU")
     await auth.login("outsider")
     body = await (await client.get(
         f"/acadstack/course_attd_on_date/{setup['co'].id}/2026-08-01")).get_json()
+    assert body["status"] == "ERROR"
+
+
+async def test_instructor_reads_class_attendance_on_date(client, auth, setup):
+    M.StudentAttendance.create(enrollment=setup["ce2"], attend_dt=date(2026, 8, 1), attend="P")
+    await auth.login("ins")
+    body = await (await client.get(
+        f"/acadstack/course_attd_on_date/{setup['co'].id}/2026-08-01")).get_json()
     assert body["status"] == "OK"
     assert body["body"][0]["roll_no"] == "2024CSB1002"
+
+
+async def test_student_sees_only_own_row_of_class_roster(client, auth, setup):
+    await auth.login("s1")
+    body = await (await client.get(
+        f"/acadstack/get_course_enrollments/{setup['co'].id}")).get_json()
+    assert [r["org_id"] for r in body["body"]] == ["2024CSB1001"]
+
+
+async def test_instructor_sees_whole_class_roster(client, auth, setup):
+    await auth.login("ins")
+    body = await (await client.get(
+        f"/acadstack/get_course_enrollments/{setup['co'].id}")).get_json()
+    assert sorted(r["org_id"] for r in body["body"]) == ["2024CSB1001", "2024CSB1002"]
 
 
 async def test_daywise_attendance_sql_missing_group_by_so_route_always_fails(client, auth, setup):

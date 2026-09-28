@@ -44,8 +44,9 @@ async def course_save():
         crs = DB.Course()
 
         if crs_id > 0:
-            # Edit case
-            if fd["author"]["id"] != apiVC.logged_in_user().id and \
+            # Edit case: the author stays as stored
+            fd.pop("author", None)
+            if DB.Course.get_by_id(crs_id).author_id != apiVC.logged_in_user().id and \
                     not apiVC.is_user_in_role(["HOD", "ACA", "DEA", "RES"]):
                 return apiVC.error_json("Cannot save course authored by another faculty!")
         else:
@@ -82,7 +83,7 @@ async def course_save():
     except Exception as ex:
         msg = "Error when saving course details."
         logging.exception(msg)
-        return apiVC.error_json(f"{msg}: {ex}")
+        return apiVC.error_json(msg)
 
 
 @C.rbac

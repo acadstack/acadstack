@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import base64, hashlib, hmac, logging, re, random, string, toml
+import base64, hashlib, hmac, logging, re, secrets, string, toml
 from typing import Any, Callable, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -127,7 +127,13 @@ def parse_number(sval):
     p = r"^[-+]?\d+[\./]?\d*$"
     sval = sval.strip()
     if re.search(p, sval):
-        n = eval(sval)
+        if "/" in sval:
+            num, den = sval.split("/")
+            n = int(num) / int(den)
+        elif "." in sval:
+            n = float(sval)
+        else:
+            n = int(sval)
         if isinstance(n, float):
             return round(n, 2)
         else:
@@ -145,7 +151,8 @@ def get_rand_str(size=10):
     Returns:
         str: Random alphanumeric ASCII string.
     """
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=size))
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(size))
 
 
 def hash_password(plain: str) -> str:
