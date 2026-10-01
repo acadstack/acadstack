@@ -398,19 +398,20 @@ async def test_invalid_grants_are_rejected(client, auth, restore_grants, payload
 
 # ---- scoped checks not covered by the flow tests ----
 
-def _course(code, author):
-    return M.Course.create(code=code, title="Old", ltp="3-0-0-6-3", status="DRA", author=author)
+def _course(code, author, level="UG"):
+    return M.Course.create(code=code, title="Old", ltp="3-0-0-6-3", status="DRA", author=author,
+                           level=level)
 
 
-@pytest.mark.parametrize("code, ok", [("CS500", True), ("CS300", False)])
-async def test_research_section_edits_only_pg_courses(client, auth, code, ok):
-    crs = _course(code, make_user("fac", role="FAC"))
+@pytest.mark.parametrize("level, ok", [("PG", True), ("ALL", True), ("UG", False)])
+async def test_research_section_edits_only_pg_courses(client, auth, level, ok):
+    crs = _course("CS100", make_user("fac", role="FAC"), level)
     make_user("res", role="RES")
     await auth.login("res")
     body = await _post(client, "cour_save", {"id": crs.id, "title": "New", "txn_no": 1})
     assert (body["status"] == "OK") == ok
     if not ok:
-        assert body["body"] == "You can edit only PG/PhD courses!"
+        assert body["body"] == "You can edit only PG or all-level courses!"
 
 
 async def test_hod_edits_any_course(client, auth):

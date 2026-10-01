@@ -33,7 +33,8 @@ GRADES = [entry.get('id') for entry in static_data.get('CourseGrades', []) if en
 # Filled from the VocabItem table once the schema exists.
 DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT = [], [], [], [], [], []
 
-# The university's lists, as (code, label) in display order.
+# The university's lists, as (code, label) or (code, label, attrs) in display
+# order.
 VOCAB_SEED = {
     "Departments": [
         ("ACA", "Academic Section"),
@@ -55,25 +56,25 @@ VOCAB_SEED = {
         ("PREP", "Preparatory Dept."),
     ],
     "Degrees": [
-        ("BTE", "B.Tech"),
-        ("BTE_MC", "B.Tech(M&C)"),
-        ("MTE", "M.Tech"),
-        ("MCS_AI", "M.Tech(AI)"),
-        ("MCE_WATER", "M.Tech(Water Reso. & Envirn.)"),
-        ("MCE_STRUC", "M.Tech(Struc. and Geomech.)"),
-        ("MEE_SIGNAL", "M.Tech(Signal Processing)"),
-        ("MEE_MICRO", "M.Tech(Micro. & VLSI)"),
-        ("MEE_POWER", "M.Tech(Power Engg.)"),
-        ("MME_THERM", "M.Tech(Thermal Engg.)"),
-        ("MME_MANUF", "M.Tech(Manufacturing)"),
-        ("MCE_MECHA", "M.Tech(Mechanics And Design)"),
-        ("MME_MCPMC", "M.Tech(Computational Mechanics)"),
-        ("MSR", "M.S (Research)"),
-        ("MSC", "M.Sc"),
-        ("BMD", "B.Tech-M.Tech Dual"),
-        ("JEE_PREP", "JEE Preparatory"),
-        ("ADD_INTRN", "Additional Internship"),
-        ("PHD", "PhD"),
+        ("BTE", "B.Tech", {"level": "UG"}),
+        ("BTE_MC", "B.Tech(M&C)", {"level": "UG"}),
+        ("MTE", "M.Tech", {"level": "PG"}),
+        ("MCS_AI", "M.Tech(AI)", {"level": "PG"}),
+        ("MCE_WATER", "M.Tech(Water Reso. & Envirn.)", {"level": "PG"}),
+        ("MCE_STRUC", "M.Tech(Struc. and Geomech.)", {"level": "PG"}),
+        ("MEE_SIGNAL", "M.Tech(Signal Processing)", {"level": "PG"}),
+        ("MEE_MICRO", "M.Tech(Micro. & VLSI)", {"level": "PG"}),
+        ("MEE_POWER", "M.Tech(Power Engg.)", {"level": "PG"}),
+        ("MME_THERM", "M.Tech(Thermal Engg.)", {"level": "PG"}),
+        ("MME_MANUF", "M.Tech(Manufacturing)", {"level": "PG"}),
+        ("MCE_MECHA", "M.Tech(Mechanics And Design)", {"level": "PG"}),
+        ("MME_MCPMC", "M.Tech(Computational Mechanics)", {"level": "PG"}),
+        ("MSR", "M.S (Research)", {"level": "PG"}),
+        ("MSC", "M.Sc", {"level": "PG"}),
+        ("BMD", "B.Tech-M.Tech Dual", {"level": "UG"}),
+        ("JEE_PREP", "JEE Preparatory", {"level": "UG"}),
+        ("ADD_INTRN", "Additional Internship", {"level": "UG"}),
+        ("PHD", "PhD", {"level": "PHD"}),
     ],
     "CourseSlots": [
         ("S", "Seminars or a core course (one hour per week)"),
@@ -93,17 +94,17 @@ VOCAB_SEED = {
         ("PHSME", "Buffer slot"),
     ],
     "CourseTypes": [
-        ("SC", "Science Requirement Core"),
-        ("SE", "Science Electives"),
-        ("GR", "General Engineering Requirement"),
-        ("PC", "Programme Core"),
-        ("PE", "Programme Elective"),
-        ("HC", "Humanities and Social Sciences core"),
-        ("HE", "Humanities and Social Sciences Electives"),
+        ("SC", "Science Requirement Core", {"group": "CORE"}),
+        ("SE", "Science Electives", {"group": "ELECTIVE"}),
+        ("GR", "General Engineering Requirement", {"group": "CORE"}),
+        ("PC", "Programme Core", {"group": "CORE"}),
+        ("PE", "Programme Elective", {"group": "ELECTIVE"}),
+        ("HC", "Humanities and Social Sciences core", {"group": "CORE"}),
+        ("HE", "Humanities and Social Sciences Electives", {"group": "ELECTIVE"}),
         ("CP", "Capstone Projects"),
         ("CT", "Industrial Internship and Comprehensive Viva"),
         ("NN", "Extra-curricular"),
-        ("OC", "Open Electives"),
+        ("OC", "Open Electives", {"group": "ELECTIVE"}),
     ],
     "MinorConcSpecialization": [
         ("MCBME", "Minor in Biomedical Engineering"),
@@ -190,8 +191,9 @@ def recreate_db(config):
 
 def _seed_vocab():
     for vocab, items in VOCAB_SEED.items():
-        for idx, (code, label) in enumerate(items):
-            M.VocabItem.create(vocab=vocab, code=code, label=label, sort_order=idx + 1)
+        for idx, (code, label, *attrs) in enumerate(items):
+            M.VocabItem.create(vocab=vocab, code=code, label=label, sort_order=idx + 1,
+                               attrs=attrs[0] if attrs else {})
 
 
 def _vocab_codes(vocab):
@@ -308,12 +310,17 @@ def _create_courses():
                "ME101,ENGINEERING MECHANICS,PC,3-1-0-5-3",
                "ME102,THERMODYNAMICS,PC,3-1-0-5-3",
                "ME201,SOLID MECHANICS,PC,3-1-0-5-3",
+               "CS503,MACHINE LEARNING,PE,3-0-2-7-4",
+               "EE677,DIGITAL SIGNAL PROCESSING,PE,3-0-2-7-4",
                ]
+    # Courses not meant for UG students only
+    levels = {"CS503": "PG", "EE677": "PG", "HS102": "ALL"}
     n = len(courses)
     facs = list(M.User.select().where(M.User.role == "FAC"))
     for idx, c in enumerate(courses):
         cou = M.Course()
         cou.code, cou.title, cou.course_type, cou.ltp = c.split(",")
+        cou.level = levels.get(cou.code, "UG")
         if idx % 10 == 0:
             cou.status = random.choice(["CAP", "HAP", "CAR", "HAR", "DRA"])
         else:

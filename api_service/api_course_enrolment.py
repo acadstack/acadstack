@@ -293,7 +293,7 @@ def get_student_courses_perf_filtered(stu, include_attendance,
         enrols, include_attendance)
     # acad_sessions is already in properly sorted chronology
     gpas = TR.cumulative_gpa([enrol_data[ad]["courses"] for ad in acad_sessions],
-                             stu.person.degree)
+                             apiVC.degree_level(stu.person.degree))
     for ad, gpa in zip(acad_sessions, gpas):
         enrol_data[ad].update(gpa)
 

@@ -41,7 +41,7 @@ Component for main tab of the course details.
               >{{ cs.value }}</option>
             </select>
           </div>
-          <div class="col-sd-12 col-md-3">
+          <div class="col-sd-12 col-md-2">
             <label for="crs_freq">Frequency</label>
             <select class="form-select" id="crs_freq" v-model.trim="course.freq" :disabled="viewOnly">
               <option
@@ -51,7 +51,17 @@ Component for main tab of the course details.
               >{{ cs.value }}</option>
             </select>
           </div>
-          <div class="col-sd-12 col-md-3">
+          <div class="col-sd-12 col-md-2">
+            <label for="crs_level">Level</label>
+            <select class="form-select" id="crs_level" v-model.trim="course.level" :disabled="viewOnly">
+              <option
+                v-for="cl in SD.CourseLevels"
+                v-bind:value="cl.id"
+                :key="cl.id"
+              >{{ cl.value }}</option>
+            </select>
+          </div>
+          <div class="col-sd-12 col-md-2">
             <label for="crs_lab">Has Lab</label>
             <input type="checkbox" class="form-check-input" id="crs_lab" v-model.trim="course.has_lab" :disabled="viewOnly"/>
           </div>

@@ -119,7 +119,8 @@ core_courses_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
     join  public.courseinstructor i  on u.id = i.instructor_id
     join public.courseoffering o on i.offering_id = o.id
     left join public.coursecategory c on o.id=c.offering_id
-    Where c.category in ('SC','PC','HC')) t
+    Where c.category in (SELECT code FROM public.vocabitem
+            WHERE vocab='CourseTypes' AND attrs->>'group'='CORE')) t
     group by t.id,t.acad_session having t.acad_session = %s;
     """
 
@@ -130,7 +131,8 @@ electives_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
     join public.courseinstructor i on u.id = i.instructor_id
     join public.courseoffering o on i.offering_id = o.id
     left join public.coursecategory c on o.id=c.offering_id
-    Where c.category in ('SE','PE','HE')) t
+    Where c.category in (SELECT code FROM public.vocabitem
+            WHERE vocab='CourseTypes' AND attrs->>'group'='ELECTIVE')) t
     group by t.id,t.acad_session having t.acad_session= %s;
     """
 
@@ -173,10 +175,12 @@ dept_wise_course_load = """
     co.acad_session,
     CASE 
         WHEN EXISTS (SELECT 1 FROM public.coursecategory cc 
-            WHERE cc.offering_id=co.id AND cc.category IN ('PC', 'SC', 'GR', 'HC'))
+            WHERE cc.offering_id=co.id AND cc.category IN (SELECT code FROM public.vocabitem
+            WHERE vocab='CourseTypes' AND attrs->>'group'='CORE'))
         THEN 'Core course' 
         WHEN EXISTS (SELECT 1 FROM public.coursecategory cc 
-            WHERE cc.offering_id=co.id AND cc.category IN ('SE', 'PE', 'HE', 'OC'))
+            WHERE cc.offering_id=co.id AND cc.category IN (SELECT code FROM public.vocabitem
+            WHERE vocab='CourseTypes' AND attrs->>'group'='ELECTIVE'))
         THEN 'Elective course' 
         ELSE '--'
     END AS course_type
@@ -272,7 +276,8 @@ pending_enrolments_hod = """
     JOIN public.course c on c.id=co.course_id
     JOIN public.user stu on stu.id=ce.student_id
     JOIN public.person pstu on pstu.id=stu.person_id
-    WHERE pstu.degree='PHD' 
+    WHERE pstu.degree IN (SELECT code FROM public.vocabitem
+        WHERE vocab='Degrees' AND attrs->>'level'='PHD')
     and pstu.dept_name=(select hp.dept_name from public.person hp 
 		join public.user hu on hu.person_id=hp.id where hu.id=%s)
     AND co.status IN ('E', 'R')

@@ -106,6 +106,7 @@ export default {
         sc:""
       },
       course: {
+              level: "UG",
               tkp:[], tgap:[], modules:{}, ref_material: [],
               learning:{}, evaluation: {}, teaching: []
               },
@@ -212,6 +213,7 @@ export default {
     },
     reset() {
       this.course = {
+        level: "UG",
         tkp:[], tgap:[], modules:[],ref_material:[],
         learning:{}, evaluation: {}, teaching: []
         };

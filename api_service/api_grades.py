@@ -135,6 +135,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
             degree = apiVC.label_for_static_data_item(degree, degreetypes).upper()
 
             report_data["degree"] = degree
+            report_data["degree_level"] = apiVC.degree_level(stu.person.degree)
 
             dept_name = stu.person.dept_name
             depttypes = apiVC.static_data_item("Departments")
@@ -194,6 +195,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     degree = apiVC.label_for_static_data_item(degree, degreetypes).upper()
 
     report_data["degree"] = degree
+    report_data["degree_level"] = apiVC.degree_level(stu.person.degree)
 
     dept_name = stu.person.dept_name
     depttypes = apiVC.static_data_item("Departments")
@@ -416,6 +418,7 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
             degree = apiVC.label_for_static_data_item(degree, degreetypes)
 
             report_data["degree"] = degree
+            report_data["degree_level"] = apiVC.degree_level(stu.person.degree)
 
             dept_name = stu.person.dept_name
             depttypes = apiVC.static_data_item("Departments")

@@ -23,19 +23,19 @@ def course(grade, credits=4, enrol_type="C", enrol_status="ENRO",
 
 
 def test_single_a_grade():
-    r = compute([course("A")], "BTE")
+    r = compute([course("A")], "UG")
     assert r == {"sgpa": 10, "ec": 4, "s_ec": 0, "creg": 4, "cgpa": 10, "pts_cgpa": 40}
 
 
 def test_mixed_grades_are_credit_weighted():
-    r = compute([course("A", 4), course("B", 3)], "BTE")
+    r = compute([course("A", 4), course("B", 3)], "UG")
     assert r["sgpa"] == 9.14
     assert r["cgpa"] == 9.14
     assert r["ec"] == 7
 
 
 def test_f_grade_counts_in_sgpa_but_not_cgpa_or_earned_credits():
-    r = compute([course("A", 4), course("F", 3)], "BTE")
+    r = compute([course("A", 4), course("F", 3)], "UG")
     assert r["sgpa"] == 5.71
     assert r["cgpa"] == 10
     assert r["ec"] == 4
@@ -43,7 +43,7 @@ def test_f_grade_counts_in_sgpa_but_not_cgpa_or_earned_credits():
 
 
 def test_e_grade_counts_in_sgpa_but_not_cgpa_or_earned_credits():
-    r = compute([course("A", 4), course("E", 3)], "BTE")
+    r = compute([course("A", 4), course("E", 3)], "UG")
     assert r["sgpa"] == 6.57
     assert r["cgpa"] == 10
     assert r["ec"] == 4
@@ -52,11 +52,11 @@ def test_e_grade_counts_in_sgpa_but_not_cgpa_or_earned_credits():
 def test_only_enrolled_rows_are_counted():
     rows = [course("A", 4)] + [course("F", 3, enrol_status=s)
                                for s in ("IPEN", "APEN", "DROP", "WDRAW", "IREJ")]
-    assert compute(rows, "BTE") == compute([course("A", 4)], "BTE")
+    assert compute(rows, "UG") == compute([course("A", 4)], "UG")
 
 
 def test_audit_course_counts_in_registered_credits_only():
-    r = compute([course("A", 4), course("A", 3, enrol_type="A")], "BTE")
+    r = compute([course("A", 4), course("A", 3, enrol_type="A")], "UG")
     assert r["creg"] == 7
     assert r["ec"] == 4
     assert r["sgpa"] == 10
@@ -64,16 +64,16 @@ def test_audit_course_counts_in_registered_credits_only():
 
 @pytest.mark.parametrize("enrol_type", ["C", "CM", "CC"])
 def test_credit_enrol_types(enrol_type):
-    assert compute([course("B", enrol_type=enrol_type)], "BTE")["ec"] == 4
+    assert compute([course("B", enrol_type=enrol_type)], "UG")["ec"] == 4
 
 
 def test_c4_enrol_type_must_match_a_credit_type_exactly():
-    assert compute([course("B", enrol_type="")], "BTE")["ec"] == 0
-    assert compute([course("B", enrol_type="M")], "BTE")["ec"] == 0
+    assert compute([course("B", enrol_type="")], "UG")["ec"] == 0
+    assert compute([course("B", enrol_type="M")], "UG")["ec"] == 0
 
 
 def test_s_grade_earns_credit_but_is_excluded_from_gpa():
-    r = compute([course("A", 4), course("S", 2)], "BTE")
+    r = compute([course("A", 4), course("S", 2)], "UG")
     assert r["ec"] == 6
     assert r["s_ec"] == 2
     assert r["sgpa"] == 10
@@ -82,7 +82,7 @@ def test_s_grade_earns_credit_but_is_excluded_from_gpa():
 
 @pytest.mark.parametrize("grade", ["U", "I", "W"])
 def test_u_i_w_grades_are_excluded_from_sgpa_denominator(grade):
-    r = compute([course("A", 4), course(grade, 3)], "BTE")
+    r = compute([course("A", 4), course(grade, 3)], "UG")
     assert r["sgpa"] == 10
     assert r["ec"] == 4
     assert r["creg"] == 7
@@ -91,28 +91,28 @@ def test_u_i_w_grades_are_excluded_from_sgpa_denominator(grade):
 def test_ug_np_grade_earns_credit_and_dilutes_gpa():
     # NP is an earned-credit grade for UG but has no grade points, so it
     # lowers both SGPA and CGPA.
-    r = compute([course("A", 4), course("NP", 2)], "BTE")
+    r = compute([course("A", 4), course("NP", 2)], "UG")
     assert r["ec"] == 6
     assert r["sgpa"] == 6.67
     assert r["cgpa"] == 6.67
 
 
 def test_pg_np_grade_does_not_earn_credit():
-    r = compute([course("A", 4), course("NP", 2)], "MTE")
+    r = compute([course("A", 4), course("NP", 2)], "PG")
     assert r["ec"] == 4
     assert r["sgpa"] == 6.67
     assert r["cgpa"] == 10
 
 
 def test_ungraded_na_course_counts_in_sgpa_denominator():
-    r = compute([course("A", 4), course("NA", 3)], "BTE")
+    r = compute([course("A", 4), course("NA", 3)], "UG")
     assert r["sgpa"] == 5.71
     assert r["cgpa"] == 10
     assert r["ec"] == 4
 
 
 def test_pg_d_grade_earns_credit():
-    r = compute([course("D", 4)], "MTE")
+    r = compute([course("D", 4)], "PG")
     assert r["ec"] == 4
     assert r["sgpa"] == 4
     assert r["cgpa"] == 4
@@ -156,34 +156,34 @@ def test_c12_phd_2021_unknown_suffix_c_minus_gets_cgpa_points_without_credit():
 
 
 def test_fractional_credits():
-    r = compute([course("A", ltp="1-0-1-2-1.5")], "BTE")
+    r = compute([course("A", ltp="1-0-1-2-1.5")], "UG")
     assert r["ec"] == 1.5
     assert r["sgpa"] == 10
 
 
 def test_ltp_without_five_parts_is_rejected():
     with pytest.raises(C.AcadStackException, match="L-T-P-S-C"):
-        compute([course("A", ltp="3-0-2-4")], "BTE")
+        compute([course("A", ltp="3-0-2-4")], "UG")
 
 
 def test_c13_malformed_ltp_raises_index_error():
     with pytest.raises(IndexError):
-        compute([course("A", ltp="3-1")], "BTE")
+        compute([course("A", ltp="3-1")], "UG")
 
 
 def test_empty_grade_earns_no_credit():
     # Grades were once matched by substring of "A,A-,...", which matched "".
-    assert compute([course("")], "BTE")["ec"] == 0
+    assert compute([course("")], "UG")["ec"] == 0
 
 
 def test_frozen_credits_are_used_instead_of_ltp():
     frozen = dict(course("A", 4), credits=3)
-    assert compute([frozen], "BTE")["creg"] == 3
+    assert compute([frozen], "UG")["creg"] == 3
 
 
 def test_cumulative_gpa_carries_earned_credits_and_points():
     r = TR.cumulative_gpa([[course("A", 4)], [course("B", 4, acad_session="2024-II")]],
-                          "BTE")
+                          "UG")
     assert [x["cec"] for x in r] == [4, 8]
     assert [x["cgpa"] for x in r] == [10, 9]
     assert [x["sgpa"] for x in r] == [10, 8]
@@ -195,7 +195,7 @@ def test_sessions_sort_chronologically():
 
 
 def test_empty_course_list():
-    assert compute([], "BTE") == {"sgpa": 0, "ec": 0, "s_ec": 0, "creg": 0,
+    assert compute([], "UG") == {"sgpa": 0, "ec": 0, "s_ec": 0, "creg": 0,
                                   "cgpa": 0, "pts_cgpa": 0}
 
 

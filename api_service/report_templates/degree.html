@@ -153,7 +153,7 @@
 											{% set printdegree = "Master of Technology"%}
 										{% elif "B.Tech" in degree %}
 											{% set printdegree = "Bachelor of Technology"%}
-										{% elif "PhD" in degree %}
+										{% elif degree_level == "PHD" %}
 											{% set phdflag = degree %}
 											{% set printdegree = "Doctor of Philosophy" %}
 										{% elif "M.Sc" in degree %}
@@ -198,7 +198,7 @@
 											{% set min_con_specializationflag = True %}
 										{% endif %}
 
-										{% if "PhD" in degree %}
+										{% if degree_level == "PHD" %}
 											<p class="blue" >the Degree of </h3>
 											<p class="red" style="margin: 3px;">{{printdegree}}  </h3>
 											<p class="blue" style="margin: 3px;">for thesis entitled </h3>
@@ -284,7 +284,7 @@
 							&nbsp;&nbsp;&nbsp;
 					   </div>
 			{% endif %}
-			{% if "PhD" in degree %}
+			{% if degree_level == "PHD" %}
 						<div class="six columns ">
 							&nbsp;&nbsp;&nbsp;
 					   </div>
@@ -344,7 +344,7 @@
 									<!-- <h2 style="line-height: 35px;font-family: 'Nirmala';font-weight: bold;color: #000000;font-size: 50px;"><b><i>{{hi_name}}</i></b></h2> -->
 									<h2 style="font-size: 35px;font-family: 'Nirmala';font-weight: bold;margin-bottom: 15px;margin-top: 20px;font-weight: bold;font-size: 40px;"><b>{{hi_name}}</b></h2>
 									<!--<img src="{{static_file_path}}/img/testuser.png" style="padding-top: 20px;">-->
-										{% if "PhD" in degree %}
+										{% if degree_level == "PHD" %}
 											<h2 class="siblack" style="line-height: 35px;font-family: 'Nirmala';font-weight: bold;font-size: 28px;color:#0470c7"><b><i>को शीर्षक</i></b></h2>
 										{% else %}	
 											<h2 class="siblack" style="line-height: 35px;font-family: 'Nirmala';font-weight: bold;font-size: 28px;color:#0470c7"><b><i>को</i></b></h2>
@@ -355,7 +355,7 @@
 											{% set hiprintdegree = "प्रौद्योगिकी निष्णात"%}
 										{% elif "B.Tech" in degree %}
 											{% set hiprintdegree = "प्रौद्योगिकी स्नातक"%}
-										{% elif "PhD" in degree %}
+										{% elif degree_level == "PHD" %}
 											{% set hiprintdegree = "डॉक्टर ऑफ फिलॉसफी" %}
 										{% elif "M.Sc" in degree %}
 											{% set hiprintdegree = "विज्ञान निष्णात" %}
@@ -452,7 +452,7 @@
 											{% set himin_con_specialization = "प्रौद्योगिकी निष्णात" %}
 											{% endif %}
 																		
-										{% if "PhD" in degree %}											
+										{% if degree_level == "PHD" %}											
 											<!-- <h3 class="sired" style="padding-left: 20px;padding-right: 20px;font-family: 'Nirmala';font-weight: bold;font-size: 18px;"><b>{{thesis_title.upper()}}</b></h3> -->
 											<h3 class="sired" style="padding-left: 60px;padding-right: 60px;font-family: 'Simpler';font-weight: bold;font-size: 20px;text-indent:-40px;line-height:25px;"><b>{{thesis_title.upper()}}</b></h3>
 											<h3 class="sired" style="margin: 5px;font-family: 'Nirmala';font-weight: bold;font-size: 30px;"><b><i>में</i></b></h3>
