@@ -39,6 +39,9 @@ app.mixin({
                 return obj.value;
             }
         },
+        isAcadSession(s) {
+            return this.SD.AcademicSessions.some(x => x.id == s);
+        },
         fmtNum(n_str, dp = 2) {
             try {
                 let f = parseFloat(n_str);
@@ -145,9 +148,6 @@ app.mixin({
         },
         isPGStudent() {
             return this.isStudent && this.$root.user.degree_level === 'PG'
-        },
-        acadSessionRegExp() {
-            return new RegExp("^\\d{4}-([S]|I{0,2}|T[1-4])$", "i");
         }
     }
 })

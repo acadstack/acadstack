@@ -600,8 +600,8 @@ async def get_image(file_name):
 @P.require("users.lookup")
 async def student_lookup(query_str):
     try:
-        if not apiVC.roll_number_valid(query_str):
-            return apiVC.error_json("Invalid entry number pattern!")
+        if not query_str.strip():
+            return apiVC.error_json("Entry number pattern is required!")
 
         query = DB.User.select(DB.User.id, DB.Person.id, DB.Person.dept_name,
                                DB.Person.org_id, DB.User.role,

@@ -99,7 +99,7 @@ export default {
       session: {
         required,
         validsession() {
-          return this.acadSessionRegExp.test(this.session);
+          return this.isAcadSession(this.session);
         },
       }
     }

@@ -10,9 +10,8 @@ Component for main tab of the course details.
         <div class="row mb-2">
           <div class="col-sd-12 col-md-3">
             <label for="crs_code">Code</label>
-            <input type="text" class="form-control" id="crs_code" v-model.trim="course.code" :disabled="viewOnly"/>
+            <input type="text" class="form-control" id="crs_code" maxlength="20" v-model.trim="course.code" :disabled="viewOnly"/>
             <div v-if="!error.course.code.required && error.course.code.$dirty" class="text-danger">Enter code</div>
-            <div v-else-if="!error.course.code.validcode && error.course.code.$dirty" class="text-danger">Invalid code</div>
           </div>
           <div class="col-sd-12 col-md-3">
             <label for="crs_title">Title</label>

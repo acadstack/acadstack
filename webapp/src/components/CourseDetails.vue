@@ -239,18 +239,7 @@ export default {
     return {
       course:{
         code:{
-          required,
-          validcode(){
-            var vm = this;
-            if ("code" in vm.course)
-            {
-              var checkCode = new RegExp("^[A-Z][A-Z][1-9][0-9][0-9][A-Z]?$", "i"); 
-              if (!checkCode.test(vm.course.code)){
-                  return false;
-              }
-            }
-            return true;
-          }
+          required
         },
         title:{
           required

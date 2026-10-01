@@ -641,7 +641,7 @@ export default {
         acad_session: {
           required,
           validsession() {
-            return vm.acadSessionRegExp.test(vm.coffer.acad_session);
+            return vm.isAcadSession(vm.coffer.acad_session);
           }
         },
         instructors:{

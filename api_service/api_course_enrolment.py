@@ -416,8 +416,8 @@ async def get_passed_courses(user_id):
 @P.require("enrolments.bulk_enrol")
 async def bulk_enrol_in_course(entry_no_pattern, co_id):
     try:
-        if not apiVC.roll_number_valid(entry_no_pattern):
-            return apiVC.error_json("Invalid entry number pattern!")
+        if not entry_no_pattern.strip():
+            return apiVC.error_json("Entry number pattern is required!")
 
         query = DB.User.select(DB.User.id, DB.Person.org_id, 
                                DB.User.role).join(DB.Person)

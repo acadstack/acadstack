@@ -48,7 +48,7 @@ def np_to_json(obj):
 
 
 def entry_years_valid(years:str)->bool:
-    """Entry years for students must be 20xx, e.g. 2010, 2018, etc.
+    """Entry years for students are 4-digit years, e.g. 2010, 2018, etc.
 
     Args:
         years (str): Comma-separated list of strings representing years.
@@ -59,23 +59,13 @@ def entry_years_valid(years:str)->bool:
     """
     years = "" if not years else years
     years = "".join(years.split())
-    return re.match(r"^(20\d{2}[,]?)+$", years, re.IGNORECASE)
+    return re.match(r"^(\d{4}[,]?)+$", years, re.IGNORECASE)
 
 
 def current_login_id():
     if "user" in session:
         u = session['user']
         return u["login_id"]
-
-
-def roll_number_valid(rollno:str)->bool:
-    """Checks whether the roll number is in correct format.
-    Args:
-        rollno (str): Roll number string.
-    Returns:
-        bool: True if valid, else False
-    """
-    return re.match(r"^20\d{2}[A-Za-z]{2,4}\d{0,4}$", rollno, re.IGNORECASE)
 
 
 def logged_in_user():

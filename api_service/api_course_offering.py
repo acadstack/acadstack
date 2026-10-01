@@ -57,7 +57,7 @@ def _save_co_categorization(cats, co_id):
         if not apiVC.entry_years_valid(cc_obj.for_entry_years):
             raise C.AcadStackException("Entry years invalid! Must be a "
                                   "comma separated list of years "
-                                  "(after 2000). E.g.,  2018, 2020")
+                                  "of 4 digits. E.g.,  2018, 2020")
         if cc_obj.id and cc_obj.id > 0:
             rc = 0
             if cc_obj.is_deleted:
@@ -137,7 +137,7 @@ async def course_offering_save():
         fd["acad_session"] = acad_session
 
         if not apiVC.academic_session_valid(acad_session):
-            return apiVC.error_json("Academic session invalid. Must be of the format 20NN-S. E.g., 2020-W")
+            return apiVC.error_json("Academic session invalid!")
 
         if not _is_course_approved(fd["course"]):
             return apiVC.error_json("The course being offered MUST be in approved state!")

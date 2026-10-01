@@ -15,11 +15,9 @@ Component for searching offered courses.
               type="text"
               class="form-control"
               v-model.trim="entry_no_pattern"
-              minlength="6"
               maxlength="15"
               required
-              pattern="^\d{4}[A-Za-z]{2,4}\d{0,4}"
-              placeholder="At least first 6 characters of entry no."
+              placeholder="First characters of the entry numbers"
             />
         </div>
         <div class="col">
@@ -129,8 +127,8 @@ export default {
     },
     lookupStudents(enp) {
       let vm = this;
-      if (_.isEmpty(enp) || enp.length < 5) {
-        console.log("Min. 5 charaters needed. Ignored.");
+      if (_.isEmpty(enp)) {
+        vm.students = [];
         return;
       }
       vm.$http
@@ -149,8 +147,13 @@ export default {
         });
     },
     enrol_students() {
-      if (!confirm("Confirm bulk enrollment?")) return;
       let vm = this;
+      if (vm.students.length == 0) {
+        vm.setStatusMessage("No students found for the entry number prefix!");
+        return;
+      }
+      if (!confirm(`Enrol ${vm.students.length} students whose entry number starts with ` +
+          `"${vm.entry_no_pattern}" in ${vm.selectedCourse}?`)) return;
       vm.$http
         .get(`co_bulkenrol/${vm.entry_no_pattern}/${vm.course_id}`)
         .then(function (res) {

@@ -7,7 +7,7 @@ Component for uploading courses.
   <div class="container-fluid">
     <p class="h6">Add Courses</p>
     <p>Please upload new courses information in CSV format only, with the columns
-      <code>code,title,ltp,level</code>. The level is one of
+      <code>code,title,ltp,level</code>. The <code>ltp</code> is the full L-T-P-S-C, e.g. <code>3-0-2-6-4</code>. The level is one of
       <span v-for="(cl, i) in SD.CourseLevels" :key="cl.id">{{ i ? ", " : "" }}<code>{{ cl.id }}</code> ({{ cl.value }})</span>.</p>
     <div>
       <div class="row mb-2">
