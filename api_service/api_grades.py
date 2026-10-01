@@ -100,7 +100,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
 
             # if not stu:
             #     raise C.AcadStackException("Student {0} not found!".format(entry_no))
-            if stu.role != 'STU':
+            if stu.role not in P.roles_with("roster.student"):
                 msg = "Only Student Gradesheet can be downloaded!"
                 logging.error(msg)
                 return apiVC.error_json(msg)
@@ -284,7 +284,7 @@ def _get_student_entry_no_data(degree,dept_name,year_of_entry):
             DB.Person.org_id, DB.User.role, DB.User.first_name, 
             DB.User.last_name).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)
     query = query.where(DB.User.is_deleted != True)
-    query = query.where((DB.User.role == "STU") & 
+    query = query.where(DB.User.role.in_(P.roles_with("roster.student")) & 
                 (DB.Person.degree.startswith(degree)) & 
                 (DB.Person.dept_name.startswith(dept_name)) & 
                 (DB.Person.year_of_entry.startswith(year_of_entry)))
@@ -600,7 +600,7 @@ async def grades_upload():
                     upd_count += 1
 
             txn.commit()
-        if(apiVC.logged_in_user().role != "ACA"):
+        if not P.current_actor().has("roster.acad_section"):
             send_grades_submission_email(co_id, upd_count)
         return apiVC.ok_json(f"Grades processed successfully! Added/updated {
             upd_count} records.")

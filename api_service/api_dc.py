@@ -264,7 +264,7 @@ def _raise_on_invalid_dc_change(actor, sup_id, stu_id, old_status, new_status):
     sup = DB.User.get_by_id(sup_id)
     stu = DB.User.get_by_id(stu_id)
 
-    if sup.role != "FAC":
+    if sup.role not in P.roles_with("roster.instructor"):
         raise C.AcadStackException("Only a faculty can be the supervisor!")
     stu_per = stu.person
     if sup.person.dept_name != stu_per.dept_name:

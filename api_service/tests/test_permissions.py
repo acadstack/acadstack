@@ -8,9 +8,10 @@ from pathlib import Path
 
 import pytest
 
+import common as C
 import models as M
 import policy as P
-from conftest import make_user
+from conftest import make_offering, make_user
 
 ROLES = ["STU", "ACA", "FAC", "HOD", "DEA", "SUP", "GUE", "PLA", "ADV", "RES"]
 PUBLIC = "public"
@@ -239,6 +240,11 @@ INNER = {
     "courses.edit_approved": ["ACA", "DEA", "RES"],  # is_course_status_valid_for_current_user
     "offerings.edit_closed": ["ACA", "DEA"],          # validate_coff_status
     "faces.replace": _but("STU"),                     # kface_add: STU may not replace
+    # role == "STU"/"FAC"/"HOD"/"ACA" where the code selects a kind of person
+    "roster.student": ["STU"],
+    "roster.instructor": ["FAC"],
+    "roster.dept_head": ["HOD"],
+    "roster.acad_section": ["ACA"],
 }
 
 
@@ -276,7 +282,8 @@ def test_inner_permissions_match_the_checks_they_replace(db, perm):
 
 
 SRC = Path(__file__).resolve().parent.parent
-_PERM_ARG = re.compile(r'(?:require|has|can|allowed|check_own_or_any)\(\s*"([a-z_.]+(?::[a-z]+)?)"')
+_PERM_ARG = re.compile(r'(?:require|has|can|allowed|check_own_or_any|roles_with)\(\s*"([a-z_.]+(?::[a-z]+)?)"')
+_SQL_PERM = re.compile(r"permission = '([a-z_.]+)'")
 
 
 def test_every_stored_permission_is_used_and_every_used_one_is_stored(db):
@@ -284,6 +291,7 @@ def test_every_stored_permission_is_used_and_every_used_one_is_stored(db):
     for f in SRC.glob("*.py"):
         if f.name != "policy.py":  # defines the checks; its docstring shows examples
             used |= set(_PERM_ARG.findall(f.read_text()))
+    used |= set(_SQL_PERM.findall((SRC / "sql_statements.toml").read_text()))
     used |= {n["perm"] for n in json.loads((SRC / "nav.json").read_text())}
     used.add(P.ADMIN_PERM)
     stored = {p.code for p in M.Permission.select()}
@@ -374,7 +382,7 @@ async def test_admin_adds_a_role_that_gets_exactly_its_permissions(client, auth,
     assert body["status"] == "OK"
     assert body["body"]["grants"]["AUD"] == ["app.access", "users.find"]
     sd = await (await client.get("/acadstack/get_static_data")).get_json()
-    assert {"id": "AUD", "value": "Auditor"} in sd["body"]["UserRoles"]
+    assert {"id": "AUD", "value": "Auditor", "roster": []} in sd["body"]["UserRoles"]
 
     await auth.logout()
     make_user("aud", role="AUD")
@@ -437,6 +445,72 @@ async def test_hod_edits_offerings_of_own_department(client, auth, hod_dept, ok)
     else:
         assert body == {"status": "ERROR", "body": "Only the HoD of the offering "
                         "department can make changes to the course offering."}
+
+
+# ---- roster permissions: which roles count as a kind of person ----
+
+def _add_role(code, *perms):
+    actor = P.Actor(0, "", "SUP", "", P.perms_of("SUP"))
+    P.save(code, code.title(), {"app.access", *perms}, actor)
+
+
+async def test_role_granted_roster_instructor_appears_in_instructor_lookup(
+        client, auth, restore_grants):
+    _add_role("VF", "roster.instructor")
+    make_user("visitor", role="VF")
+    make_user("vifac", role="FAC")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await (await client.get("/acadstack/instructor_lookup/Vi")).get_json()
+    assert sorted(r["first_name"] for r in body["body"]) == ["Vifac", "Visitor"]
+
+    _add_role("FAC")  # FAC no longer counts as instructor
+    body = await (await client.get("/acadstack/instructor_lookup/Vi")).get_json()
+    assert [r["first_name"] for r in body["body"]] == ["Visitor"]
+
+
+async def test_role_granted_roster_student_is_looked_up_and_bulk_enrolled(
+        client, auth, restore_grants):
+    _add_role("EXS", "roster.student")
+    s1 = make_user("s1", role="EXS", org_id="X-1", current_status="REG")
+    make_user("g1", role="GUE", org_id="X-2", current_status="REG")
+    make_user("aca", role="ACA")
+    co = make_offering()
+    await auth.login("aca")
+    body = await (await client.get("/acadstack/student_lookup/X-")).get_json()
+    assert [r["org_id"] for r in body["body"]] == ["X-1"]
+    body = await (await client.get(f"/acadstack/co_bulkenrol/X-/{co.id}")).get_json()
+    assert body["status"] == "OK", body
+    assert [e.student_id for e in M.CourseEnrollment.select()] == [s1.id]
+
+
+def test_offering_info_names_the_head_of_a_role_granted_roster_dept_head(restore_grants):
+    _add_role("CHR", "roster.dept_head")
+    make_user("chair", role="CHR", dept_name="CSE")
+    make_user("other", role="CHR", dept_name="EE")
+    co = make_offering(dept_name="CSE", instructor=make_user("fac", role="FAC"))
+    row = M.db.execute_sql(C.sql_by_id("course_offering_info"), [co.id]).fetchone()
+    assert row[4] == "chair@example.com"
+
+
+def test_grade_submission_email_goes_to_roles_granted_roster_acad_section(
+        restore_grants, alerts):
+    import create_email
+    _add_role("REG", "roster.acad_section")
+    make_user("registrar", role="REG")
+    co = make_offering(instructor=make_user("fac", role="FAC"))
+    create_email.send_grades_submission_email(co.id, 3)
+    assert alerts[0][0] == "fac@example.com, registrar@example.com"
+
+
+async def test_static_data_roles_carry_their_roster_flags(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    sd = await (await client.get("/acadstack/get_static_data")).get_json()
+    roster = {r["id"]: r["roster"] for r in sd["body"]["UserRoles"]}
+    assert roster["STU"] == ["student"] and roster["FAC"] == ["instructor"]
+    assert roster["HOD"] == ["dept_head"] and roster["ACA"] == ["acad_section"]
+    assert roster["GUE"] == []
 
 
 # ---- refusals reported as access violations ----

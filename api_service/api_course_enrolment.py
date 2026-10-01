@@ -421,7 +421,7 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
 
         query = DB.User.select(DB.User.id, DB.Person.org_id, 
                                DB.User.role).join(DB.Person)
-        query = query.where((DB.User.role == "STU") & (DB.User.is_deleted != True) &
+        query = query.where(DB.User.role.in_(P.roles_with("roster.student")) & (DB.User.is_deleted != True) &
                             (DB.Person.current_status == 'REG') &
                             DB.Person.org_id.startswith(entry_no_pattern))
 

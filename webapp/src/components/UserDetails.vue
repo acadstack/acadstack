@@ -8,9 +8,9 @@ Component for user details.
     <div class="card">
       <div class="h5 card-header">
         <span>{{user.first_name}} {{user.last_name}} 
-          <span v-if="user.role == 'STU'"> ({{user.person.org_id}}) </span>
+          <span v-if="isStudent"> ({{user.person.org_id}}) </span>
           | {{tab}}</span>
-        <span class="float-end" v-if="['STU','FAC'].includes(user.role) && user.id != undefined">
+        <span class="float-end" v-if="(isStudent || isInstructor) && user.id != undefined">
           <button class="btn btn-outline-primary me-2" 
           v-bind:class="{ 'text-decoration-underline fst-italic': tab=='Profile' }"
           @click="tab='Profile'">Profile</button>
@@ -151,7 +151,7 @@ Component for user details.
                 </select>
               </div>
             </div>
-            <div class="col" v-if="user.role=='STU'" >
+            <div class="col" v-if="isStudent" >
               <div>
                 <label for="st_deg">Degree</label>
                 <select class="form-select" id="st_deg" v-model="user.person.degree" :disabled="viewOnly">
@@ -173,7 +173,7 @@ Component for user details.
             </div>
           </div>
           <div class="row mb-2">
-            <div class="col-md-3" v-if="user.role=='STU'">
+            <div class="col-md-3" v-if="isStudent">
               <div>
                 <label for="st_cat">Student Current Status</label>
                 <select class="form-select" id="st_cat" v-model="user.person.current_status"
@@ -186,7 +186,7 @@ Component for user details.
                 </select>
               </div>
             </div>           
-            <div class="col" v-if="user.role=='STU'">
+            <div class="col" v-if="isStudent">
               <div>
                 <label for="st_cat">Type of Degree</label>
                 <select class="form-select" id="st_cat" v-model="user.person.deg_type"
@@ -199,7 +199,7 @@ Component for user details.
                 </select>
               </div>
             </div>
-             <div class="col" v-if="user.role=='STU'">
+             <div class="col" v-if="isStudent">
               <div>
                 <label for="st_cat">Minor/Concentration Specialization</label>
                 <select class="form-select" id="st_cat" v-model="user.person.deg_type_spec"
@@ -269,10 +269,10 @@ Component for user details.
             v-bind:acad_sessions="acad_sessions"
             v-bind:user_id="user.id" />
             <!-- <StudentAcademics v-if="user.role=='STU'" v-bind:user_id="user.id" /> -->
-            <InstructorTeaching v-if="user.role=='FAC'" v-bind:user_id="user.id"/>
+            <InstructorTeaching v-if="isInstructor" v-bind:user_id="user.id"/>
           </div>
           <div v-show="tab=='Documents' && user.id" v-if="!viewOnly">
-            <StudentDocuments v-if="user.role=='STU'" v-bind:student_id="user.id" />
+            <StudentDocuments v-if="isStudent" v-bind:student_id="user.id" />
           </div>
         </div>
       </div>
@@ -314,6 +314,17 @@ export default {
     },
     isBatchAdvisor() {
       return this.user.batch !== undefined;
+    },
+    // The kinds of person the user's role counts as, e.g. ["student"].
+    roster() {
+      let role = (this.SD.UserRoles || []).find((r) => r.id == this.user.role);
+      return role ? role.roster : [];
+    },
+    isStudent() {
+      return this.roster.includes("student");
+    },
+    isInstructor() {
+      return this.roster.includes("instructor");
     }
   },
   async beforeRouteUpdate(to, from, next) {
@@ -361,7 +372,7 @@ export default {
       if (vm.user.person == null) {
         vm.user.person = {};
       }
-      if (vm.user.role == "STU") {
+      if (vm.isStudent) {
         await vm.load_student_academics();
       }
     },
