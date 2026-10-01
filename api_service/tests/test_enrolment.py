@@ -81,6 +81,15 @@ async def test_advisor_approval_after_instructor(client, auth, setup):
     assert status_of(setup["ce"]) == "ENRO"
 
 
+async def test_advisor_with_the_adv_role_can_approve(client, auth, setup):
+    setup["adv"].role = "ADV"
+    setup["adv"].save()
+    set_status(setup["ce"], "APEN")
+    await auth.login("adv")
+    assert (await change_status(client, [setup["ce"].id], "approve"))["status"] == "OK"
+    assert status_of(setup["ce"]) == "ENRO"
+
+
 async def test_advisor_rejection(client, auth, setup):
     set_status(setup["ce"], "APEN")
     await auth.login("adv")

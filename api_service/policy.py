@@ -16,6 +16,10 @@ limits which records it covers:
 ``@require("area.action")`` lets a request through when the actor holds the
 permission at any scope; ``Actor.allowed()`` then checks the record at hand.
 
+The ``roster.*`` permissions mark the roles whose users count as a kind of
+person (student, instructor, department head, academic section); the code
+finds those roles with ``roles_with()``.
+
 The role -> permissions map is cached in this process (the app runs as a
 single process); saving clears the cache, so a change made directly with SQL
 is seen after a restart.
@@ -35,14 +39,24 @@ ADMIN_PERM = "permissions.manage"
 _role_perms = None
 
 
-def perms_of(role: str) -> frozenset:
+def _cached_grants() -> dict:
     global _role_perms
     if _role_perms is None:
         loaded = {}
         for rp in M.RolePermission.select():
             loaded.setdefault(rp.role, set()).add(rp.permission)
         _role_perms = {r: frozenset(p) for r, p in loaded.items()}
-    return _role_perms.get(role, frozenset())
+    return _role_perms
+
+
+def perms_of(role: str) -> frozenset:
+    return _cached_grants().get(role, frozenset())
+
+
+def roles_with(perm: str) -> list:
+    """Codes of the roles granted ``perm``, e.g. the roles whose users count
+    as students for ``roster.student``."""
+    return sorted(r for r, p in _cached_grants().items() if perm in p)
 
 
 def clear_cache():

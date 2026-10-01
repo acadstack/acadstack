@@ -493,7 +493,7 @@ async def instructor_lookup(query_str):
                                DB.User.first_name, DB.User.last_name
                             ).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)
         query = query.where(DB.User.is_deleted != True)
-        query = query.where((DB.User.role == "FAC") & 
+        query = query.where(DB.User.role.in_(P.roles_with("roster.instructor")) & 
                             (DB.User.first_name.contains(query_str)
                              | DB.User.last_name.contains(query_str)))
         users = query.order_by(-DB.User.id).limit(15)
@@ -609,7 +609,7 @@ async def student_lookup(query_str):
                             ).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)
 
         query = query.where(DB.User.is_deleted != True)
-        query = query.where((DB.User.role == "STU") & 
+        query = query.where(DB.User.role.in_(P.roles_with("roster.student")) & 
                             (DB.Person.org_id.startswith(query_str) &
                              (DB.Person.current_status == 'REG')))
         users = query.order_by(DB.Person.org_id)
@@ -697,7 +697,7 @@ async def find_students():
                                DB.User.first_name, DB.User.last_name
                             ).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)
         query = query.where(DB.User.is_deleted != True)
-        query = query.where(DB.User.role == "STU")
+        query = query.where(DB.User.role.in_(P.roles_with("roster.student")))
         if email:
             query = query.where(DB.User.email.contains(email))
         if org_id:

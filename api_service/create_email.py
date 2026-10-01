@@ -31,7 +31,7 @@ def send_grades_submission_email(co_id, upd_count):
         to = []
         for r in res:
             to.append(r.instructor.email)
-        res1 = DB.User.select().where(DB.User.role == "ACA")
+        res1 = DB.User.select().where(DB.User.role.in_(P.roles_with("roster.acad_section")))
         for r in res1:
             to.append(r.email)
         to = ', '.join(to)
@@ -114,7 +114,7 @@ def send_user_creation_email(email, login_id):
 def send_offering_updated_email(co_id, old_status, new_status):
     try:
         cursor = DB.db.execute_sql(sql_by_id("course_offering_info"),
-                                   [int(co_id)])
+                                   [P.roles_with("offerings.edit:dept"), int(co_id)])
         co_info = cursor.fetchall()[0]
         data = {}
         if co_info:

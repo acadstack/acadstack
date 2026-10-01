@@ -145,8 +145,11 @@ def static_data_dict():
     for r in rows:
         if r.vocab in DB_VOCABS:
             sd[r.vocab].append({"id": r.code, "value": r.label})
-    sd["UserRoles"] = [{"id": "", "value": "-Select-"}] + [
-        {"id": r.code, "value": r.label} for r in M.Role.select().order_by(M.Role.id)]
+    # roster: the kinds of person a role's users count as, e.g. ["student"].
+    sd["UserRoles"] = [{"id": "", "value": "-Select-", "roster": []}] + [
+        {"id": r.code, "value": r.label,
+         "roster": sorted(p.split(".", 1)[1] for p in P.perms_of(r.code) if p.startswith("roster."))}
+        for r in M.Role.select().order_by(M.Role.id)]
     return sd
 
 

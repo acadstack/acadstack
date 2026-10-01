@@ -1316,9 +1316,15 @@ INSERT INTO public.permission (code, description, is_deleted, txn_no, ins_ts, up
     ('ppr.edit:own', 'Submit PhD progress reports; own: as a DC member of the student; any: also set any status', false, 1, now(), now()),
     ('ppr.edit:any', 'Submit PhD progress reports; own: as a DC member of the student; any: also set any status', false, 1, now(), now()),
     ('wfnotes.view', 'View workflow notes', false, 1, now(), now()),
-    ('wfnotes.edit', 'Add and delete one''s workflow notes', false, 1, now(), now());
+    ('wfnotes.edit', 'Add and delete one''s workflow notes', false, 1, now(), now()),
+    ('roster.student', 'Counts as a student: found by entry-number lookups, bulk enrolment, grade sheets and student lists', false, 1, now(), now()),
+    ('roster.instructor', 'Counts as an instructor: offered in the instructor lookup, can supervise a DC', false, 1, now(), now()),
+    ('roster.acad_section', 'Counts as the academic section: receives grade submission emails', false, 1, now(), now());
 
 INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts, upd_ts) VALUES
+    ('STU', 'roster.student', false, 1, now(), now()),
+    ('FAC', 'roster.instructor', false, 1, now(), now()),
+    ('ACA', 'roster.acad_section', false, 1, now(), now()),
     ('STU', 'advisors.view', false, 1, now(), now()),
     ('STU', 'app.access', false, 1, now(), now()),
     ('STU', 'calendar.view', false, 1, now(), now()),
@@ -1645,6 +1651,7 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('ADV', 'courses.view', false, 1, now(), now()),
     ('ADV', 'credits.reports', false, 1, now(), now()),
     ('ADV', 'dc.view:any', false, 1, now(), now()),
+    ('ADV', 'enrolments.approve:own', false, 1, now(), now()),
     ('ADV', 'enrolments.change:any', false, 1, now(), now()),
     ('ADV', 'enrolments.download', false, 1, now(), now()),
     ('ADV', 'enrolments.pending_advisor:own', false, 1, now(), now()),

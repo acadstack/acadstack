@@ -160,10 +160,23 @@ The default roles:
 | PLA | Placement cell |
 | ADV | Advisor |
 
-Some queries select people by role code, for example the students of a batch
-(`STU`), the instructors in the lookup (`FAC`), a department's HoD (`HOD`)
-for notification emails, and the academic section (`ACA`). Keep those codes
-when editing roles.
+Where the code needs a kind of person, it selects the users whose role holds
+a `roster.*` permission, never a role code:
+
+| Permission | The role's users count as | Used for |
+| ---------- | ------------------------- | -------- |
+| `roster.student` | students | entry-number lookups, bulk enrolment, grade sheets, student lists |
+| `roster.instructor` | instructors | the instructor lookup, DC supervisors, teaching load |
+| `roster.acad_section` | the academic section | grade submission emails |
+
+Python gets the roles with `P.roles_with("roster.student")`; SQL uses
+`u.role = ANY(%s)` with that list as the parameter. Course offering emails go to
+the department's head: an active user of the offering's department whose role
+holds `offerings.edit:dept`, the permission to act on the offering.
+`UserRoles` in the static data lists each role's roster flags (e.g.
+`"roster": ["student"]`) for the frontend. The defaults grant them to `STU`,
+`FAC` and `ACA`; a new or renamed role takes part by being granted
+them on the *Roles & Permissions* screen.
 
 `tests/test_permissions.py` holds, for every route, the roles that the
 default grants let in; update it together with any change to the defaults.

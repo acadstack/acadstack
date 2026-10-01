@@ -4,6 +4,7 @@ university's format."""
 import api_common as apiVC
 import common as C
 import models as M
+import policy as P
 from conftest import make_offering, make_user
 from test_levels import _upload_courses
 
@@ -77,5 +78,6 @@ def test_credit_hours_spent_reads_multi_digit_ltp(db):
     fac = make_user("fac", role="FAC")
     co = make_offering(code="CS900", ltp="10-0-2-21-11", acad_session="2026-I",
                        instructor=fac)
-    rows = C.db.execute_sql(C.sql_by_id("credit_hours_spent"), [co.acad_session]).fetchall()
+    rows = C.db.execute_sql(C.sql_by_id("credit_hours_spent"),
+                            [co.acad_session, P.roles_with("roster.instructor")]).fetchall()
     assert [float(r[4]) for r in rows] == [231.0]

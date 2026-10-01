@@ -24,7 +24,7 @@ def __get_ce_ownership(eids, actor):
     sql2 = sql_by_id("frag_ba_and_instructor")
     sql = "{0} {1}".format(sql1, sql2)
     param = tuple(eids)
-    cursor = DB.db.execute_sql(sql, [param])
+    cursor = DB.db.execute_sql(sql, [P.roles_with("roster.student")] + [param])
 
     ba_instr = apiVC.result_set_from_cursor(cursor)
     data = {}
@@ -249,7 +249,7 @@ def __get_advisor_action_items():
     qry1 = sql_by_id("frag_pending_enrollments")
     qry2 = sql_by_id("frag_ba_pending_enrollments")
     qry = f"{qry1} {qry2}"
-    cursor = DB.db.execute_sql(qry, [u.id])
+    cursor = DB.db.execute_sql(qry, [P.roles_with("roster.student")] + [u.id])
     # Add the data rows
     results = apiVC.result_set_from_cursor(cursor)
     return results
@@ -421,7 +421,7 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
 
         query = DB.User.select(DB.User.id, DB.Person.org_id, 
                                DB.User.role).join(DB.Person)
-        query = query.where((DB.User.role == "STU") & (DB.User.is_deleted != True) &
+        query = query.where(DB.User.role.in_(P.roles_with("roster.student")) & (DB.User.is_deleted != True) &
                             (DB.Person.current_status == 'REG') &
                             DB.Person.org_id.startswith(entry_no_pattern))
 

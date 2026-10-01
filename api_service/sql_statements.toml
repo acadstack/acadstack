@@ -121,7 +121,7 @@ credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role,
     LEFT JOIN public.course c ON o.course_id = c.id
     JOIN public.person p ON u.person_id = p.id
     GROUP BY u.id, o.acad_session, p.dept_name
-    HAVING u.role = 'FAC';
+    HAVING u.role = ANY(%s);
     """
 
 core_courses_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
@@ -225,10 +225,11 @@ enrolment_info = """
 
 course_offering_info = """
     WITH dept_hod AS (
-        SELECT u.email, p.dept_name
+        SELECT DISTINCT ON (p.dept_name) u.email, p.dept_name
         FROM public.user u 
         JOIN public.person p ON p.id = u.person_id
-        WHERE u.role = 'HOD'
+        WHERE u.role = ANY(%s) AND NOT u.is_deleted
+        ORDER BY p.dept_name, u.id
     )
     SELECT 
         (c.title || '::' || c.code) AS course,
@@ -643,7 +644,7 @@ generate_student_list = """
     join public.user u on u.id=sc.student_id
     join public.person p on p.id=u.person_id
     where p.degree=%s and p.year_of_entry=%s and p.dept_name=%s 
-    and sc.acad_session=%s and u.role='STU' 
+    and sc.acad_session=%s and u.role = ANY(%s)
 """
 
 frag_pending_enrollments = """ 
@@ -653,7 +654,6 @@ frag_pending_enrollments = """
     from public.batchadvisors ba
     join public.user bau on bau.id=ba.user_id
     join public.person bap on bap.id=bau.person_id
-    where bau.role='FAC'
     ),
 
     enrolled_students as (
@@ -662,7 +662,7 @@ frag_pending_enrollments = """
     p.degree, p.dept_name as dep, p.year_of_entry as year
     from public.user stu
     join public.person p on p.id=stu.person_id
-    where stu.role='STU') 
+    where stu.role = ANY(%s)) 
     """
 
 frag_ba_pending_enrollments = """

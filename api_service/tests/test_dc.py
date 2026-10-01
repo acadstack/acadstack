@@ -77,7 +77,7 @@ async def test_supervisor_must_be_faculty(client, auth, people):
     make_user("aca", role="ACA")
     await auth.login("aca")
     _, body = await dc_save(client, dc_payload(people))
-    assert body == {"status": "ERROR", "body": "Only a faculty can be the supervisor!"}
+    assert body == {"status": "ERROR", "body": "The supervisor must be an instructor!"}
 
 
 async def test_supervisor_must_be_from_students_department(client, auth, people):
