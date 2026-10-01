@@ -110,9 +110,9 @@ credits_earned_report = """
 
 credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role, 
     SUM(
-        (2 * SUBSTR(c.ltp, 1, 1) - SUBSTR(c.ltp, 3, 1) + 
-        SUBSTR(c.ltp, 5, 1)::NUMERIC / 2) *
-        (SUBSTR(c.ltp, 1, 1)::NUMERIC + SUBSTR(c.ltp, 5, 1)::NUMERIC / 2)
+        (2 * split_part(c.ltp, '-', 1)::NUMERIC - split_part(c.ltp, '-', 2)::NUMERIC +
+        split_part(c.ltp, '-', 3)::NUMERIC / 2) *
+        (split_part(c.ltp, '-', 1)::NUMERIC + split_part(c.ltp, '-', 3)::NUMERIC / 2)
     ) AS hours, o.acad_session, p.dept_name
     FROM
     (SELECT * FROM public.courseoffering co WHERE co.acad_session = %s) o

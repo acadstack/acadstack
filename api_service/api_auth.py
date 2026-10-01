@@ -43,7 +43,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/user_save', view_func=user_save, methods=['POST'])
     bp.add_url_rule('/user_delete', view_func=user_delete, methods=['POST'])
     bp.add_url_rule('/instructor_lookup/<string:query_str>', view_func=instructor_lookup, methods=['GET'])
-    bp.add_url_rule('/student_lookup/<string:query_str>', view_func=student_lookup, methods=['GET'])
+    bp.add_url_rule('/student_lookup/<path:query_str>', view_func=student_lookup, methods=['GET'])
     bp.add_url_rule('/students_find', view_func=find_students, methods=['POST'])
     bp.add_url_rule('/my_photo', view_func=get_my_photo, methods=['GET'])
     bp.add_url_rule('/get_image/<string:file_name>', view_func=get_image, methods=['GET'])
@@ -600,8 +600,8 @@ async def get_image(file_name):
 @P.require("users.lookup")
 async def student_lookup(query_str):
     try:
-        if not apiVC.roll_number_valid(query_str):
-            return apiVC.error_json("Invalid entry number pattern!")
+        if not query_str.strip():
+            return apiVC.error_json("Entry number pattern is required!")
 
         query = DB.User.select(DB.User.id, DB.Person.id, DB.Person.dept_name,
                                DB.Person.org_id, DB.User.role,

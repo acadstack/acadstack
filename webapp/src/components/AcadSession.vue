@@ -1,8 +1,6 @@
 <template>
     <div>
-        <label for="crs_sess">{{label}} 
-            <small class="text-primary" v-if="isOtherAcadSession||isEdit">(YYYY-X, here 'X' can be: I = First Semester, II = Second Semester, S=Summer and T1, T2 etc. for trimesters.)</small>
-        </label>
+        <label for="crs_sess">{{label}}</label>
         <div class="input-group">
             <select v-if="!isEdit && !isOtherAcadSession" class="form-select" 
                 id="crs_sess" v-model.trim="my_acad_session" :disabled="disabled">
@@ -18,7 +16,7 @@
                 id="crs_sess"
                 :disabled="disabled"
                 v-model.trim="my_acad_session"
-                placeholder="YYYY-X"
+                placeholder="Session name"
                 aria-describedby="acadSessHelp"
                 />
             <div v-if="!isEdit" class="input-group-text form-check-inline">

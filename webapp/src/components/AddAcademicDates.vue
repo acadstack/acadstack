@@ -11,17 +11,19 @@ Component for adding the academic event dates.
                 <acad-session v-bind:acad_session="session" label="Load for session"
                     v-on:update:acad_session='onAcadSessionChange' />
                 <div v-if="!v$.session.required && v$.session.$dirty" class="text-danger">This is a requird feild</div>
-                <div v-else-if="!v$.session.validsession && v$.session.$dirty" class="text-danger">Session is invalid
-                </div>
             </div>
         </div>
         <div class="card">
             <div class="card-header">
                 <span class="float-start">
-                    Events dates for academic session (I = First Semester, II = Second Semester, S=Summer):
-                    <input :disabled="viewOnly" v-model.trim="acad_dates.session" maxlength="7" placeholder="YYYY-S" />
-                    <div v-if="!v$.acad_dates.session.validsession && v$.acad_dates.session.$dirty"
-                        class="text-danger">Session is invalid</div>
+                    Event dates for academic session:
+                    <input :disabled="viewOnly" v-model.trim="acad_dates.session" maxlength="10" placeholder="Session name" />
+                    <label class="ms-2">
+                        <input type="checkbox" :disabled="viewOnly" v-model="acad_dates.is_additional" />
+                        Additional session (overlaps the regular terms, e.g. summer)
+                    </label>
+                    <div v-if="!v$.acad_dates.session.required && v$.acad_dates.session.$dirty"
+                        class="text-danger">Session name is required</div>
                 </span>
                 <div v-if="!viewOnly" class="float-end">
                     <button class="btn btn-outline-success me-2" type="button" @click="save">
@@ -206,7 +208,8 @@ export default {
             const eventDates = {};
             for (const [k, v] of Object.entries(this.acad_dates.eventDates))
                 if (v) eventDates[k] = v;
-            return { session: this.acad_dates.session, eventDates };
+            return { session: this.acad_dates.session, eventDates,
+                is_additional: this.acad_dates.is_additional };
         },
         search() {
             let vm = this;
@@ -246,17 +249,11 @@ export default {
     validations() {
         return {
             session: {
-                required,
-                validsession() {
-                    return this.acadSessionRegExp.test(this.session);
-                }
+                required
             },
             acad_dates: {
                 session: {
-                    required,
-                    validsession() {
-                        return this.acadSessionRegExp.test(this.acad_dates.session);
-                    }
+                    required
                 },
                 eventDates: this.eventDateRules
             }

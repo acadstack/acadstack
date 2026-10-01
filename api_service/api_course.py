@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+import re
 from quart import Blueprint, request
 from werkzeug.utils import secure_filename
 from peewee import IntegrityError
@@ -200,12 +201,13 @@ async def bulk_add_courses():
                         raise C.AcadStackException(
                             f"Course {row.get('code')}: level must be one of "
                             f"{', '.join(levels)}.")
-                    l, t, p, *x = row["ltp"].split("-")
-                    l, t, p = C.parse_number(l), C.parse_number(t), \
-                                C.parse_number(p)
-                    s = round(2 * l - t + 0.5 * p, 2)
-                    c = round(l + 0.5 * p, 2)
-                    ltpsc = f"{l}-{t}-{p}-{s}-{c}"
+                    ltpsc = (row["ltp"] or "").strip()
+                    parts = ltpsc.split("-")
+                    if len(parts) != 5 or not all(
+                            re.fullmatch(r"[0-9]+(\.[0-9]+)?", x) for x in parts):
+                        raise C.AcadStackException(
+                            f"Course {row.get('code')}: ltp must be in the "
+                            "L-T-P-S-C format, e.g. 3-0-2-6-4.")
                     cou = DB.Course(code=row["code"], title=row["title"],
                                  ltp=ltpsc, level=level, status="APP", 
                                  author=apiVC.logged_in_user())

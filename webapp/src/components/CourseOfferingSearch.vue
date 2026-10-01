@@ -25,7 +25,6 @@ Component for searching offered courses.
             <label for="crs_cd">Code</label>
             <input type="text" class="form-control" id="crs_cd" v-model.trim="course.code" />
           </div>
-          <div v-if="!v$.course.code.validcode && v$.course.code.$dirty" class="text-danger">Invalid code</div>
         </div>
         <div class="col">
           <div>
@@ -156,15 +155,11 @@ Component for searching offered courses.
 </template>
 
 <script>
-import { useVuelidate } from '@vuelidate/core'
 import AcadSession from "./AcadSession.vue";
 export default {
   name: "CourseOfferingSearch",
   components: {
     "AcadSession": AcadSession
-  },
-  setup() {
-    return { v$: useVuelidate() }
   },
   data: function() {
     return {
@@ -334,22 +329,6 @@ export default {
       console.debug("Flag: "+flag);
       return flag;
     },
-  },
-  validations:{
-    course:{
-      code:{
-        validcode(){
-          if("code" in this.course ){
-            var checkcode = new RegExp("^[A-Z]?[A-Z]?[0-9]?[0-9]?[0-9]?$", "i"); 
-            if (!checkcode.test(this.course.code)){
-                return false;
-            }
-            return true;
-          }
-          return true;
-        }
-      }
-    }
   }
 };
 </script>

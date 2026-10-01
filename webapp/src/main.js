@@ -145,9 +145,6 @@ app.mixin({
         },
         isPGStudent() {
             return this.isStudent && this.$root.user.degree_level === 'PG'
-        },
-        acadSessionRegExp() {
-            return new RegExp("^\\d{4}-([S]|I{0,2}|T[1-4])$", "i");
         }
     }
 })

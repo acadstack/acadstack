@@ -181,7 +181,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     acad_session = acad_session.strip().upper()
     report_data = {}
     if acad_session and not apiVC.academic_session_valid(acad_session):
-        raise C.AcadStackException("Expected academic session in YYYY-S format.")
+        raise C.AcadStackException("Unknown academic session.")
 
     stu = get_user_by_org_id(entry_no)
     if not stu:

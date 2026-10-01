@@ -15,11 +15,9 @@ Component for searching offered courses.
               type="text"
               class="form-control"
               v-model.trim="entry_no_pattern"
-              minlength="6"
               maxlength="15"
               required
-              pattern="^\d{4}[A-Za-z]{2,4}\d{0,4}"
-              placeholder="At least first 6 characters of entry no."
+              placeholder="First characters of the entry numbers"
             />
         </div>
         <div class="col">
@@ -129,30 +127,39 @@ export default {
     },
     lookupStudents(enp) {
       let vm = this;
-      if (_.isEmpty(enp) || enp.length < 5) {
-        console.log("Min. 5 charaters needed. Ignored.");
-        return;
+      if (_.isEmpty(enp)) {
+        vm.students = [];
+        return Promise.resolve();
       }
-      vm.$http
-        .get(`student_lookup/${enp}`)
+      return vm.$http
+        .get(`student_lookup/${encodeURIComponent(enp)}`)
         .then(function (res) {
           if (res.data.status == "OK") {
             vm.students = res.data.body;
             console.log("Students looked up: " + JSON.stringify(vm.students));
           } else {
+            vm.students = [];
             vm.setStatusMessage(res.data.body);
           }
         })
         .catch(function (error) {
           console.log(error);
+          vm.students = [];
           vm.setStatusMessage("Error: " + error);
         });
     },
-    enrol_students() {
-      if (!confirm("Confirm bulk enrollment?")) return;
+    async enrol_students() {
       let vm = this;
+      // Count the students for the prefix as typed now, not the debounced one.
+      await vm.lookupStudents(vm.entry_no_pattern);
+      if (vm.students.length == 0) {
+        vm.setStatusMessage("No students found for the entry number prefix!");
+        return;
+      }
+      if (!confirm(`Enrol ${vm.students.length} students whose entry number starts with ` +
+          `"${vm.entry_no_pattern}" in ${vm.selectedCourse}?`)) return;
       vm.$http
-        .get(`co_bulkenrol/${vm.entry_no_pattern}/${vm.course_id}`)
+        .get(`co_bulkenrol/${encodeURIComponent(vm.entry_no_pattern)}/${vm.course_id}`)
         .then(function (res) {
           vm.setStatusMessage(res.data.body);
         })

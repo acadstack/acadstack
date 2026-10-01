@@ -3,7 +3,7 @@
     <span class="sec-hdr">Course lectures in academic session</span>
     <div class="row mb-2">
       <div class="col float-start">
-        <input v-model.trim="session" maxlength="7" placeholder="YYYY-S" />
+        <input v-model.trim="session" maxlength="10" placeholder="Session name" />
         <button
           class="btn btn-outline-success me-2"
           @click="search"
@@ -20,19 +20,13 @@
         >
           This is a requird feild
         </div>
-        <div
-          v-else-if="!v$.session.validsession && v$.session.$dirty"
-          class="text-danger"
-        >
-          Session is invalid
-        </div>
       </div>
     </div>
     <div class="card">
       <div class="card-header">
         <div class="row hdr-row">
           <div class="col-md-1">S#</div>
-          <div class="col-md-2">Session (W=Winter, S=Summer, M=Monsoon)</div>
+          <div class="col-md-2">Session</div>
           <div class="col-md-1">Code</div>
           <div class="col">Title</div>
           <div class="col-md-2">No of Lectures</div>
@@ -97,10 +91,7 @@ export default {
   validations() {
     return {
       session: {
-        required,
-        validsession() {
-          return this.acadSessionRegExp.test(this.session);
-        },
+        required
       }
     }
   },
