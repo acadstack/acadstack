@@ -464,7 +464,7 @@ async def test_re_requesting_a_pending_enrolment_does_not_clash_with_itself(clie
     assert (await enroll(client, setup["stu"], [co]))["status"] == "OK"
 
 
-async def test_passed_courses_match_whole_grades(client, auth, setup):
+async def test_passed_courses_match_whole_grades(client, auth, setup, grading_schemes):
     enrol(setup["stu"], make_offering("CS301"), grade="B")
     enrol(setup["stu"], make_offering("CS302"), grade="")
     await auth.login("stu")

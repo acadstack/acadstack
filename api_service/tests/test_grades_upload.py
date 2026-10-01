@@ -11,10 +11,13 @@ import pytest
 from quart.datastructures import FileStorage
 
 import models as M
-from conftest import enrol, make_offering, make_user, set_event_window
+import settings
+from conftest import enrol, make_offering, make_user, set_event_window, ten_point_scheme
 
 SESSION = "2026-I"
 HEADER = "first_name,last_name,roll_no,grade"
+
+pytestmark = pytest.mark.usefixtures("grading_schemes")
 
 
 @pytest.fixture
@@ -130,6 +133,20 @@ async def test_invalid_grade(client, auth, app, setup):
                         f"{HEADER}\nA,B,2024CSB1001,A+\nC,D,2024CSB1002,B\n")
     assert "Found invalid grades" in body["body"]
     assert grades(setup["ce1"], setup["ce2"]) == ["NA", "NA"]
+
+
+async def test_grades_come_from_the_grading_schemes(client, auth, app, setup):
+    s = ten_point_scheme("UG", name="Pass/fail")
+    s["grades"] = [dict(s["grades"][0], grade="P", points=4), s["grades"][8]]
+    settings.save("grading_schemes", [s])
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id,
+                        f"{HEADER}\nA,B,2024CSB1001,A\nC,D,2024CSB1002,P\n")
+    assert "Found invalid grades" in body["body"]
+    body = await upload(client, app, "ins", setup["co"].id,
+                        f"{HEADER}\nA,B,2024CSB1001,P\nC,D,2024CSB1002,F\n")
+    assert body["status"] == "OK"
+    assert grades(setup["ce1"], setup["ce2"]) == ["P", "F"]
 
 
 async def test_missing_enrolled_roll_number(client, auth, app, setup):

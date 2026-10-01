@@ -13,6 +13,7 @@ import common as C
 import models as M
 import settings as ST
 import policy as P
+import transcript as TR
 from typing import Any, Dict, Type
 from pathlib import Path
 from io import BytesIO
@@ -138,6 +139,8 @@ def static_data_dict():
     hidden = ST.get("hidden_enrol_types")
     sd["EnrolTypes"] = [e for e in sd["EnrolTypes"] if e["id"] not in hidden]
     sd["AcademicSessions"] = acs
+    sd["CourseGrades"] = [{"id": "", "value": "-Select-"}] + [
+        {"id": g, "value": g} for g in valid_grades()]
     for v in DB_VOCABS:
         sd[v] = [{"id": "", "value": "-Select-"}]
     rows = M.VocabItem.select().where(M.VocabItem.is_deleted == False) \
@@ -185,6 +188,97 @@ def session_start_dates(acad_sessions):
     return {r.acad_session: r.event_value for r in rows}
 
 
+def session_order():
+    """The position of every academic session in date order, as {code: index}."""
+    codes = [r.code for r in M.AcademicSession.select(M.AcademicSession.code)]
+    return {c: i for i, c in enumerate(TR.sort_sessions(codes, session_start_dates(codes)))}
+
+
+def grading_rules(level, acad_sessions):
+    """The grade rules ({grade: entry}) of the grading scheme that applies to a
+    student of this program level in each of the given sessions, as
+    {session: rules}."""
+    schemes, order = ST.get("grading_schemes"), session_order()
+    res = {}
+    for s in acad_sessions:
+        if not level:
+            raise C.AcadStackException("The student's program has no level (UG, PG or PHD).")
+        res[s] = TR.resolve_scheme(schemes, level, s, order)
+        if res[s] is None:
+            raise C.AcadStackException(
+                f"No grading scheme applies to {level} students in session {s}.")
+    return res
+
+
+def scheme_grades():
+    """Every grade of the grading schemes, in the order first seen."""
+    grades = []
+    for s in ST.get("grading_schemes"):
+        grades += [g["grade"] for g in s["grades"] if g["grade"] not in grades]
+    return grades
+
+
+def valid_grades():
+    """The grades an enrolment may be given: no grade yet, or a scheme's grade."""
+    return [C.NO_GRADE] + scheme_grades()
+
+
+def valid_audit_grades():
+    """The grades an audit enrolment may be given."""
+    grades = [C.NO_GRADE]
+    for s in ST.get("grading_schemes"):
+        grades += [g["grade"] for g in s["grades"]
+                   if g["allowed_for_audit"] and g["grade"] not in grades]
+    return grades
+
+
+def graded_rows(flag):
+    """Every (level, session, grade) whose rule has the flag, such as
+    earns_credit, as three lists for SQL: (level, session, grade) IN
+    (SELECT * FROM unnest(levels, sessions, grades))."""
+    schemes, order = ST.get("grading_schemes"), session_order()
+    rows = [(lvl, s, g) for lvl in VOCAB_ATTRS["Degrees"]["level"] for s in order
+            for g, e in (TR.resolve_scheme(schemes, lvl, s, order) or {}).items() if e[flag]]
+    return [list(x) for x in zip(*rows)] or [[], [], []]
+
+
+def check_grading_schemes(schemes):
+    """Raises ValueError if a value for the grading_schemes setting names an
+    unknown session, has a range that ends before it starts, has two ranges
+    of a level that overlap without one being inside the other (so the
+    narrowest is always clear), or changes the rules of a closed session.
+    A value of the wrong shape is left for settings.save to refuse."""
+    if not ST.SETTINGS["grading_schemes"][1](schemes):
+        return
+    order = session_order()
+    ranges = []
+    for s in schemes:
+        for code in (s["from_session"], s["until_session"]):
+            if code is not None and code not in order:
+                raise ValueError(f"Scheme {s['name']}: unknown academic session {code}.")
+        lo, hi = TR.scheme_range(s, order)
+        if lo > hi:
+            raise ValueError(f"Scheme {s['name']} ends before it starts.")
+        for t, t_lo, t_hi in ranges:
+            if t["level"] != s["level"] or hi < t_lo or t_hi < lo:
+                continue
+            if (lo, hi) == (t_lo, t_hi) or not (
+                    t_lo <= lo and hi <= t_hi or lo <= t_lo and t_hi <= hi):
+                raise ValueError(f"Schemes {t['name']} and {s['name']} overlap; for the "
+                                 "same level, one range must lie inside the other.")
+        ranges.append((s, lo, hi))
+
+    old = ST.get("grading_schemes")
+    closed = {r.acad_session for r in M.AcademicCalendar.select(M.AcademicCalendar.acad_session)
+              .where(M.AcademicCalendar.event_code == "SESSION_CLOSED")}
+    for acs in (c for c in order if c in closed):
+        for lvl in VOCAB_ATTRS["Degrees"]["level"]:
+            before = TR.resolve_scheme(old, lvl, acs, order)
+            if before is not None and before != TR.resolve_scheme(schemes, lvl, acs, order):
+                raise ValueError(f"Session {acs} is closed, and this change alters the "
+                                 f"grading rules of its {lvl} students.")
+
+
 def static_data_item(item_key):
     sd = static_data_dict()
     return sd[item_key]
@@ -209,6 +303,8 @@ async def get_settings():
 async def save_setting():
     fd = await request.get_json(force=True)
     try:
+        if fd.get("key") == "grading_schemes":
+            check_grading_schemes(fd.get("value"))
         ST.save(fd.get("key"), fd.get("value"))
     except ValueError as ex:
         return error_json(str(ex))

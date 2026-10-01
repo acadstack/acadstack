@@ -79,8 +79,9 @@ async def download_grade_status(grades_st, acad_session):
         else:
             sql_id = 'grades_status_pending'
 
-        cursor = DB.db.execute_sql(C.sql_by_id(sql_id),
-                                [str(acad_session)])
+        params = [str(acad_session)] if grades_st == "GS" else \
+            [str(acad_session), apiVC.scheme_grades()]
+        cursor = DB.db.execute_sql(C.sql_by_id(sql_id), params)
 
         fp = apiVC.db_result_to_excel(cursor)
         return await send_file(fp,
@@ -482,6 +483,7 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
                             str(degree), str(degree),
                             str(dept_name), str(dept_name),
                             str(acad_session), str(acad_session),
+                            *apiVC.graded_rows("earns_credit"),
                             str(course_type), str(course_type),
                             int(min_credits), int(max_credits)])
 
@@ -535,13 +537,14 @@ async def grades_upload():
                 return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
 
             invalid_rows = []
+            valid_grades = apiVC.valid_grades()
             for ll in lines[1:]:
-                if ll.split(',')[3].strip() not in C.VALID_GRADES:
+                if ll.split(',')[3].strip() not in valid_grades:
                     invalid_rows.append(ll)
 
             if invalid_rows:
                 return apiVC.error_json(f"Found invalid grades in rows: {invalid_rows}. "
-                                     f"Allowed grades values are: {C.VALID_GRADES}")
+                                     f"Allowed grades values are: {valid_grades}")
 
 
         with open(file_path, 'w') as out:
@@ -571,6 +574,7 @@ async def grades_upload():
 
         # If all is OK, then update the grades in DB
         upd_count = 0
+        audit_grades = apiVC.valid_audit_grades()
         with DB.db.atomic() as txn:
             with open(file_path, newline='') as csvfile:
                 reader = csv.DictReader(csvfile)
@@ -584,10 +588,10 @@ async def grades_upload():
                         (DB.CourseEnrollment.student == stu.id)
                     )[0]
 
-                    if coe.enrol_type == "A" and grade not in C.VALID_AUDIT_GRADES:
+                    if coe.enrol_type == "A" and grade not in audit_grades:
                         raise C.AcadStackException(f"Invalid grade {grade} assigned "
                                 f"to {roll_no} for audited course. "
-                                f"Allowed audit grades are: {C.VALID_AUDIT_GRADES}")
+                                f"Allowed audit grades are: {audit_grades}")
 
                     if coe.grade == grade:
                         logging.debug("Grade unchanged, skipping the update.")

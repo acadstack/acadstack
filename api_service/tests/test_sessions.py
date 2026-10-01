@@ -79,7 +79,7 @@ def test_sessions_sort_by_start_date():
         == ["Fall 2027", "Spring 28", "X"]
 
 
-async def test_transcript_sessions_follow_their_dates(client, auth):
+async def test_transcript_sessions_follow_their_dates(client, auth, grading_schemes):
     for code, start in (("Fall 2027", "2027-08-01"), ("Spring 28", "2028-01-10")):
         M.AcademicSession.create(code=code)
         M.AcademicCalendar.create(acad_session=code, event_code="SESSION_S", event_value=start)

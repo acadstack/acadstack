@@ -10,9 +10,15 @@ import pytest
 import common as C
 import models as M
 import transcript as TR
-from conftest import enrol, make_offering, make_user
+from conftest import enrol, make_offering, make_user, ten_point_scheme
 
-compute = TR.session_gpa
+# The grade rules of the 10-point scheme, per level.
+RULES = {lvl: TR.resolve_scheme([ten_point_scheme(lvl)], lvl, "any", {})
+         for lvl in ("UG", "PG", "PHD")}
+
+
+def compute(courses, level):
+    return TR.session_gpa(courses, RULES[level])
 
 
 def course(grade, credits=4, enrol_type="C", enrol_status="ENRO",
@@ -160,7 +166,7 @@ def test_frozen_credits_are_used_instead_of_ltp():
 
 def test_cumulative_gpa_carries_earned_credits_and_points():
     r = TR.cumulative_gpa([[course("A", 4)], [course("B", 4, acad_session="2024-II")]],
-                          "UG")
+                          [RULES["UG"], RULES["UG"]])
     assert [x["cec"] for x in r] == [4, 8]
     assert [x["cgpa"] for x in r] == [10, 9]
     assert [x["sgpa"] for x in r] == [10, 8]
@@ -180,7 +186,7 @@ def test_empty_course_list():
 
 # ---- Cumulative CGPA over sessions, through the student academics route ----
 
-async def test_cumulative_cgpa_across_sessions(client, auth):
+async def test_cumulative_cgpa_across_sessions(client, auth, grading_schemes):
     stu = make_user("stu", role="STU", degree="BTE", year_of_entry="2023")
     co1 = make_offering("CS101", ltp="3-0-2-7-4", acad_session="2023-I", status="F")
     co2 = make_offering("CS102", ltp="3-0-0-6-3", acad_session="2023-II", status="F")
@@ -200,7 +206,7 @@ async def test_cumulative_cgpa_across_sessions(client, auth):
     assert s2["cgpa"] == 9.14
 
 
-async def test_grade_hidden_until_result_declaration(client, auth):
+async def test_grade_hidden_until_result_declaration(client, auth, grading_schemes):
     stu = make_user("stu", role="STU", degree="BTE", year_of_entry="2023")
     enrol(stu, make_offering(acad_session="2026-I", status="R"), grade="A")
     M.AcademicCalendar.create(acad_session="2026-I", event_code="RESULT_DECLARATION",

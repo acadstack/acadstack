@@ -27,6 +27,34 @@ def _label_overrides_valid(v):
         for lst, labels in v.items())
 
 
+_SCHEME_KEYS = {"name", "level", "from_session", "until_session", "grades"}
+_GRADE_FLAGS = {"earns_credit", "in_cgpa", "credit_without_gpa", "excluded_from_gpa",
+                "allowed_for_audit"}
+
+
+def _grade_valid(g):
+    # Grades are stored in a 2-character column, upper case as uploaded.
+    return (type(g) is dict and g.keys() == {"grade", "points"} | _GRADE_FLAGS and
+            type(g["grade"]) is str and 1 <= len(g["grade"]) <= 2 and
+            g["grade"] == g["grade"].strip().upper() and g["grade"] != C.NO_GRADE and
+            (g["points"] is None or (type(g["points"]) in (int, float) and g["points"] >= 0)) and
+            all(type(g[f]) is bool for f in _GRADE_FLAGS))
+
+
+def _grading_schemes_valid(v):
+    # The shape only; the session ranges are checked when the setting is saved
+    # (api_common.check_grading_schemes).
+    from api_common import VOCAB_ATTRS
+    return type(v) is list and all(
+        type(s) is dict and s.keys() == _SCHEME_KEYS and
+        type(s["name"]) is str and s["name"].strip() and
+        s["level"] in VOCAB_ATTRS["Degrees"]["level"] and
+        all(c is None or (type(c) is str and c) for c in (s["from_session"], s["until_session"])) and
+        type(s["grades"]) is list and s["grades"] and all(_grade_valid(g) for g in s["grades"]) and
+        len({g["grade"] for g in s["grades"]}) == len(s["grades"])
+        for s in v)
+
+
 # key: (default, check, description)
 SETTINGS = {
     "max_credits": (24, _int_between(1, 100),
@@ -45,6 +73,8 @@ SETTINGS = {
     "hidden_enrol_types": ([], lambda v: type(v) is list and all(
                                type(c) is str and c in _codes("EnrolTypes") - {"C"} for c in v),
                            "Enrolment types that are not offered."),
+    "grading_schemes": ([], _grading_schemes_valid,
+                        "Grades and their rules, per program level and range of sessions."),
 }
 
 _cache = {}

@@ -20,6 +20,7 @@ from datetime import timedelta
 import common as C
 import migrate
 import models as M
+import settings as ST
 import api_reports as R
 
 static_data = C.static_data_json()
@@ -28,7 +29,6 @@ static_data = C.static_data_json()
 ENROL_TYPES = [entry.get('id') for entry in static_data.get('EnrolTypes', []) if entry.get('id')][1:]
 ENROL_STATUSES = [entry.get('id') for entry in static_data.get('EnrolStatuses', []) if entry.get('id')][1:]
 CO_STATUSES = [entry.get('id') for entry in static_data.get('OfferingStatuses', []) if entry.get('id')][1:]
-GRADES = [entry.get('id') for entry in static_data.get('CourseGrades', []) if entry.get('id')][2:]
 
 # Filled from the VocabItem table once the schema exists.
 DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT = [], [], [], [], [], []
@@ -189,6 +189,30 @@ def recreate_db(config):
     print("Created DB tables.")
 
 
+def ten_point_scheme(level):
+    """The 10-point grading scheme of a program level (UG, PG or PHD), for every
+    session."""
+    def g(grade, points=None, earns=False, cgpa=False, wo_gpa=False, excl=False,
+          audit=False):
+        return {"grade": grade, "points": points, "earns_credit": earns,
+                "in_cgpa": cgpa, "credit_without_gpa": wo_gpa,
+                "excluded_from_gpa": excl, "allowed_for_audit": audit}
+    phd = level == "PHD"
+    grades = [g(x, p, earns=True, cgpa=True) for x, p in
+              (("A", 10), ("A-", 9), ("B", 8), ("B-", 7), ("C", 6), ("C-", 5))]
+    # PhD students earn no credit for D, and none for S (which still has no GPA);
+    # only UG students earn credit for NP.
+    grades += [g("D", 4, earns=not phd, cgpa=not phd), g("E", 2), g("F", 0),
+               g("NP", earns=level == "UG", audit=True), g("NF", audit=True),
+               g("I", excl=True, audit=True), g("W", excl=True, audit=True),
+               g("S", earns=not phd, wo_gpa=True), g("U", excl=True)]
+    return {"name": f"10-point {level}", "level": level, "from_session": None,
+            "until_session": None, "grades": grades}
+
+
+GRADES = [g["grade"] for g in ten_point_scheme("UG")["grades"]]
+
+
 def _seed_vocab():
     for vocab, items in VOCAB_SEED.items():
         for idx, (code, label, *attrs) in enumerate(items):
@@ -206,6 +230,7 @@ def setup_db_with_demo_data(config):
     print("========== Setting up DEMO database ==========")
     recreate_db(config)
     _seed_vocab()
+    ST.save("grading_schemes", [ten_point_scheme(l) for l in ("UG", "PG", "PHD")])
     global DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT
     DEPTS = _vocab_codes("Departments")
     DEGREES = _vocab_codes("Degrees")

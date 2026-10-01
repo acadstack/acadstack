@@ -142,6 +142,7 @@ def __get_earned_credit_data(form_data):
                              str(degree), str(degree),
                              str(dept_name), str(dept_name),
                              str(acad_session), str(acad_session),
+                             *apiVC.graded_rows("earns_credit"),
                              str(course_type), str(course_type),
                              int(min_cr), int(max_cr)])
     data = []
@@ -635,7 +636,9 @@ async def generate_grade_status():
         else:
             sql_id = 'grades_status_pending'
 
-        cursor = DB.db.execute_sql(C.sql_by_id(sql_id), [str(acad_session)])
+        params = [str(acad_session)] if grades_st == "GS" else \
+            [str(acad_session), apiVC.scheme_grades()]
+        cursor = DB.db.execute_sql(C.sql_by_id(sql_id), params)
         data = []
         for row in cursor.fetchall():
             data.append({'code': row[0], 'acad_session': row[1], 

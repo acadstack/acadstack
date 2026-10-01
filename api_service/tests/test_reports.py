@@ -7,6 +7,8 @@ from conftest import enrol, make_offering, make_user
 
 SESSION = "2026-I"
 
+pytestmark = pytest.mark.usefixtures("grading_schemes")
+
 
 @pytest.fixture
 def setup(db):
@@ -21,7 +23,8 @@ async def report(client, url, payload):
     return await (await client.post(f"/acadstack/{url}", json=payload)).get_json()
 
 
-@pytest.mark.parametrize("grade,pending", [("NA", True), ("I", False), ("A", False)])
+@pytest.mark.parametrize("grade,pending", [("NA", True), ("I", False), ("A", False),
+                                           ("S", False), ("U", False)])
 async def test_grades_pending_report(client, auth, setup, grade, pending):
     M.CourseEnrollment.update(grade=grade).execute()
     await auth.login("aca")

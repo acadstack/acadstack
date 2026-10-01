@@ -294,8 +294,10 @@ def get_student_courses_perf_filtered(stu, include_attendance,
     acad_sessions, enrol_data = __fetch_student_enrollments_data(
         enrols, include_attendance)
     # acad_sessions is already in properly sorted chronology
+    rules = apiVC.grading_rules(level or apiVC.degree_level(stu.person.degree),
+                                acad_sessions)
     gpas = TR.cumulative_gpa([enrol_data[ad]["courses"] for ad in acad_sessions],
-                             level or apiVC.degree_level(stu.person.degree))
+                             [rules[ad] for ad in acad_sessions])
     for ad, gpa in zip(acad_sessions, gpas):
         enrol_data[ad].update(gpa)
 
@@ -394,10 +396,13 @@ async def get_passed_courses(user_id):
         stu = DB.User.get_by_id(user_id)
         if stu:
             res = []
-            enrols = stu.enrollments
-            pass_grades = TR.PASS_GRADES | {"S"}
+            enrols = list(stu.enrollments)
+            rules = apiVC.grading_rules(apiVC.degree_level(stu.person.degree),
+                                        {se.course_offering.acad_session for se in enrols})
             for se in enrols:
-                if se.grade.strip().upper() in pass_grades:
+                # Passed: a grade counted in the CGPA, or credit without a GPA
+                rule = rules[se.course_offering.acad_session].get(se.grade.strip().upper(), {})
+                if rule.get("in_cgpa") or rule.get("credit_without_gpa"):
                     res.append(se.course_offering.course.code)
 
             records = {}

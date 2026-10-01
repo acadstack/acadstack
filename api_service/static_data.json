@@ -23,25 +23,6 @@
         {"id": "P", "value": "Proposed"},
         {"id": "C", "value": "Canceled"}
     ],
-    "CourseGrades": [
-        {"id": "", "value": "-Select-"},
-        {"id": "NA", "value": "NA"},
-        {"id": "A", "value": "A"},
-        {"id": "A-", "value": "A-"},
-        {"id": "B", "value": "B"},
-        {"id": "B-", "value": "B-"},
-        {"id": "C", "value": "C"},
-        {"id": "C-", "value": "C-"},
-        {"id": "D", "value": "D"},
-        {"id": "E", "value": "E"},
-        {"id": "F", "value": "F"},
-        {"id": "NP", "value": "NP"},
-        {"id": "NF", "value": "NF"},
-        {"id": "I", "value": "I"},
-        {"id": "W", "value": "W"},
-        {"id": "S", "value": "S"},
-        {"id": "U", "value": "U"}
-    ],
     "EnrolTypes": [
         {"id": "", "value": "-Select-"},
         {"id": "A", "value": "Audit"},
