@@ -20,12 +20,12 @@ current_acad_sessions="""
     ORDER BY 
         c1.event_value;"""
 
-# Sessions starting after a date, earliest first (dates are ISO text).
-sessions_starting_after="""
+# The next two sessions starting after today, earliest first.
+upcoming_sessions="""
     SELECT s.code, s.is_additional
     FROM public.academiccalendar c
     JOIN public.academicsession s ON s.code = c.acad_session
-    WHERE c.event_code = 'SESSION_S' AND c.event_value > %s
+    WHERE c.event_code = 'SESSION_S' AND c.event_value::date > CURRENT_DATE
     ORDER BY c.event_value
     LIMIT 2;"""
 

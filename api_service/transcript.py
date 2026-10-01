@@ -22,6 +22,10 @@ PG_EC_GRADES = frozenset({"A", "A-", "B", "B-", "C", "C-", "D", "S"})
 # Passing grades (UG+PG) used in CGPA calculation
 PASS_GRADES = frozenset({"A", "A-", "B", "B-", "C", "C-", "D"})
 
+# Grades counted for earned credits, and passing grades, for PhD students
+PHD_EC_GRADES = frozenset({"A", "A-", "B", "B-", "C", "C-"})
+PHD_PASS_GRADES = frozenset({"A", "A-", "B", "B-", "C", "C-"})
+
 # Enrolment types that earn credit
 CREDIT_ENROL_TYPES = ("C", "CM", "CC")
 
@@ -30,27 +34,6 @@ def sort_sessions(acad_sessions, start_dates):
     without a start date go last, by name."""
     return sorted(acad_sessions,
                   key=lambda s: (s not in start_dates, start_dates.get(s, ""), s))
-
-
-def _phd_grade_sets(acad_session):
-    """PhD (earned-credit grades, passing grades) for a session: the passing
-    grades changed in 2021."""
-    ec_grades = {"A", "A-", "B", "B-", "C"}
-    pass_grades = {"A", "A-", "B", "B-", "C", "C-"}
-    year, sem = int(acad_session[:4]), acad_session[5:]  # I, II, S, T1, T2, etc.
-    if year > 2021:
-        ec_grades = {"A", "A-", "B", "B-", "C", "C-"}
-    elif year < 2021:
-        pass_grades = {"A", "A-", "B", "B-", "C"}
-    else: # Year 2021
-        if sem == "I":
-            pass_grades = {"A", "A-", "B", "B-", "C"}
-            ec_grades = {"A", "A-", "B", "B-", "C", "C-"}
-        elif sem in ["II", "S", "T1", "T2"]:
-            ec_grades = {"A", "A-", "B", "B-", "C", "C-"}
-        else:
-            logging.warning(f"Unknown academic semester: '{sem}'")
-    return ec_grades, pass_grades
 
 
 def course_credits(course):
@@ -89,7 +72,7 @@ def session_gpa(courses, level):
         if level == "UG":
             ec_grades = UG_EC_GRADES
         elif level == "PHD":
-            ec_grades, pass_grades = _phd_grade_sets(c["acad_session"])
+            ec_grades, pass_grades = PHD_EC_GRADES, PHD_PASS_GRADES
         else:
             ec_grades = PG_EC_GRADES
 

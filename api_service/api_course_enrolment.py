@@ -215,7 +215,7 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
         enrol_data[acad_sess_key]["courses"].append(my_course)
     
     # Sort by academic session. Needed for cgpa calculations
-    acad_sess_list = TR.sort_sessions(enrol_data.keys(), apiVC.session_start_dates())
+    acad_sess_list = TR.sort_sessions(enrol_data.keys(), apiVC.session_start_dates(enrol_data.keys()))
     
     # We return the enrolment data per academic session, sorted in reverse
     # chronological order of academic sessions (2025-II, 2025-I, 2024-II ...).

@@ -98,6 +98,8 @@ async def dates_save():
         max_len = M.AcademicSession.code.max_length
         if not session or len(session) > max_len:
             return apiVC.error_json(f"Session name must have 1 to {max_len} characters.")
+        if not isinstance(eventdates, dict):
+            return apiVC.error_json("eventDates must be an object.")
         # An event has a date under its own code, or a start and an end date
         # under <code>_S and <code>_E.
         allowed = {k for c in apiVC.calendar_event_labels()
@@ -106,25 +108,29 @@ async def dates_save():
         if unknown:
             return apiVC.error_json(f"Unknown calendar events: {', '.join(unknown)}")
         acs = M.AcademicSession.get_or_none(M.AcademicSession.code == session)
-        if not acs:
-            apiVC.save_entity(M.AcademicSession(
-                code=session, is_additional=bool(fd.get("is_additional"))))
-        elif "is_additional" in fd:
-            acs.is_additional = bool(fd["is_additional"])
-            acs.save()
-        ac = M.AcademicCalendar()
-        for x in eventdates:
-            # Only closing the session marks it closed, as that also freezes
-            # its credits.
-            if x == "SESSION_CLOSED":
-                continue
-            (ac.insert(acad_session=session, event_code=x, \
-                       event_value=eventdates[x]) \
-            .on_conflict(
-                conflict_target=[M.AcademicCalendar.acad_session, M.AcademicCalendar.event_code],
-                update={M.AcademicCalendar.event_value: eventdates[x]}
-            ).execute())
-            logging.debug(f"Inserted AcademicCalendar: {ac}")
+        # A session is ordered and picked as current by its start and end dates.
+        if not acs and not {"SESSION_S", "SESSION_E"} <= set(eventdates):
+            return apiVC.error_json("A new session needs its start and end dates.")
+        with M.db.atomic():
+            if not acs:
+                apiVC.save_entity(M.AcademicSession(
+                    code=session, is_additional=bool(fd.get("is_additional"))))
+            elif "is_additional" in fd:
+                acs.is_additional = bool(fd["is_additional"])
+                apiVC.update_entity(M.AcademicSession, acs)
+            ac = M.AcademicCalendar()
+            for x in eventdates:
+                # Only closing the session marks it closed, as that also freezes
+                # its credits.
+                if x == "SESSION_CLOSED":
+                    continue
+                (ac.insert(acad_session=session, event_code=x, \
+                           event_value=eventdates[x]) \
+                .on_conflict(
+                    conflict_target=[M.AcademicCalendar.acad_session, M.AcademicCalendar.event_code],
+                    update={M.AcademicCalendar.event_value: eventdates[x]}
+                ).execute())
+                logging.debug(f"Inserted AcademicCalendar: {ac}")
         return apiVC.ok_json("inserted successfully")
 
     except Exception as ex:

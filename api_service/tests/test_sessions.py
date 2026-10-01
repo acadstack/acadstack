@@ -92,3 +92,47 @@ async def test_transcript_sessions_follow_their_dates(client, auth):
     perf = body["body"]["enrollments"]["C"]
     assert perf["acad_sessions"] == ["Fall 2027", "Spring 28"]
     assert perf["enrollments"]["Spring 28"]["cgpa"] == 9
+
+
+async def test_new_session_needs_start_and_end_dates(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    res = await client.post("/acadstack/dates_save", json={
+        "session": "Fall 2027", "eventDates": {"SESSION_S": _days(0)}})
+    assert (await res.get_json())["status"] == "ERROR"
+    res = await client.post("/acadstack/dates_save", json={
+        "session": "Fall 2027", "eventDates": ["SESSION_S", "SESSION_E"]})
+    assert (await res.get_json())["status"] == "ERROR"
+    assert M.AcademicSession.select().count() == 0
+    assert M.AcademicCalendar.select().count() == 0
+
+
+async def test_changing_is_additional_updates_audit_fields(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    await _save_session(client, "Summer 27", _days(0), _days(30))
+    txn_no = M.AcademicSession.get(M.AcademicSession.code == "Summer 27").txn_no
+    await _save_session(client, "Summer 27", _days(0), _days(30), is_additional=True)
+    acs = M.AcademicSession.get(M.AcademicSession.code == "Summer 27")
+    assert acs.is_additional and acs.txn_no == txn_no + 1
+
+
+async def test_running_sessions_are_not_listed_as_upcoming(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    await _save_session(client, "Fall 2027", _days(-30), _days(60))
+    await _save_session(client, "T2", _days(-1), _days(40), is_additional=True)
+    await _save_session(client, "Spring 28", _days(90), _days(200))
+    assert [s["id"] for s in apiVC.static_data_dict()["AcademicSessions"]] \
+        == ["Fall 2027", "Spring 28"]
+
+
+async def test_upcoming_sessions_are_listed_during_a_break(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    await _save_session(client, "Fall 2027", _days(-100), _days(-5))
+    await _save_session(client, "Spring 28", _days(10), _days(120))
+    await _save_session(client, "Fall 2028", _days(150), _days(250))
+    await _save_session(client, "Spring 29", _days(300), _days(400))
+    assert [s["id"] for s in apiVC.static_data_dict()["AcademicSessions"]] \
+        == ["Spring 28", "Fall 2028"]

@@ -147,7 +147,7 @@ def static_data_dict():
     sd = _workflow_lists()
     hidden = ST.get("hidden_enrol_types")
     sd["EnrolTypes"] = [e for e in sd["EnrolTypes"] if e["id"] not in hidden]
-    sd["AcademicSessions"] = acs if acs else []
+    sd["AcademicSessions"] = acs
     for v in DB_VOCABS:
         sd[v] = [{"id": "", "value": "-Select-"}]
     rows = M.VocabItem.select().where(M.VocabItem.is_deleted == False) \
@@ -184,9 +184,11 @@ def academic_session_valid(ac_sess:str)->bool:
     return M.AcademicSession.select().where(M.AcademicSession.code == ac_sess).exists()
 
 
-def session_start_dates():
-    """The SESSION_S date of each academic session that has one."""
-    rows = M.AcademicCalendar.select().where(M.AcademicCalendar.event_code == "SESSION_S")
+def session_start_dates(acad_sessions):
+    """The SESSION_S date of each of the given academic sessions that has one."""
+    rows = M.AcademicCalendar.select().where(
+        (M.AcademicCalendar.event_code == "SESSION_S")
+        & (M.AcademicCalendar.acad_session << list(acad_sessions)))
     return {r.acad_session: r.event_value for r in rows}
 
 
@@ -495,18 +497,19 @@ def current_acad_session():
 
 
 def __acad_sessions_nearby():
-    """The current session and the next two sessions by start date."""
+    """The current session and the next two sessions starting after today."""
+    sessions = []
     cas_list = __current_acad_sessions_with_dates()
     if cas_list:
         cas, start_dt, end_dt = cas_list[0]
-        sessions = [{"id": cas, "value": f"current session ({start_dt} to {end_dt})"}]
-        cursor = C.db.execute_sql(C.sql_by_id("sessions_starting_after"), [start_dt])
-        for (code, is_additional), label in zip(cursor.fetchall(),
-                                                ["upcoming session", "next session"]):
-            if is_additional:
-                label += " (additional)"
-            sessions.append({"id": code, "value": label})
-        return sessions
+        sessions.append({"id": cas, "value": f"current session ({start_dt} to {end_dt})"})
+    cursor = C.db.execute_sql(C.sql_by_id("upcoming_sessions"))
+    for (code, is_additional), label in zip(cursor.fetchall(),
+                                            ["upcoming session", "next session"]):
+        if is_additional:
+            label += " (additional)"
+        sessions.append({"id": code, "value": label})
+    return sessions
 
 
 def save_file_to_uploads_folder(file_category, data_bytes):
