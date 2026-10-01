@@ -190,7 +190,9 @@ def test_cumulative_gpa_carries_earned_credits_and_points():
 
 
 def test_sessions_sort_chronologically():
-    assert sorted(["2024-II", "2023-S", "2024-I", "2024-T1"], key=TR.session_sort_key) \
+    starts = {"2024-II": "2025-01-05", "2023-S": "2024-05-20", "2024-I": "2024-07-25",
+              "2024-T1": "2024-06-10"}
+    assert TR.sort_sessions(["2024-II", "2023-S", "2024-I", "2024-T1"], starts) \
         == ["2023-S", "2024-T1", "2024-I", "2024-II"]
 
 

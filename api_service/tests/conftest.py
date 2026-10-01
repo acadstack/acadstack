@@ -121,7 +121,9 @@ def auth(client):
 
 def make_offering(code="CS101", ltp="3-0-2-7-4", acad_session="2026-I", status="E",
                   instructor=None, is_coordinator=True, **fields):
-    """Creates a course and an offering of it, optionally with one instructor."""
+    """Creates a course and an offering of it, optionally with one instructor.
+    Creates the session if it doesn't exist."""
+    M.AcademicSession.get_or_create(code=acad_session)
     course = M.Course.create(code=code, title=f"{code} title", ltp=ltp, status="APP")
     co = M.CourseOffering.create(course=course, acad_session=acad_session,
                                  status=status, **fields)
@@ -139,7 +141,9 @@ def enrol(student, co, enrol_type="C", enrol_status="ENRO", grade="NA"):
 
 def set_event_window(acad_session, event, open_=True):
     """Adds the ``<event>_S``/``<event>_E`` calendar rows for a session, as a
-    window around today when ``open_``, else as a window that ended yesterday."""
+    window around today when ``open_``, else as a window that ended yesterday.
+    Creates the session if it doesn't exist."""
+    M.AcademicSession.get_or_create(code=acad_session)
     today = date.today()
     start, end = ((today - timedelta(days=5), today + timedelta(days=5)) if open_
                   else (today - timedelta(days=10), today - timedelta(days=1)))

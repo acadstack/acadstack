@@ -25,15 +25,11 @@ PASS_GRADES = frozenset({"A", "A-", "B", "B-", "C", "C-", "D"})
 # Enrolment types that earn credit
 CREDIT_ENROL_TYPES = ("C", "CM", "CC")
 
-# We use these suffixies for academic sessions. Change them as needed.
-# T1, T2 etc. are for trimesters, I, II and S are for regular semesters.
-SESSION_SUFFIXES = ['T1', 'T2', 'T3', 'T4', 'I', 'II', 'S']
-
-
-def session_sort_key(acad_session):
-    """Sort key putting academic sessions such as ``2024-II`` in chronological order."""
-    return "{0}{1}".format(acad_session[:4],
-                           SESSION_SUFFIXES.index(acad_session[5:]))
+def sort_sessions(acad_sessions, start_dates):
+    """The sessions in order of their start dates ({session: ISO date}); sessions
+    without a start date go last, by name."""
+    return sorted(acad_sessions,
+                  key=lambda s: (s not in start_dates, start_dates.get(s, ""), s))
 
 
 def _phd_grade_sets(acad_session):

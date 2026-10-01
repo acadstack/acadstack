@@ -334,7 +334,8 @@ def _save_acad_cal(sem, evt, yr, mmdd):
     acs = M.AcademicCalendar()
     acs.acad_session = f"{yr}-{sem}"
     acs.event_code = f"{evt}"
-    acs.event_value = f"{yr}-{mmdd}"
+    # The second semester of an academic year runs in the next calendar year.
+    acs.event_value = f"{int(yr) + 1 if sem == 'II' else yr}-{mmdd}"
     acs.save()
 
 def _create_acad_sessions():
@@ -353,6 +354,8 @@ def _create_acad_sessions():
                     ('05-17', '05-27'), ('05-18', '06-15'), ('06-20', '06-20'),
                     ('06-22', '06-22')]
     for yr in ACAD_YEARS:
+        for sem in ("I", "II"):
+            M.AcademicSession.create(code=f"{yr}-{sem}")
         for idx, ec in enumerate(ACAD_EVENTS):
             _save_acad_cal("I", f"{ec}_S", yr, DATES_MMDD_I[idx][0])
             _save_acad_cal("I", f"{ec}_E", yr, DATES_MMDD_I[idx][1])

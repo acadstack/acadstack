@@ -93,8 +93,11 @@ async def dates_save():
     try:
         fd = await request.get_json(force=True)
         logging.info(f"Saving academic dates : {fd}")
-        session = fd.get("session")
+        session = (fd.get("session") or "").strip()
         eventdates = fd.get("eventDates")
+        max_len = M.AcademicSession.code.max_length
+        if not session or len(session) > max_len:
+            return apiVC.error_json(f"Session name must have 1 to {max_len} characters.")
         # An event has a date under its own code, or a start and an end date
         # under <code>_S and <code>_E.
         allowed = {k for c in apiVC.calendar_event_labels()
@@ -102,6 +105,13 @@ async def dates_save():
         unknown = sorted(set(eventdates) - allowed)
         if unknown:
             return apiVC.error_json(f"Unknown calendar events: {', '.join(unknown)}")
+        acs = M.AcademicSession.get_or_none(M.AcademicSession.code == session)
+        if not acs:
+            apiVC.save_entity(M.AcademicSession(
+                code=session, is_additional=bool(fd.get("is_additional"))))
+        elif "is_additional" in fd:
+            acs.is_additional = bool(fd["is_additional"])
+            acs.save()
         ac = M.AcademicCalendar()
         for x in eventdates:
             # Only closing the session marks it closed, as that also freezes
@@ -134,6 +144,8 @@ async def dates_search():
             for r in res:
                 obj["eventDates"][r.event_code] = r.event_value
             obj["session"] = res[0].acad_session
+            acs = M.AcademicSession.get_or_none(M.AcademicSession.code == obj["session"])
+            obj["is_additional"] = bool(acs and acs.is_additional)
             return apiVC.ok_json(obj)
         else:
             return apiVC.error_json(f"No data for {fd.get("session")} session.")
