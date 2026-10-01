@@ -2,6 +2,7 @@
 column, never from the codes themselves."""
 
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from quart.datastructures import FileStorage
@@ -103,16 +104,19 @@ async def test_course_csv_sets_the_level(client, auth):
     make_user("aca", role="ACA")
     await auth.login("aca")
     body = await _upload_courses(client, "code,title,ltp,level\n"
-                                         "AB1,One,3-0-0,UG\nAB2,Two,3-0-0,ALL\n")
+                                         "AB1,One,3-0-0, ug\nAB2,Two,3-0-0,ALL\n")
     assert body["status"] == "OK", body
     assert {c.code: c.level for c in M.Course.select()} == {"AB1": "UG", "AB2": "ALL"}
 
 
 @pytest.mark.parametrize("csv_text", ["code,title,ltp,level\nAB1,One,3-0-0,UG\nAB2,Two,3-0-0,XX\n",
                                       "code,title,ltp\nAB1,One,3-0-0\n"])
-async def test_course_csv_rejects_a_missing_or_unknown_level(client, auth, csv_text):
+async def test_course_csv_rejects_a_missing_or_unknown_level(app, client, auth, csv_text):
     make_user("aca", role="ACA")
     await auth.login("aca")
     body = await _upload_courses(client, csv_text)
     assert body["status"] == "ERROR"
+    assert "level must be one of UG, PG, ALL" in body["body"], body
     assert M.Course.select().count() == 0
+    # The rejected upload is not left on disk
+    assert not any(Path(app.config["upload_folder"]).rglob("*.csv"))

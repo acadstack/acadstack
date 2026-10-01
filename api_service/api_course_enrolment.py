@@ -228,14 +228,15 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
 
 
 def __get_student_courses_perf(stu, include_attendance):
+    level = apiVC.degree_level(stu.person.degree)
     # 'CC' -> Credit for concentration
-    perf_conc = get_student_courses_perf_filtered(stu, include_attendance, "CC")
+    perf_conc = get_student_courses_perf_filtered(stu, include_attendance, "CC", level)
 
     # 'CM' -> Credit for minor
-    perf_minor = get_student_courses_perf_filtered(stu, include_attendance, "CM")
+    perf_minor = get_student_courses_perf_filtered(stu, include_attendance, "CM", level)
 
     # 'C' -> Credit
-    perf_regu = get_student_courses_perf_filtered(stu, include_attendance, "C")
+    perf_regu = get_student_courses_perf_filtered(stu, include_attendance, "C", level)
 
     user = model_to_dict(stu, exclude=[DB.User.password_hashed])
     user["enrollments"] = {"CC": perf_conc, "CM": perf_minor, "C": perf_regu}
@@ -279,7 +280,8 @@ def init_routes(bp:Blueprint):
 
 
 def get_student_courses_perf_filtered(stu, include_attendance, 
-                                        filter_by_enrol_type=None):
+                                        filter_by_enrol_type=None, level=None):
+    """level: the student's degree_level, when the caller already has it."""
     if filter_by_enrol_type == "C": # 'C' -> Credit, 'A' -> Audit, etc.
         enrols = stu.enrollments.where(DB.CourseEnrollment.enrol_type 
                                        << (filter_by_enrol_type, 'A'))
@@ -293,7 +295,7 @@ def get_student_courses_perf_filtered(stu, include_attendance,
         enrols, include_attendance)
     # acad_sessions is already in properly sorted chronology
     gpas = TR.cumulative_gpa([enrol_data[ad]["courses"] for ad in acad_sessions],
-                             apiVC.degree_level(stu.person.degree))
+                             level or apiVC.degree_level(stu.person.degree))
     for ad, gpa in zip(acad_sessions, gpas):
         enrol_data[ad].update(gpa)
 

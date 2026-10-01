@@ -158,8 +158,6 @@ class Course(BaseModel):
         ("CAR", "Council Rejected"),
         ("RET", "Retired")
     ]
-    # The students a course is meant for: UG, PG (and PhD), or ALL levels
-    COURSE_LEVELS = ("UG", "PG", "ALL")
     code = ORM.CharField(max_length=20, unique=True)
     title = ORM.CharField(max_length=200)
     ltp = ORM.CharField(max_length=40, null=True)
@@ -173,6 +171,7 @@ class Course(BaseModel):
 
     # E: Even, O: Odd, S: Summer, A: Any
     freq = ORM.CharField(max_length=1, default="A")
+    # The students a course is meant for: one of CourseLevels in static_data.json
     level = ORM.CharField(max_length=3, default="UG")
     has_lab = ORM.BooleanField(default=False)
 
