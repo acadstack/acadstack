@@ -28,6 +28,9 @@ import EarnedCreditsReport from "../components/EarnedCreditsReport.vue";
 import AddAcademicDates from "../components/AddAcademicDates.vue";
 import PendingTasks from "../components/PendingTasks.vue";
 import AddUsers from "../components/AddUsers.vue";
+import ManageStaticData from "../components/ManageStaticData.vue";
+import RolePermissions from "../components/RolePermissions.vue";
+import AppSettings from "../components/AppSettings.vue";
 import AddCourses from "../components/AddCourses.vue";
 import BulkEnrolCourse from "../components/BulkEnrolCourse.vue";
 import CreateFeedbackForm from "../components/CreateFeedbackForm.vue";
@@ -284,6 +287,21 @@ const appRoutes = [{
   name: 'cgpa-sgpa',
   path: '/cgpa.sgpa',
   component: CgpaSgpa
+},
+{
+  name: 'lists',
+  path: '/lists',
+  component: ManageStaticData
+},
+{
+  name: 'roles',
+  path: '/roles',
+  component: RolePermissions
+},
+{
+  name: 'settings',
+  path: '/settings',
+  component: AppSettings
 },
 {
   name: 'mba',
