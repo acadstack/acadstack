@@ -153,10 +153,6 @@ VOCAB_SEED = {
         ("S", "Summer break"),
         ("A", "Any Semester"),
     ],
-    "CalendarEvents": [
-        ("MINOR_EXAM", "Mid sem exams"),
-        ("MAJOR_EXAM", "End sem exams"),
-    ],
 }
 
 current_year = C.DT.now().year

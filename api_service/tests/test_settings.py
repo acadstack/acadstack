@@ -161,6 +161,7 @@ async def test_vocab_items_are_added_edited_and_hidden(sup):
      "printed_name"),
     ({"vocab": "Degrees", "code": "X", "label": "X", "sort_order": "1"}, "sort order"),
     ({"vocab": "CalendarEvents", "code": "GRADE_SUB", "label": "Grades"}, "workflow event"),
+    ({"vocab": "CalendarEvents", "code": "MINOR_EXAM", "label": "Exams"}, "workflow event"),
 ])
 async def test_vocab_save_rejects_invalid_items(sup, item, error):
     res = await _save_vocab(sup, **item)
@@ -226,22 +227,38 @@ def test_invalid_label_settings_are_rejected(db, key, value):
 
 # ---- calendar events ----
 
+# The dates the Academic Events screen sets for every session.
+SCREEN_EVENTS = ["SESSION_S", "SESSION_E", "COURSE_REG_S", "COURSE_REG_E", "CLASSES_S",
+                 "CLASSES_E", "ADD_DROP_S", "ADD_DROP_E", "FEEDBACK_MID_S", "FEEDBACK_MID_E",
+                 "MINOR_EXAM_S", "MINOR_EXAM_E", "WITHDRAW_S", "WITHDRAW_E", "MAJOR_EXAM_S",
+                 "MAJOR_EXAM_E", "FEEDBACK_S", "FEEDBACK_E", "GRADE_SUB_S", "GRADE_SUB_E",
+                 "SHOW_MIDSEM_FB_S", "SHOW_ENDSEM_FB_S", "RESULT_DECLARATION"]
+
+
+async def test_every_academic_events_date_is_a_workflow_event(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    res = await client.post("/acadstack/dates_save", json={
+        "session": "2026-I", "eventDates": {e: "2026-08-01" for e in SCREEN_EVENTS}})
+    assert (await res.get_json())["status"] == "OK"
+    assert M.AcademicCalendar.select().count() == len(SCREEN_EVENTS)
+
 async def test_university_calendar_event_is_dated_and_shown_open(client, auth):
-    M.VocabItem.create(vocab="CalendarEvents", code="MINOR_EXAM", label="Mid-term exams")
+    M.VocabItem.create(vocab="CalendarEvents", code="CONVOCATION", label="Convocation")
     make_user("aca", role="ACA")
     await auth.login("aca")
     today = date.today()
-    dates = {"MINOR_EXAM_S": (today - timedelta(days=1)).isoformat(),
-             "MINOR_EXAM_E": (today + timedelta(days=1)).isoformat(),
+    dates = {"CONVOCATION_S": (today - timedelta(days=1)).isoformat(),
+             "CONVOCATION_E": (today + timedelta(days=1)).isoformat(),
              "RESULT_DECLARATION": today.isoformat()}
     res = await client.post("/acadstack/dates_save",
                             json={"session": "2026-I", "eventDates": dates})
     assert (await res.get_json())["status"] == "OK"
     open_ = (await (await client.get("/acadstack/open_events")).get_json())["body"]
-    assert "2026-I:MINOR_EXAM" in open_
+    assert "2026-I:CONVOCATION" in open_
 
 
-@pytest.mark.parametrize("code", ["MINOR_EXAM_S", "GRADE_SUB_X", "FOO"])
+@pytest.mark.parametrize("code", ["CONVOCATION_S", "GRADE_SUB_X", "FOO"])
 async def test_dates_save_rejects_unknown_events(client, auth, code):
     make_user("aca", role="ACA")
     await auth.login("aca")
@@ -253,14 +270,15 @@ async def test_dates_save_rejects_unknown_events(client, auth, code):
 
 
 def test_upcoming_events_email_uses_labels(db, monkeypatch):
-    M.VocabItem.create(vocab="CalendarEvents", code="MINOR_EXAM", label="Mid-term exams")
+    M.VocabItem.create(vocab="CalendarEvents", code="CONVOCATION", label="Convocation")
     settings.save("label_overrides", {"WorkflowEvents": {"GRADE_SUB": "Marks entry"}})
     today = date.today().isoformat()
-    for code in ("MINOR_EXAM_S", "GRADE_SUB_E", "RESULT_DECLARATION"):
+    for code in ("CONVOCATION_S", "GRADE_SUB_E", "MINOR_EXAM_E", "RESULT_DECLARATION"):
         M.AcademicCalendar.create(acad_session="2026-I", event_code=code, event_value=today)
     sent = []
     monkeypatch.setattr(C.emailer, "send_mail", lambda to, subj, body: sent.append(body))
     api_dc.schedule_event_alerts()
     assert len(sent) == 1
-    for label in ("Mid-term exams starts", "Marks entry ends", "Result declaration"):
+    for label in ("Convocation starts", "Marks entry ends", "Mid sem exams ends",
+                  "Result declaration"):
         assert f"'{label}'" in sent[0]
