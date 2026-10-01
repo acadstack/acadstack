@@ -95,6 +95,13 @@ async def dates_save():
         logging.info(f"Saving academic dates : {fd}")
         session = fd.get("session")
         eventdates = fd.get("eventDates")
+        # An event has a date under its own code, or a start and an end date
+        # under <code>_S and <code>_E.
+        allowed = {k for c in apiVC.calendar_event_labels()
+                   for k in (c, f"{c}_S", f"{c}_E")}
+        unknown = sorted(set(eventdates) - allowed)
+        if unknown:
+            return apiVC.error_json(f"Unknown calendar events: {', '.join(unknown)}")
         ac = M.AcademicCalendar()
         for x in eventdates:
             # Only closing the session marks it closed, as that also freezes

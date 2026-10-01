@@ -116,13 +116,45 @@ async def index():
 # Lists that differ between universities. They are stored in the VocabItem
 # table; the lists that code depends on stay in static_data.json.
 DB_VOCABS = ("Departments", "Degrees", "CourseSlots", "CourseTypes",
-             "MinorConcSpecialization")
+             "MinorConcSpecialization", "PersonCategories", "DegreeType",
+             "CourseFreqs", "CalendarEvents")
+
+# The columns that store a list's codes; a code must fit the shortest one.
+VOCAB_CODE_COLUMNS = {
+    "Departments": (M.Person.dept_name, M.CourseOffering.dept_name, M.CourseCategory.dept),
+    "Degrees": (M.Person.degree, M.CourseCategory.degree, M.BatchAdvisors.for_degree),
+    "CourseSlots": (M.CourseOffering.slot, M.CourseSlotTiming.slot),
+    "CourseTypes": (M.CourseCategory.category,),
+    "MinorConcSpecialization": (M.Person.deg_type_spec,),
+    "PersonCategories": (M.Person.category,),
+    "DegreeType": (M.Person.deg_type,),
+    "CourseFreqs": (M.Course.freq,),
+    "CalendarEvents": (),
+}
+
+# The attrs an item of a list may have: name -> allowed values, or None for
+# any text.
+VOCAB_ATTRS = {
+    "Degrees": {"level": ["UG", "PG", "PHD"], "printed_name": None,
+                "specialisation": None},
+    "CourseTypes": {"group": ["CORE", "ELECTIVE"]},
+}
+
+
+def _workflow_lists():
+    """The lists of static_data.json, with the label_overrides setting applied."""
+    sd = C.static_data_json()
+    for lst, labels in ST.get("label_overrides").items():
+        for e in sd.get(lst, []):
+            e["value"] = labels.get(e["id"], e["value"])
+    return sd
 
 
 def static_data_dict():
     acs = __acad_sessions_nearby()
-    with open(os.path.join(APP.root_path, "static_data.json"), "r") as str_json:
-        sd = json.load(str_json)
+    sd = _workflow_lists()
+    hidden = ST.get("hidden_enrol_types")
+    sd["EnrolTypes"] = [e for e in sd["EnrolTypes"] if e["id"] not in hidden]
     sd["AcademicSessions"] = acs if acs else []
     for v in DB_VOCABS:
         sd[v] = [{"id": "", "value": "-Select-"}]
@@ -134,6 +166,26 @@ def static_data_dict():
     sd["UserRoles"] = [{"id": "", "value": "-Select-"}] + [
         {"id": r.code, "value": r.label} for r in M.Role.select().order_by(M.Role.id)]
     return sd
+
+
+def calendar_event_labels():
+    """Label of every calendar event: the workflow events, then the university's
+    CalendarEvents, hidden ones included because their dates are kept."""
+    labels = {e["id"]: e["value"] for e in _workflow_lists()["WorkflowEvents"]}
+    for r in M.VocabItem.select().where(M.VocabItem.vocab == "CalendarEvents"):
+        labels.setdefault(r.code, r.label)
+    return labels
+
+
+def calendar_entry_label(event_code, labels):
+    """Label of an academiccalendar row: an event's own code, or the code with
+    _S or _E for the event's start or end date."""
+    if event_code in labels:
+        return labels[event_code]
+    base, _, end = event_code.rpartition("_")
+    if base in labels and end in ("S", "E"):
+        return f"{labels[base]} {'starts' if end == 'S' else 'ends'}"
+    return event_code
 
 
 def academic_session_valid(ac_sess:str)->bool:
@@ -168,6 +220,89 @@ async def save_setting():
     except ValueError as ex:
         return error_json(str(ex))
     return ok_json(ST.all_settings())
+
+
+def all_vocab():
+    items = {v: [] for v in DB_VOCABS}
+    for r in M.VocabItem.select().where(M.VocabItem.vocab << DB_VOCABS) \
+            .order_by(M.VocabItem.sort_order, M.VocabItem.id):
+        items[r.vocab].append({"id": r.id, "code": r.code, "label": r.label,
+                               "sort_order": r.sort_order, "attrs": r.attrs,
+                               "is_deleted": r.is_deleted})
+    return {"items": items, "attrs": VOCAB_ATTRS}
+
+
+def _vocab_item_error(row, fd):
+    """Why the list item can't be saved with the values in fd, or None."""
+    code, label = row.code, fd.get("label")
+    sort_order, attrs = fd.get("sort_order", row.sort_order), fd.get("attrs", row.attrs)
+    declared = VOCAB_ATTRS.get(row.vocab, {})
+    if row.id is None:
+        max_len = min(f.max_length for f in (M.VocabItem.code, *VOCAB_CODE_COLUMNS[row.vocab]))
+        if type(code) is not str or not 0 < len(code) <= max_len:
+            return f"A {row.vocab} code must be 1 to {max_len} characters."
+        if M.VocabItem.get_or_none((M.VocabItem.vocab == row.vocab) & (M.VocabItem.code == code)):
+            return f"{row.vocab} already has the code {code}."
+        if row.vocab == "CalendarEvents":
+            # An event's dates are stored under its code and <code>_S/_E, so
+            # these must not be the date codes of another event.
+            dates = lambda c: {c, f"{c}_S", f"{c}_E"}
+            taken = [c for c in calendar_event_labels() if dates(c) & dates(code)]
+            if taken:
+                return f"{code} clashes with the dates of the event {taken[0]}."
+    elif fd.get("code") != row.code or fd.get("vocab") != row.vocab:
+        return "The list and code of a saved item can't change."
+    if type(label) is not str or not 0 < len(label.strip()) <= 200:
+        return "The label must be 1 to 200 characters."
+    if type(sort_order) is not int:
+        return "The sort order must be a whole number."
+    if type(attrs) is not dict:
+        return "The attributes must be an object."
+    for name, value in attrs.items():
+        if name not in declared:
+            return f"Unknown attribute {name} for {row.vocab}."
+        allowed = declared[name]
+        if type(value) is not str or (allowed and value not in allowed):
+            return f"Invalid value for {name}: {value!r}."
+    if row.vocab == "Departments" and row.code == "ALL" and fd.get("is_deleted"):
+        return "The ALL department can't be hidden."
+
+
+@P.require("settings.manage")
+async def get_vocab():
+    return ok_json(all_vocab())
+
+
+@P.require("settings.manage")
+async def save_vocab():
+    """Adds a list item, or changes the label, sort order, attrs or hiding of
+    the item with the given id."""
+    try:
+        fd = await request.get_json(force=True)
+        if type(fd) is not dict:
+            return error_json("Expected the list item as an object.")
+        if fd.get("id"):
+            row = M.VocabItem.get_or_none(M.VocabItem.id == int(fd["id"]))
+            if row is None:
+                return error_json("No such list item.")
+        elif fd.get("vocab") in DB_VOCABS:
+            code = fd.get("code")
+            row = M.VocabItem(vocab=fd["vocab"], code=code.strip() if type(code) is str else code)
+        else:
+            return error_json(f"Unknown list: {fd.get('vocab')}")
+        error = _vocab_item_error(row, fd)
+        if error:
+            return error_json(error)
+        row.label = fd["label"].strip()
+        row.sort_order = fd.get("sort_order", row.sort_order)
+        row.attrs = fd.get("attrs", row.attrs)
+        row.is_deleted = bool(fd.get("is_deleted", row.is_deleted))
+        save_entity(row)
+        return ok_json(all_vocab())
+    except Exception as ex:
+        msg = "Error when saving the list item."
+        logging.exception(msg)
+        return error_json(msg)
 
 
 @P.require(P.ADMIN_PERM)

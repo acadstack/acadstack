@@ -10,7 +10,7 @@ __status__ = "Development"
 from datetime import datetime as DT
 
 import peewee as ORM
-from playhouse.postgres_ext import JSONField, PooledPostgresqlExtDatabase
+from playhouse.postgres_ext import BinaryJSONField, JSONField, PooledPostgresqlExtDatabase
 
 # Deferred initialization
 # db = ORM.PostgresqlDatabase(None)
@@ -572,11 +572,13 @@ class AttendancePhoto(BaseModel):
 class VocabItem(BaseModel):
     """An entry of a list that differs between universities, such as the
     departments or degrees. The lists are served with the static data and are
-    edited with SQL; setting is_deleted hides an entry."""
+    edited with /vocab_save; setting is_deleted hides an entry. attrs holds the
+    facts the code needs about an entry (api_common.VOCAB_ATTRS)."""
     vocab = ORM.CharField(max_length=40)
     code = ORM.CharField(max_length=20)
     label = ORM.CharField(max_length=200)
     sort_order = ORM.IntegerField(default=0)
+    attrs = BinaryJSONField(default=dict)
 
     class Meta:
         indexes = (

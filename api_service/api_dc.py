@@ -172,6 +172,9 @@ def schedule_event_alerts(config=None):
             events_today = apiVC.result_set_from_cursor(cur)
             cur = DB.db.execute_sql(C.sql_by_id("events_tomorrow"))
             events_tomorrow = apiVC.result_set_from_cursor(cur)
+            labels = apiVC.calendar_event_labels()
+        for e in events_today + events_tomorrow:
+            e["label"] = apiVC.calendar_entry_label(e["event_code"], labels)
         if events_today or events_tomorrow:
             send_events_alert_email(events_today, events_tomorrow)
             logging.info("Sent the academic events alert email.")

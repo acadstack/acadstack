@@ -22,19 +22,137 @@ import migrate
 import models as M
 import api_reports as R
 
-with open('static_data.json', 'r') as file:
-    static_data = json.load(file)
+static_data = C.static_data_json()
 
 
-DEG_TYPES = [entry.get('id') for entry in static_data.get('DegreeType', []) if entry.get('id')][1:]
-PERSON_CAT = [entry.get('id') for entry in static_data.get('PersonCategories', []) if entry.get('id')][1:]
 ENROL_TYPES = [entry.get('id') for entry in static_data.get('EnrolTypes', []) if entry.get('id')][1:]
 ENROL_STATUSES = [entry.get('id') for entry in static_data.get('EnrolStatuses', []) if entry.get('id')][1:]
 CO_STATUSES = [entry.get('id') for entry in static_data.get('OfferingStatuses', []) if entry.get('id')][1:]
 GRADES = [entry.get('id') for entry in static_data.get('CourseGrades', []) if entry.get('id')][2:]
 
 # Filled from the VocabItem table once the schema exists.
-DEPTS, DEGREES, DEG_SPL, COURSE_CAT = [], [], [], []
+DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT = [], [], [], [], [], []
+
+# The university's lists, as (code, label) in display order.
+VOCAB_SEED = {
+    "Departments": [
+        ("ACA", "Academic Section"),
+        ("EST", "Establishment Section"),
+        ("CSE", "Computer Science and Engineering"),
+        ("AIL", "Artificial Intelligence"),
+        ("CEE", "Center for Engineering Education"),
+        ("CIV", "Civil Engineering"),
+        ("CHE", "Chemical Engineering"),
+        ("ELE", "Electrical Engineering"),
+        ("MEC", "Mechanical Engineering"),
+        ("BIO", "Biomedical Engineering"),
+        ("MET", "Metallurgical and Materials Engineering"),
+        ("MTH", "Mathematics"),
+        ("PHY", "Physics"),
+        ("CHY", "Chemistry"),
+        ("HSS", "Humanities and Social Sciences"),
+        ("CARD", "Centre for Applied Research in Data Science"),
+        ("PREP", "Preparatory Dept."),
+    ],
+    "Degrees": [
+        ("BTE", "B.Tech"),
+        ("BTE_MC", "B.Tech(M&C)"),
+        ("MTE", "M.Tech"),
+        ("MCS_AI", "M.Tech(AI)"),
+        ("MCE_WATER", "M.Tech(Water Reso. & Envirn.)"),
+        ("MCE_STRUC", "M.Tech(Struc. and Geomech.)"),
+        ("MEE_SIGNAL", "M.Tech(Signal Processing)"),
+        ("MEE_MICRO", "M.Tech(Micro. & VLSI)"),
+        ("MEE_POWER", "M.Tech(Power Engg.)"),
+        ("MME_THERM", "M.Tech(Thermal Engg.)"),
+        ("MME_MANUF", "M.Tech(Manufacturing)"),
+        ("MCE_MECHA", "M.Tech(Mechanics And Design)"),
+        ("MME_MCPMC", "M.Tech(Computational Mechanics)"),
+        ("MSR", "M.S (Research)"),
+        ("MSC", "M.Sc"),
+        ("BMD", "B.Tech-M.Tech Dual"),
+        ("JEE_PREP", "JEE Preparatory"),
+        ("ADD_INTRN", "Additional Internship"),
+        ("PHD", "PhD"),
+    ],
+    "CourseSlots": [
+        ("S", "Seminars or a core course (one hour per week)"),
+        ("PC1", "PC1: Core of 1-2 year B.Tech"),
+        ("PC2", "PC2: Core of 1-2 year B.Tech"),
+        ("PC3", "PC3: Core of 1-2 year B.Tech"),
+        ("PC4", "PC4: Core of 1-2 year B.Tech"),
+        ("PCE1", "PCE1: Core of 1-2 year B.Tech, and/or core/elec of 3-4 year B.Tech"),
+        ("PCE2", "PCE2: Core of 1-2 year B.Tech, and/or core/elec of 3-4 year B.Tech"),
+        ("PCE3", "PCE3: Core of 1-2 year B.Tech, and/or core/elec of 3-4 year B.Tech"),
+        ("PCPE", "Program core/elec for 3-4 year B.Tech"),
+        ("HSPE", "HSS elec or Program core/elec for 3-4 year B.Tech"),
+        ("PCDE", "HSS elec or dept core/elec for 3-4 year B.Tech"),
+        ("PEOE", "Program elec or open elec for 3-4 year B.Tech"),
+        ("HSME", "HSS or Science or Math elec 3rd and/or 4th year B.Tech"),
+        ("LC", "Lab Courses"),
+        ("PHSME", "Buffer slot"),
+    ],
+    "CourseTypes": [
+        ("SC", "Science Requirement Core"),
+        ("SE", "Science Electives"),
+        ("GR", "General Engineering Requirement"),
+        ("PC", "Programme Core"),
+        ("PE", "Programme Elective"),
+        ("HC", "Humanities and Social Sciences core"),
+        ("HE", "Humanities and Social Sciences Electives"),
+        ("CP", "Capstone Projects"),
+        ("CT", "Industrial Internship and Comprehensive Viva"),
+        ("NN", "Extra-curricular"),
+        ("OC", "Open Electives"),
+    ],
+    "MinorConcSpecialization": [
+        ("MCBME", "Minor in Biomedical Engineering"),
+        ("MCHY", "Minor in Chemistry"),
+        ("MCSE", "Minor in Computer Science and Engineering"),
+        ("MELE", "Minor in Electrical Engineering"),
+        ("MECE", "Minor in Electronics & Communication Engineering"),
+        ("MMEC", "Minor in Mechanical Engineering"),
+        ("MMTH", "Minor in Mathematics"),
+        ("MPHY", "Minor in Physics"),
+        ("MQUE", "Minor in Quantum Engineering"),
+        ("MCGS", "Minor in Cognitive Science"),
+        ("MENG", "Minor in English and Creative Expression"),
+        ("MCME", "Minor in in Computational Mechanics"),
+        ("CSTR", "Concentration in Structures"),
+        ("CMVL", "Concentration in Micro-electronics and VLSI Design"),
+        ("CTHF", "Concentration in Thermal and Fluids"),
+        ("CMNF", "Concentration in Manufacturing"),
+        ("CMED", "Concentration in Mechanics and Design"),
+        ("CAIL", "Concentration in Artificial Intelligence"),
+        ("CVIP", "Concentration in Computer Vision and Image Processing"),
+        ("CAES", "Concentration in Architecture and Embedded Systems"),
+        ("CTCS", "Concentration in Theoretical Computer Science"),
+        ("CMAM", "Concentration in Mathematical Modelling"),
+        ("CAMT", "Concentration in Advanced Mathematics"),
+        ("CCME", "Concentration in Computational Mechanics"),
+    ],
+    "PersonCategories": [
+        ("GEN", "General"),
+        ("SC", "Scheduled Caste"),
+        ("ST", "Scheduled Tribe"),
+        ("OBC", "OBC"),
+        ("EWS", "Economically Weaker Section"),
+        ("PWD", "PWD"),
+        ("OTH", "Others"),
+    ],
+    "DegreeType": [
+        ("REG", "Regular"),
+        ("HON", "Honors"),
+        ("DWM", "Degree With Minor"),
+        ("DWC", "Degree Wtih Concentration"),
+    ],
+    "CourseFreqs": [
+        ("E", "Even Semester"),
+        ("O", "Odd Semester"),
+        ("S", "Summer break"),
+        ("A", "Any Semester"),
+    ],
+}
 
 current_year = C.DT.now().year
 ACAD_YEARS = [str(year) for year in range(current_year - 5, current_year + 1)]
@@ -70,20 +188,29 @@ def recreate_db(config):
     print("Created DB tables.")
 
 
+def _seed_vocab():
+    for vocab, items in VOCAB_SEED.items():
+        for idx, (code, label) in enumerate(items):
+            M.VocabItem.create(vocab=vocab, code=code, label=label, sort_order=idx + 1)
+
+
 def _vocab_codes(vocab):
     rows = M.VocabItem.select().where(M.VocabItem.vocab == vocab) \
         .order_by(M.VocabItem.sort_order, M.VocabItem.id)
-    return [r.code for r in rows][1:]
+    return [r.code for r in rows]
 
 
 def setup_db_with_demo_data(config):
     print("========== Setting up DEMO database ==========")
     recreate_db(config)
-    global DEPTS, DEGREES, DEG_SPL, COURSE_CAT
+    _seed_vocab()
+    global DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT
     DEPTS = _vocab_codes("Departments")
     DEGREES = _vocab_codes("Degrees")
     DEG_SPL = _vocab_codes("MinorConcSpecialization")
     COURSE_CAT = _vocab_codes("CourseTypes")
+    DEG_TYPES = _vocab_codes("DegreeType")
+    PERSON_CAT = _vocab_codes("PersonCategories")
     _create_acad_sessions()
     _create_users()
     _create_courses()
