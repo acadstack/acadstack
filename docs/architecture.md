@@ -166,15 +166,16 @@ a `roster.*` permission, never a role code:
 | Permission | The role's users count as | Used for |
 | ---------- | ------------------------- | -------- |
 | `roster.student` | students | entry-number lookups, bulk enrolment, grade sheets, student lists |
-| `roster.instructor` | instructors | the instructor lookup, DC supervisors, batch advisors, teaching load |
-| `roster.dept_head` | heads of their department | course offering emails to the department head |
+| `roster.instructor` | instructors | the instructor lookup, DC supervisors, teaching load |
 | `roster.acad_section` | the academic section | grade submission emails |
 
 Python gets the roles with `P.roles_with("roster.student")`; SQL uses
-`u.role IN (SELECT role FROM public.rolepermission WHERE permission = 'roster.student')`.
+`u.role = ANY(%s)` with that list as the parameter. Course offering emails go to
+the department's head: an active user of the offering's department whose role
+holds `offerings.edit:dept`, the permission to act on the offering.
 `UserRoles` in the static data lists each role's roster flags (e.g.
 `"roster": ["student"]`) for the frontend. The defaults grant them to `STU`,
-`FAC`, `HOD` and `ACA`; a new or renamed role takes part by being granted
+`FAC` and `ACA`; a new or renamed role takes part by being granted
 them on the *Roles & Permissions* screen.
 
 `tests/test_permissions.py` holds, for every route, the roles that the

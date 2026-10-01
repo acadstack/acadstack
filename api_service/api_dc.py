@@ -151,7 +151,8 @@ async def download_students_list(degree, year_of_entry, dept_name,acad_session):
                                 [str(degree), 
                                  str(year_of_entry),
                                  str(dept_name),
-                                 str(acad_session)])
+                                 str(acad_session),
+                                 P.roles_with("roster.student")])
 
         fp = apiVC.db_result_to_excel(cursor)
         return await send_file(fp,
@@ -264,8 +265,8 @@ def _raise_on_invalid_dc_change(actor, sup_id, stu_id, old_status, new_status):
     sup = DB.User.get_by_id(sup_id)
     stu = DB.User.get_by_id(stu_id)
 
-    if sup.role not in P.roles_with("roster.instructor"):
-        raise C.AcadStackException("Only a faculty can be the supervisor!")
+    if "roster.instructor" not in P.perms_of(sup.role):
+        raise C.AcadStackException("The supervisor must be an instructor!")
     stu_per = stu.person
     if sup.person.dept_name != stu_per.dept_name:
         raise C.AcadStackException("Supervisor and student must be from same department!")

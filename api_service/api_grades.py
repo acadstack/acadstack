@@ -100,7 +100,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
 
             # if not stu:
             #     raise C.AcadStackException("Student {0} not found!".format(entry_no))
-            if stu.role not in P.roles_with("roster.student"):
+            if "roster.student" not in P.perms_of(stu.role):
                 msg = "Only Student Gradesheet can be downloaded!"
                 logging.error(msg)
                 return apiVC.error_json(msg)
