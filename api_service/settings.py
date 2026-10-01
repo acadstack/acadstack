@@ -41,8 +41,9 @@ SETTINGS = {
                            "Students must submit fee payment details before enrolling."),
     "label_overrides": ({}, _label_overrides_valid,
                         "Labels shown for workflow codes, as {list: {code: label}}."),
+    # Credit ("C") stays offered: bulk enrolment creates credit enrolments.
     "hidden_enrol_types": ([], lambda v: type(v) is list and all(
-                               type(c) is str and c in _codes("EnrolTypes") for c in v),
+                               type(c) is str and c in _codes("EnrolTypes") - {"C"} for c in v),
                            "Enrolment types that are not offered."),
 }
 

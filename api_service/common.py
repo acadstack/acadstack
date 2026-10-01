@@ -56,10 +56,17 @@ class AcadStackException(Exception):
 def current_dt_str():
     return DT.now().strftime("%Y-%m-%d")
 
+_static_data_text = None
+
+
 def static_data_json():
-    """The lists of workflow codes in static_data.json, with their default labels."""
-    with open(os.path.join(os.path.dirname(__file__), "static_data.json")) as f:
-        return json.load(f)
+    """The lists of workflow codes in static_data.json, with their default
+    labels. The file is read once; each call returns a new copy to change."""
+    global _static_data_text
+    if _static_data_text is None:
+        with open(os.path.join(os.path.dirname(__file__), "static_data.json")) as f:
+            _static_data_text = f.read()
+    return json.loads(_static_data_text)
 
 
 def sql_by_id(sid):

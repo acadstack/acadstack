@@ -119,6 +119,19 @@ DB_VOCABS = ("Departments", "Degrees", "CourseSlots", "CourseTypes",
              "MinorConcSpecialization", "PersonCategories", "DegreeType",
              "CourseFreqs", "CalendarEvents")
 
+# The columns that store a list's codes; a code must fit the shortest one.
+VOCAB_CODE_COLUMNS = {
+    "Departments": (M.Person.dept_name, M.CourseOffering.dept_name, M.CourseCategory.dept),
+    "Degrees": (M.Person.degree, M.CourseCategory.degree, M.BatchAdvisors.for_degree),
+    "CourseSlots": (M.CourseOffering.slot, M.CourseSlotTiming.slot),
+    "CourseTypes": (M.CourseCategory.category,),
+    "MinorConcSpecialization": (M.Person.deg_type_spec,),
+    "PersonCategories": (M.Person.category,),
+    "DegreeType": (M.Person.deg_type,),
+    "CourseFreqs": (M.Course.freq,),
+    "CalendarEvents": (),
+}
+
 # The attrs an item of a list may have: name -> allowed values, or None for
 # any text.
 VOCAB_ATTRS = {
@@ -225,14 +238,18 @@ def _vocab_item_error(row, fd):
     sort_order, attrs = fd.get("sort_order", row.sort_order), fd.get("attrs", row.attrs)
     declared = VOCAB_ATTRS.get(row.vocab, {})
     if row.id is None:
-        if type(code) is not str or not 0 < len(code) <= 20:
-            return "The code must be 1 to 20 characters."
-        if row.vocab == "Departments" and len(code) > 4:
-            return "A department code must be 1 to 4 characters."
+        max_len = min(f.max_length for f in (M.VocabItem.code, *VOCAB_CODE_COLUMNS[row.vocab]))
+        if type(code) is not str or not 0 < len(code) <= max_len:
+            return f"A {row.vocab} code must be 1 to {max_len} characters."
         if M.VocabItem.get_or_none((M.VocabItem.vocab == row.vocab) & (M.VocabItem.code == code)):
             return f"{row.vocab} already has the code {code}."
-        if row.vocab == "CalendarEvents" and code in calendar_event_labels():
-            return f"{code} is the code of a workflow event."
+        if row.vocab == "CalendarEvents":
+            # An event's dates are stored under its code and <code>_S/_E, so
+            # these must not be the date codes of another event.
+            dates = lambda c: {c, f"{c}_S", f"{c}_E"}
+            taken = [c for c in calendar_event_labels() if dates(c) & dates(code)]
+            if taken:
+                return f"{code} clashes with the dates of the event {taken[0]}."
     elif fd.get("code") != row.code or fd.get("vocab") != row.vocab:
         return "The list and code of a saved item can't change."
     if type(label) is not str or not 0 < len(label.strip()) <= 200:
@@ -260,25 +277,32 @@ async def get_vocab():
 async def save_vocab():
     """Adds a list item, or changes the label, sort order, attrs or hiding of
     the item with the given id."""
-    fd = await request.get_json(force=True)
-    if fd.get("id"):
-        row = M.VocabItem.get_or_none(M.VocabItem.id == fd["id"])
-        if row is None:
-            return error_json("No such list item.")
-    elif fd.get("vocab") in DB_VOCABS:
-        code = fd.get("code")
-        row = M.VocabItem(vocab=fd["vocab"], code=code.strip() if type(code) is str else code)
-    else:
-        return error_json(f"Unknown list: {fd.get('vocab')}")
-    error = _vocab_item_error(row, fd)
-    if error:
-        return error_json(error)
-    row.label = fd["label"].strip()
-    row.sort_order = fd.get("sort_order", row.sort_order)
-    row.attrs = fd.get("attrs", row.attrs)
-    row.is_deleted = bool(fd.get("is_deleted", False))
-    save_entity(row)
-    return ok_json(all_vocab())
+    try:
+        fd = await request.get_json(force=True)
+        if type(fd) is not dict:
+            return error_json("Expected the list item as an object.")
+        if fd.get("id"):
+            row = M.VocabItem.get_or_none(M.VocabItem.id == int(fd["id"]))
+            if row is None:
+                return error_json("No such list item.")
+        elif fd.get("vocab") in DB_VOCABS:
+            code = fd.get("code")
+            row = M.VocabItem(vocab=fd["vocab"], code=code.strip() if type(code) is str else code)
+        else:
+            return error_json(f"Unknown list: {fd.get('vocab')}")
+        error = _vocab_item_error(row, fd)
+        if error:
+            return error_json(error)
+        row.label = fd["label"].strip()
+        row.sort_order = fd.get("sort_order", row.sort_order)
+        row.attrs = fd.get("attrs", row.attrs)
+        row.is_deleted = bool(fd.get("is_deleted", row.is_deleted))
+        save_entity(row)
+        return ok_json(all_vocab())
+    except Exception as ex:
+        msg = "Error when saving the list item."
+        logging.exception(msg)
+        return error_json(msg)
 
 
 @P.require(P.ADMIN_PERM)

@@ -153,6 +153,9 @@ async def test_vocab_items_are_added_edited_and_hidden(sup):
     ({"vocab": "Degrees", "code": "X" * 21, "label": "X"}, "code"),
     ({"vocab": "Degrees", "code": "X", "label": " "}, "label"),
     ({"vocab": "Departments", "code": "CIVIL", "label": "Civil"}, "4 characters"),
+    ({"vocab": "CourseFreqs", "code": "EO", "label": "Either"}, "1 character"),
+    ({"vocab": "CourseTypes", "code": "CORE1", "label": "Core"}, "4 characters"),
+    ({"vocab": "CourseSlots", "code": "X" * 11, "label": "Slot"}, "10 characters"),
     ({"vocab": "Departments", "code": "ALL", "label": "All"}, "already"),
     ({"vocab": "Degrees", "code": "X", "label": "X", "attrs": {"group": "CORE"}},
      "Unknown attribute"),
@@ -160,8 +163,11 @@ async def test_vocab_items_are_added_edited_and_hidden(sup):
     ({"vocab": "Degrees", "code": "X", "label": "X", "attrs": {"printed_name": 3}},
      "printed_name"),
     ({"vocab": "Degrees", "code": "X", "label": "X", "sort_order": "1"}, "sort order"),
-    ({"vocab": "CalendarEvents", "code": "GRADE_SUB", "label": "Grades"}, "workflow event"),
-    ({"vocab": "CalendarEvents", "code": "MINOR_EXAM", "label": "Exams"}, "workflow event"),
+    ({"id": "abc", "vocab": "Degrees", "code": "X", "label": "X"}, ""),
+    ({"vocab": "CalendarEvents", "code": "GRADE_SUB", "label": "Grades"}, "clashes"),
+    ({"vocab": "CalendarEvents", "code": "MINOR_EXAM", "label": "Exams"}, "clashes"),
+    ({"vocab": "CalendarEvents", "code": "SESSION_S", "label": "Start"}, "clashes"),
+    ({"vocab": "CalendarEvents", "code": "GRADE_SUB_E", "label": "End"}, "clashes"),
 ])
 async def test_vocab_save_rejects_invalid_items(sup, item, error):
     res = await _save_vocab(sup, **item)
@@ -184,6 +190,29 @@ async def test_vocab_code_cannot_change_and_all_cannot_be_hidden(sup):
     res = await _save_vocab(sup, id=all_.id, vocab="Departments", code="ALL",
                             label="Every department")
     assert res["status"] == "OK"
+
+
+async def test_vocab_edit_keeps_hiding_unless_given(sup):
+    deg = M.VocabItem.create(vocab="Degrees", code="BSC", label="B.Sc", is_deleted=True)
+    res = await _save_vocab(sup, id=deg.id, vocab="Degrees", code="BSC", label="B.Sc.")
+    assert res["status"] == "OK"
+    assert M.VocabItem.get_by_id(deg.id).is_deleted
+
+
+async def test_calendar_event_codes_may_not_overlap(sup):
+    assert (await _save_vocab(sup, vocab="CalendarEvents", code="FAIR", label="Fair"))["status"] == "OK"
+    res = await _save_vocab(sup, vocab="CalendarEvents", code="FAIR_S", label="Fair start")
+    assert res["status"] == "ERROR" and "FAIR" in res["body"]
+
+
+async def test_vocab_save_refuses_a_malformed_request(sup):
+    res = await sup.post("/acadstack/vocab_save", json=["Degrees"])
+    assert res.status_code == 200 and (await res.get_json())["status"] == "ERROR"
+
+
+def test_static_data_json_returns_a_fresh_copy():
+    C.static_data_json()["EnrolTypes"].clear()
+    assert C.static_data_json()["EnrolTypes"]
 
 
 @pytest.mark.parametrize("role", ["ACA", "DEA", "STU"])
@@ -219,6 +248,7 @@ async def test_label_overrides_and_hidden_enrol_types_apply_to_static_data(clien
     ("hidden_enrol_types", "CM"),
     ("hidden_enrol_types", ["ZZ"]),
     ("hidden_enrol_types", [["CM"]]),
+    ("hidden_enrol_types", ["C"]),  # bulk enrolment creates credit enrolments
 ])
 def test_invalid_label_settings_are_rejected(db, key, value):
     with pytest.raises(ValueError):

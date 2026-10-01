@@ -22,8 +22,7 @@ import migrate
 import models as M
 import api_reports as R
 
-with open('static_data.json', 'r') as file:
-    static_data = json.load(file)
+static_data = C.static_data_json()
 
 
 ENROL_TYPES = [entry.get('id') for entry in static_data.get('EnrolTypes', []) if entry.get('id')][1:]
