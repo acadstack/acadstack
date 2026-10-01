@@ -7,7 +7,7 @@ __version__ = "0.1"
 __status__ = "Development"
 """
 
-import base64, hashlib, hmac, logging, re, secrets, string, toml
+import base64, hashlib, hmac, json, logging, os, re, secrets, string, toml
 from typing import Any, Optional
 from datetime import datetime as DT
 from datetime import date
@@ -45,16 +45,6 @@ WEEK_DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 VALID_GRADES = ['A','A-','B','B-','C','C-','D','E','F','I','W','NP', 'NF','S','NA', 'U']
 VALID_AUDIT_GRADES = ["NP", "NF", "NA", "I", "W"]
 
-ACAD_EVENT_CODES = ['ADD_DROP_E', 'ADD_DROP_S',
-                    'CLASSES_E', 'CLASSES_S', 'COURSE_REG_E',
-                    'COURSE_REG_S', 'FEEDBACK_E', 'FEEDBACK_S',
-                    'GRADE_SUB_E', 'GRADE_SUB_S', 'MAJOR_EXAM_E',
-                    'MAJOR_EXAM_S', 'MINOR_EXAM_E', 'MINOR_EXAM_S',
-                    'SESSION_E', 'SESSION_S', 'WITHDRAW_E',
-                    'WITHDRAW_S', 'FEEDBACK_MID_E', 'FEEDBACK_MID_S',
-                    'SHOW_MIDSEM_FB_S', 'SHOW_ENDSEM_FB_S','RESULT_DECLARATION',
-                    # Written only by closing the session (/close_session)
-                    'SESSION_CLOSED']
 
 class AcadStackException(Exception):
     """
@@ -65,6 +55,12 @@ class AcadStackException(Exception):
 
 def current_dt_str():
     return DT.now().strftime("%Y-%m-%d")
+
+def static_data_json():
+    """The lists of workflow codes in static_data.json, with their default labels."""
+    with open(os.path.join(os.path.dirname(__file__), "static_data.json")) as f:
+        return json.load(f)
+
 
 def sql_by_id(sid):
     sql_map = toml.load("sql_statements.toml")

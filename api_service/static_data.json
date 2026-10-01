@@ -9,13 +9,6 @@
         {"id": "CAR", "value": "Council Rejected"},
         {"id": "RET", "value": "Retired"}
     ],
-    "CourseFreqs": [
-        {"id": "", "value": "-Select-"},
-        {"id": "E", "value": "Even Semester"},
-        {"id": "O", "value": "Odd Semester"},
-        {"id": "S", "value": "Summer break"},
-        {"id": "A", "value": "Any Semester"}
-    ],
     "OfferingStatuses": [
         {"id": "", "value": "-Select-"},
         {"id": "R", "value": "Running"},
@@ -72,20 +65,19 @@
         {"id": "END_SEM_FB", "value": "End-semester feedback"},
         {"id": "MID_SEM_FB", "value": "Mid-semester feedback"}
     ],
-    "PersonCategories": [
-        {"id": "GEN", "value": "General"},
-        {"id": "SC", "value": "Scheduled Caste"},
-        {"id": "ST", "value": "Scheduled Tribe"},
-        {"id": "OBC", "value": "OBC"},
-        {"id": "EWS", "value": "Economically Weaker Section"},
-        {"id": "PWD", "value": "PWD"},
-        {"id": "OTH", "value": "Others"}
-    ],
-    "DegreeType": [
-        {"id": "REG", "value": "Regular"},
-        {"id": "HON", "value": "Honors"},
-        {"id": "DWM", "value": "Degree With Minor"},
-        {"id": "DWC", "value": "Degree Wtih Concentration"}
+    "WorkflowEvents": [
+        {"id": "SESSION", "value": "Academic session"},
+        {"id": "COURSE_REG", "value": "Course pre-registration"},
+        {"id": "CLASSES", "value": "Classes"},
+        {"id": "ADD_DROP", "value": "Course add/drop"},
+        {"id": "FEEDBACK_MID", "value": "Midsem course feedback"},
+        {"id": "WITHDRAW", "value": "Course withdrawal"},
+        {"id": "FEEDBACK", "value": "Course feedback"},
+        {"id": "GRADE_SUB", "value": "Grades submission"},
+        {"id": "SHOW_MIDSEM_FB", "value": "Show feedback (midsem)"},
+        {"id": "SHOW_ENDSEM_FB", "value": "Show feedback (endsem)"},
+        {"id": "RESULT_DECLARATION", "value": "Result declaration"},
+        {"id": "SESSION_CLOSED", "value": "Session closed"}
     ],
     "DcRoles": [
         {"id": "ME", "value": "Member"},

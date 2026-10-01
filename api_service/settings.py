@@ -7,11 +7,24 @@ cache, so a value changed directly with SQL is seen after a restart.
 
 import logging
 
+import common as C
 import models as M
 
 
 def _int_between(lo, hi):
     return lambda v: type(v) is int and lo <= v <= hi
+
+
+def _codes(list_name):
+    return {e["id"] for e in C.static_data_json().get(list_name, []) if e["id"]}
+
+
+def _label_overrides_valid(v):
+    # {list: {code: label}} for the workflow lists of static_data.json
+    return type(v) is dict and all(
+        type(labels) is dict and labels.keys() <= _codes(lst) and
+        all(type(l) is str and l.strip() for l in labels.values())
+        for lst, labels in v.items())
 
 
 # key: (default, check, description)
@@ -26,6 +39,11 @@ SETTINGS = {
                   "Rows per page in search results."),
     "fees_check_enabled": (True, lambda v: type(v) is bool,
                            "Students must submit fee payment details before enrolling."),
+    "label_overrides": ({}, _label_overrides_valid,
+                        "Labels shown for workflow codes, as {list: {code: label}}."),
+    "hidden_enrol_types": ([], lambda v: type(v) is list and all(
+                               type(c) is str and c in _codes("EnrolTypes") for c in v),
+                           "Enrolment types that are not offered."),
 }
 
 _cache = {}

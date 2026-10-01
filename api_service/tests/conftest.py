@@ -54,21 +54,27 @@ def app():
 
     M.db.init(cfg["db_name"], **cfg["db_args"])
     migrate.migrate()
+    _baseline_vocab[:] = [{k: v for k, v in r.items() if k != "id"}
+                          for r in M.VocabItem.select().dicts()]
     yield myapp
     M.db.close_all()
 
 
+# The list entries the baseline migration seeds, restored before each test.
+_baseline_vocab = []
+
+
 @pytest.fixture
 def db(app):
-    """The model database bound to the test schema, with all tables but the
-    default list entries empty."""
-    # The default list entries, roles and permissions come from the baseline
-    # migration; keep them.
-    seeded = (M.VocabItem, M.Role, M.Permission, M.RolePermission)
+    """The model database bound to the test schema, with all tables empty but
+    for what the baseline migration seeds."""
+    # The roles and permissions come from the baseline migration; keep them.
+    seeded = (M.Role, M.Permission, M.RolePermission)
     tables = ", ".join(f'"{m._meta.table_name}"' for m in M.BaseModel.__subclasses__()
                        if m not in seeded)
     M.db.connect(reuse_if_open=True)
     M.db.execute_sql(f'TRUNCATE {tables} RESTART IDENTITY CASCADE')
+    M.VocabItem.insert_many(_baseline_vocab).execute()
     settings._cache.clear()
     policy.clear_cache()
     yield M.db
