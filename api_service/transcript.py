@@ -71,8 +71,9 @@ def course_credits(course):
     return round(C.parse_number(ltp[-1]), 2)
 
 
-def session_gpa(courses, degree):
-    """SGPA, earned credits and CGPA points of one session's course rows."""
+def session_gpa(courses, level):
+    """SGPA, earned credits and CGPA points of one session's course rows, for
+    a student whose program has the given level (UG, PG or PHD)."""
     ec, s_ec, pts_sgpa, pts_cgpa, u_ec = 0, 0, 0, 0, 0
     creg, creg_wo_audit = 0, 0
     pass_grades = PASS_GRADES
@@ -89,9 +90,9 @@ def session_gpa(courses, degree):
             creg_wo_audit += cc
 
         # Grades that are counted towards earned credits
-        if degree == "BTE":
+        if level == "UG":
             ec_grades = UG_EC_GRADES
-        elif degree == "PHD":
+        elif level == "PHD":
             ec_grades, pass_grades = _phd_grade_sets(c["acad_session"])
         else:
             ec_grades = PG_EC_GRADES
@@ -122,14 +123,14 @@ def session_gpa(courses, degree):
             "creg": creg, "cgpa": cgpa, "pts_cgpa": pts_cgpa}
 
 
-def cumulative_gpa(sessions, degree):
+def cumulative_gpa(sessions, level):
     """For each session's course rows, in chronological order: its SGPA,
     earned and registered credits, and the cumulative earned credits (cec)
     and CGPA up to and including it."""
     ec, pts_cgpa, s_ec = 0, 0, 0
     results = []
     for courses in sessions:
-        cg = session_gpa(courses, degree)
+        cg = session_gpa(courses, level)
         pts_cgpa += cg["pts_cgpa"]
         s_ec += cg["s_ec"]
         ec += cg["ec"]

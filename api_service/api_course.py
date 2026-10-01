@@ -36,6 +36,10 @@ async def course_view(my_id):
         return apiVC.error_json(msg)
 
 
+def _course_levels():
+    return [cl["id"] for cl in C.static_data_json()["CourseLevels"]]
+
+
 @P.require("courses.edit")
 async def course_save():
     try:
@@ -44,6 +48,9 @@ async def course_save():
         logging.debug("Saving course details: {}".format(fd))
         crs_id = int(fd.get("id") or 0)
         crs = DB.Course()
+        levels = _course_levels()
+        if "level" in fd and fd["level"] not in levels:
+            return apiVC.error_json(f"Course level must be one of {', '.join(levels)}.")
 
         if crs_id > 0:
             # Edit case: the author stays as stored
@@ -51,9 +58,9 @@ async def course_save():
             actor = P.current_actor()
             old = DB.Course.get_by_id(crs_id)
             if not actor.allowed("courses.edit", own=lambda: old.author_id == actor.id,
-                                 pg=lambda: bool(apiVC.course_code_for_pg(old.code))):
+                                 pg=lambda: old.level in ("PG", "ALL")):
                 if actor.has("courses.edit:pg"):
-                    return apiVC.error_json("You can edit only PG/PhD courses!")
+                    return apiVC.error_json("You can edit only PG or all-level courses!")
                 return apiVC.error_json("Cannot save course authored by another faculty!")
         else:
             # Assign the currently logged in user as the author
@@ -164,6 +171,7 @@ def __do_courses_exist(file_path):
 
 @P.require("courses.bulk_add")
 async def bulk_add_courses():
+    file_path = None
     try:
         courses_file = (await request.files)['courses_file']
         if courses_file.filename == '':
@@ -184,8 +192,14 @@ async def bulk_add_courses():
 
         with open(file_path, newline='') as csvfile:
             reader = csv.DictReader(csvfile)
+            levels = _course_levels()
             with DB.db.atomic() as txn:
                 for row in reader:
+                    level = (row.get("level") or "").strip().upper()
+                    if level not in levels:
+                        raise C.AcadStackException(
+                            f"Course {row.get('code')}: level must be one of "
+                            f"{', '.join(levels)}.")
                     l, t, p, *x = row["ltp"].split("-")
                     l, t, p = C.parse_number(l), C.parse_number(t), \
                                 C.parse_number(p)
@@ -193,18 +207,22 @@ async def bulk_add_courses():
                     c = round(l + 0.5 * p, 2)
                     ltpsc = f"{l}-{t}-{p}-{s}-{c}"
                     cou = DB.Course(code=row["code"], title=row["title"],
-                                 ltp=ltpsc, status="APP", 
+                                 ltp=ltpsc, level=level, status="APP", 
                                  author=apiVC.logged_in_user())
                     cou.save()
                 txn.commit()
 
-        os.remove(file_path)  # Cleanup
         return apiVC.ok_json("Created new courses successfully!")
 
+    except C.AcadStackException as ex:
+        return apiVC.error_json(str(ex))
     except Exception as ex:
         msg = "Error when handling bulk course creation."
         logging.exception(msg)
         return apiVC.error_json(msg)
+    finally:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)  # Cleanup
 
 
 @P.require("slots.manage")

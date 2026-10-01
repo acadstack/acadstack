@@ -292,13 +292,14 @@ async def login():
             user_obj = {"id": u.id, "login_id": login_id,
                         "first_name": u.first_name, "last_name": u.last_name,
                         "category": u.person.category, "degree": u.person.degree,
+                        "degree_level": apiVC.degree_level(u.person.degree),
                         "deg_type": u.person.deg_type, "role_name": u.get_role_label(),
                         "role": u.role, "dept": u.person.dept_name,
                         "deg_type_spec": u.person.deg_type_spec, 
                         "current_status": u.person.current_status}
             apiVC.session['user'] = user_obj
             actor = P.current_actor()
-            nav = apiVC.init_navbar_items(actor, u.person.degree)
+            nav = apiVC.init_navbar_items(actor, user_obj["degree_level"])
             APP.active_users[C.this_user_name_login_id()] = DT.now()
             return apiVC.ok_json({"user": {**user_obj, "perms": sorted(actor.perms)},
                                   "nav": nav})
@@ -653,6 +654,7 @@ def oauth_verify(token):
                     "first_name": u.first_name, "last_name": u.last_name,
                     "role_name": u.get_role_label(), "role": u.role,
                     "category": u.person.category,"degree": u.person.degree,
+                    "degree_level": apiVC.degree_level(u.person.degree),
                     "deg_type": u.person.deg_type,"dept": u.person.dept_name,
                     "deg_type_spec": u.person.deg_type_spec, 
                     "current_status": u.person.current_status,"is_oauth": True}

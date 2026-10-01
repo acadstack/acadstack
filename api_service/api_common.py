@@ -62,21 +62,6 @@ def entry_years_valid(years:str)->bool:
     return re.match(r"^(20\d{2}[,]?)+$", years, re.IGNORECASE)
 
 
-def course_code_for_pg(code:str)->bool:
-    """Checks if the supplied course code represents a PG course. Any code
-    number starting with a digit greater than 5 will be considered a
-    PG course. E.g., CS504, EE677, etc. are PG courses.
-
-    Args:
-        code (str): Course code in the format CCddd.
-
-    Returns:
-        bool: True if yes.
-    """
-    code = "" if not code else code
-    return re.match(r"^[A-Za-z]{2,3}[5,6,7,8,9]\d{2}$", code, re.IGNORECASE)
-
-
 def current_login_id():
     if "user" in session:
         u = session['user']
@@ -103,7 +88,7 @@ def get_current_user_and_nav():
     if "user" in session:
         u = session['user']
         actor = P.current_actor()
-        nav = init_navbar_items(actor, u["degree"])
+        nav = init_navbar_items(actor, u.get("degree_level"))
         return ok_json({"user": {**u, "perms": sorted(actor.perms)}, "nav": nav})
     else:
         return error_json("User not logged in.")
@@ -139,6 +124,13 @@ VOCAB_ATTRS = {
                 "specialisation": None},
     "CourseTypes": {"group": ["CORE", "ELECTIVE"]},
 }
+
+
+def degree_level(code):
+    """The level (UG, PG or PHD) of the program with this code, or None."""
+    row = M.VocabItem.get_or_none((M.VocabItem.vocab == "Degrees") &
+                                  (M.VocabItem.code == code))
+    return row.attrs.get("level") if row else None
 
 
 def _workflow_lists():
@@ -437,15 +429,16 @@ def logout(send_response=True):
         return ok_json("Logged out.")
 
 
-def init_navbar_items(actor:P.Actor, degree:str)->Dict[str, Any]:
+def init_navbar_items(actor:P.Actor, degree_level:str)->Dict[str, Any]:
     """Builds the navigation menus for the given user. Each nav.json entry
     names the permission of the endpoint its page opens: a scoped code such
     as "fees.view:own" must be held exactly, a plain one at any scope.
 
     Args:
         actor (P.Actor): The logged-in user.
-        degree (str): The user's degree; the PhD menu is shown to users who
-            act only on their own records (students) only if it is PHD.
+        degree_level (str): The level of the user's program; the PhD menu is
+            shown to users who act only on their own records (students) only
+            if it is PHD.
 
     Returns:
         Dict[str, Any]: JSON object containing the nav bar items.
@@ -461,7 +454,7 @@ def init_navbar_items(actor:P.Actor, degree:str)->Dict[str, Any]:
                 continue
             m = n.pop("menu")
             if m:
-                if m.upper() == "PHD" and actor.own_records_only and degree != "PHD":
+                if m.upper() == "PHD" and actor.own_records_only and degree_level != "PHD":
                     continue
                 menus.setdefault(m, []).append(n)
             else:

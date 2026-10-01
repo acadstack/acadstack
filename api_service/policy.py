@@ -11,7 +11,7 @@ limits which records it covers:
     ``:own``   records the actor is linked to: the actor themself, or the
                course they teach, the student they supervise, and so on;
                the linking rule is given where the check is made
-    ``:pg``    PG/PhD records only
+    ``:pg``    courses of level PG or ALL only
 
 ``@require("area.action")`` lets a request through when the actor holds the
 permission at any scope; ``Actor.allowed()`` then checks the record at hand.

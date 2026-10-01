@@ -102,7 +102,7 @@
                 </tr>
                 </td>
                 {% set spec = "" %}
-                {% if "PHD" in degree %}
+                {% if degree_level == "PHD" %}
                 {% set degree = "Ph.D." %}
                 {% elif "M.SC" in degree %}
                 {% set degree = "M.Sc." %}

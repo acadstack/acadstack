@@ -9,6 +9,11 @@
         {"id": "CAR", "value": "Council Rejected"},
         {"id": "RET", "value": "Retired"}
     ],
+    "CourseLevels": [
+        {"id": "UG", "value": "UG"},
+        {"id": "PG", "value": "PG"},
+        {"id": "ALL", "value": "All levels"}
+    ],
     "OfferingStatuses": [
         {"id": "", "value": "-Select-"},
         {"id": "R", "value": "Running"},

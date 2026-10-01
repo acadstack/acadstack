@@ -6,7 +6,9 @@ Component for uploading courses.
 <template>
   <div class="container-fluid">
     <p class="h6">Add Courses</p>
-    <p>Please upload new courses information in CSV format only.</p>
+    <p>Please upload new courses information in CSV format only, with the columns
+      <code>code,title,ltp,level</code>. The level is one of
+      <span v-for="(cl, i) in SD.CourseLevels" :key="cl.id">{{ i ? ", " : "" }}<code>{{ cl.id }}</code> ({{ cl.value }})</span>.</p>
     <div>
       <div class="row mb-2">
         <div class="col">
@@ -42,6 +44,7 @@ Component for uploading courses.
               <div class="col-md-2">Code</div>
               <div class="col">Title</div>
               <div class="col-md-3">LTPSC</div>
+              <div class="col-md-1">Level</div>
             </div>
             <p v-if="result.length == 0">Nothing to show yet!</p>
             <div class="row row-striped" v-for="(r, idx) in result" :key="idx">
@@ -49,6 +52,7 @@ Component for uploading courses.
               <div class="col-md-2">{{r.code}}</div>
               <div class="col">{{r.title}}</div>
               <div class="col-md-3">{{r.ltp}}</div>
+              <div class="col-md-1">{{r.level}}</div>
             </div>
           </div>
         </div>
@@ -116,7 +120,7 @@ export default {
         rr.forEach(row => {
           let cols = row.split(",");
           data.push({ code: cols[0], title: cols[1]
-          , ltp: cols[2]});
+          , ltp: cols[2], level: cols[3]});
         });
         /** Remove the header row */
         data.splice(0, 1);

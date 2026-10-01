@@ -16,7 +16,7 @@
     <td></td><td>&nbsp;</td><td>&nbsp;</td>
     <td style = "font-size:13pt;">PROGRAMME</td>
         {% set spec = "" %}
-        {% if "PHD" in degree %}
+        {% if degree_level == "PHD" %}
             {% set degree = "Ph.D." + " " + "IN" %}
         {% elif "M.SC" in degree %}
             {% set degree = "M.Sc." %}

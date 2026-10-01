@@ -171,6 +171,8 @@ class Course(BaseModel):
 
     # E: Even, O: Odd, S: Summer, A: Any
     freq = ORM.CharField(max_length=1, default="A")
+    # The students a course is meant for: one of CourseLevels in static_data.json
+    level = ORM.CharField(max_length=3, default="UG")
     has_lab = ORM.BooleanField(default=False)
 
     # Can be course numbers or arbitrary text

@@ -138,14 +138,13 @@ app.mixin({
             return undefined;
         },
         isPhdStudent() {
-            return this.isStudent && this.$root.user.degree === 'PHD'
+            return this.isStudent && this.$root.user.degree_level === 'PHD'
         },
         isUGStudent() {
-            return this.isStudent && this.$root.user.degree === 'BTE'
+            return this.isStudent && this.$root.user.degree_level === 'UG'
         },
         isPGStudent() {
-            return this.isStudent &&
-                !"PHD,BTE".includes(this.$root.user.degree)
+            return this.isStudent && this.$root.user.degree_level === 'PG'
         },
         acadSessionRegExp() {
             return new RegExp("^\\d{4}-([S]|I{0,2}|T[1-4])$", "i");
