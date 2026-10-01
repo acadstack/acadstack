@@ -80,7 +80,7 @@ async def credits_earned_report():
         acad_session = fd.get("acad_session")
 
         if not apiVC.academic_session_valid(acad_session):
-            return apiVC.error_json("Expected academic session in YYYY-S format.")
+            return apiVC.error_json("Unknown academic session.")
 
         data = __get_total_credits_data(fd)
         res = {"data": data}
@@ -95,7 +95,7 @@ async def credits_earned_report():
 async def course_lect_in_session(acad_session):
     try:
         if not apiVC.academic_session_valid(acad_session):
-            return apiVC.error_json("Expected academic session in YYYY-S format.")
+            return apiVC.error_json("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("course_lectures_in_session"),
                                 [str(acad_session)])
@@ -135,7 +135,7 @@ def __get_earned_credit_data(form_data):
        max_cr = ""
        
     if acad_session and not apiVC.academic_session_valid(acad_session):
-        raise C.AcadStackException("Expected academic session in YYYY-S format.")
+        raise C.AcadStackException("Unknown academic session.")
     
     cursor = DB.db.execute_sql(C.sql_by_id("filtered_categorized_credits_enrolled"),
                             [str(entry_year), str(entry_year), str(entry_year),
@@ -226,7 +226,7 @@ async def get_fees_payment_transactions():
         acad_session = form_data.get("acad_session") or ""
 
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("fees_payment_report"),
                                 [str(entry_year), str(entry_year),
@@ -262,7 +262,7 @@ async def generate_course_enrolments():
         if entry_year == "-":
             entry_year = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("generate_course_enrolments"),
                                 [str(entry_year), str(entry_year),
@@ -297,7 +297,7 @@ async def generate_feedback_stats():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("generate_feedback_stats"),
                                 [str(acad_session), str(acad_session), 
@@ -326,7 +326,7 @@ async def generate_feedback_stats():
 async def get_slotwise_courses(acad_session):
     try:
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("slotwise_courses"),
                                 [str(acad_session)])
@@ -445,7 +445,7 @@ async def grade_distribution():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("generate_grade_distribution"),
                                 [str(acad_session), str(degree)])
@@ -472,7 +472,7 @@ async def cgpa_sgpa():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("generate_cgpa_sgpa"),
                                 [str(acad_session)])
@@ -504,7 +504,7 @@ async def generate_dept_wise_avg():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("dept_wise_average"),
                                 [ str(form_type), str(acad_session)])
@@ -534,7 +534,7 @@ async def course_wise_faculty_score():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("course_wise_faculty_score"),
                                 [ str(form_type), str(acad_session)])
@@ -566,7 +566,7 @@ async def que_wise_facfeedbkp_score():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("que_wise_facfeedbk_score"),
                                 [ str(form_type), str(acad_session)])
@@ -597,7 +597,7 @@ async def degree_wise_students():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         cursor = DB.db.execute_sql(C.sql_by_id("degree_wise_students"),
                                 [str(course_code), str(course_code),
@@ -628,7 +628,7 @@ async def generate_grade_status():
         if acad_session == "-":
             acad_session = ""
         if acad_session and not apiVC.academic_session_valid(acad_session):
-            raise C.AcadStackException("Expected academic session in YYYY-S format.")
+            raise C.AcadStackException("Unknown academic session.")
 
         if grades_st == "GS":
             sql_id = "grades_status_submitted"

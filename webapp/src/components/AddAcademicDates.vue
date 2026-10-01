@@ -11,8 +11,6 @@ Component for adding the academic event dates.
                 <acad-session v-bind:acad_session="session" label="Load for session"
                     v-on:update:acad_session='onAcadSessionChange' />
                 <div v-if="!v$.session.required && v$.session.$dirty" class="text-danger">This is a requird feild</div>
-                <div v-else-if="!v$.session.validsession && v$.session.$dirty" class="text-danger">Session is invalid
-                </div>
             </div>
         </div>
         <div class="card">
@@ -251,10 +249,7 @@ export default {
     validations() {
         return {
             session: {
-                required,
-                validsession() {
-                    return this.isAcadSession(this.session);
-                }
+                required
             },
             acad_dates: {
                 session: {

@@ -43,7 +43,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/user_save', view_func=user_save, methods=['POST'])
     bp.add_url_rule('/user_delete', view_func=user_delete, methods=['POST'])
     bp.add_url_rule('/instructor_lookup/<string:query_str>', view_func=instructor_lookup, methods=['GET'])
-    bp.add_url_rule('/student_lookup/<string:query_str>', view_func=student_lookup, methods=['GET'])
+    bp.add_url_rule('/student_lookup/<path:query_str>', view_func=student_lookup, methods=['GET'])
     bp.add_url_rule('/students_find', view_func=find_students, methods=['POST'])
     bp.add_url_rule('/my_photo', view_func=get_my_photo, methods=['GET'])
     bp.add_url_rule('/get_image/<string:file_name>', view_func=get_image, methods=['GET'])

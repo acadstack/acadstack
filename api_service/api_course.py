@@ -204,7 +204,7 @@ async def bulk_add_courses():
                     ltpsc = (row["ltp"] or "").strip()
                     parts = ltpsc.split("-")
                     if len(parts) != 5 or not all(
-                            re.fullmatch(r"\d+(\.\d+)?", x) for x in parts):
+                            re.fullmatch(r"[0-9]+(\.[0-9]+)?", x) for x in parts):
                         raise C.AcadStackException(
                             f"Course {row.get('code')}: ltp must be in the "
                             "L-T-P-S-C format, e.g. 3-0-2-6-4.")

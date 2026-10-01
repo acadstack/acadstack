@@ -261,7 +261,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/coe_save', view_func=course_enrollment_save, methods=['POST'])
     bp.add_url_rule('/enroll_in_courses', view_func=enroll_in_courses, methods=['POST'])
     bp.add_url_rule('/change_enroll_status', view_func=change_enroll_status, methods=['POST'])
-    bp.add_url_rule('/co_bulkenrol/<string:entry_no_pattern>/<int:co_id>', 
+    bp.add_url_rule('/co_bulkenrol/<path:entry_no_pattern>/<int:co_id>', 
                         view_func=bulk_enrol_in_course, methods=['GET'])
     bp.add_url_rule('/get_course_enrollments/<int:my_id>', view_func=get_course_enrollments, methods=['GET'])
     bp.add_url_rule('/get_student_academics/<int:my_id>', view_func=get_student_academics, methods=['GET'])
@@ -421,8 +421,9 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
 
         query = DB.User.select(DB.User.id, DB.Person.org_id, 
                                DB.User.role).join(DB.Person)
-        query = query.where((DB.User.role == "STU") & (
-            DB.Person.org_id.startswith(entry_no_pattern)))
+        query = query.where((DB.User.role == "STU") & (DB.User.is_deleted != True) &
+                            (DB.Person.current_status == 'REG') &
+                            DB.Person.org_id.startswith(entry_no_pattern))
 
         co = DB.CourseOffering.get_by_id(co_id)
         num = 0

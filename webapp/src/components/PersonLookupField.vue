@@ -61,8 +61,8 @@ export default {
     debouncedQuery: _.debounce(async function(inp) {
       
       if (this.personRole == "STU") {
-        if (_.isEmpty(inp) || inp.length < 7) {
-          console.log("At least first 7 characters of entry no." + inp);
+        if (_.isEmpty(inp) || inp.length < 3) {
+          console.log("At least first 3 characters of entry no." + inp);
         } else {
           await this.lookupStudents(inp);
         }
@@ -76,7 +76,7 @@ export default {
     }, 400),
     async lookupStudents(qry) {
       let vm = this;
-      await vm.doHttp(true, `student_lookup/${qry}`, null,
+      await vm.doHttp(true, `student_lookup/${encodeURIComponent(qry)}`, null,
         (b)=>{vm.persons = b}, (e)=>{console.log(e)})
     },
     async lookupInstructor(qry) {

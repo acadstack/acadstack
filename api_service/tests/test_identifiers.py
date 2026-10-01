@@ -24,13 +24,35 @@ async def test_student_lookup_takes_any_prefix(client, auth):
 
 async def test_bulk_enrol_takes_any_prefix(client, auth):
     make_user("aca", role="ACA")
-    s1 = make_user("s1", role="STU", org_id="B-77-1")
-    make_user("s2", role="STU", org_id="B-78-1")
+    s1 = make_user("s1", role="STU", org_id="B-77-1", current_status="REG")
+    make_user("s2", role="STU", org_id="B-78-1", current_status="REG")
+    make_user("s3", role="STU", org_id="B-77-2", current_status="GRD")
     co = make_offering()
     await auth.login("aca")
     res = await (await client.get(f"/acadstack/co_bulkenrol/B-77/{co.id}")).get_json()
     assert res["status"] == "OK", res
     assert [e.student_id for e in M.CourseEnrollment.select()] == [s1.id]
+
+
+async def test_prefix_may_contain_a_slash(client, auth):
+    make_user("aca", role="ACA")
+    s1 = make_user("s1", role="STU", org_id="B/77/1", current_status="REG")
+    make_user("s2", role="STU", org_id="B/78/1", current_status="REG")
+    co = make_offering()
+    await auth.login("aca")
+    res = await (await client.get("/acadstack/student_lookup/B%2F77")).get_json()
+    assert [r["org_id"] for r in res["body"]] == ["B/77/1"], res
+    res = await (await client.get(f"/acadstack/co_bulkenrol/B%2F77/{co.id}")).get_json()
+    assert res["status"] == "OK", res
+    assert [e.student_id for e in M.CourseEnrollment.select()] == [s1.id]
+
+
+async def test_course_csv_rejects_non_ascii_digits(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await _upload_courses(client, "code,title,ltp,level\nAB1,One,٣-0-0-6-3,UG\n")
+    assert body["status"] == "ERROR" and "L-T-P-S-C" in body["body"], body
+    assert M.Course.select().count() == 0
 
 
 async def test_course_csv_requires_the_full_ltpsc(client, auth):

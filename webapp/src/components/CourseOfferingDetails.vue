@@ -127,7 +127,6 @@ Component for course offering details.
                     label="Academic Session"
                     v-on:update:acad_session='setAcadSession'/>
                   <div v-if="!v$.coffer.acad_session.required" class="text-danger">Enter session</div>
-                  <div v-else-if="!v$.coffer.acad_session.validsession && v$.coffer.acad_session.$dirty" class="text-danger">Invalid session</div>
                 </span>
               </div>
               <div class="col">
@@ -638,12 +637,7 @@ export default {
         dept_name : {required},
         status:{required},
         slot:{required},
-        acad_session: {
-          required,
-          validsession() {
-            return vm.isAcadSession(vm.coffer.acad_session);
-          }
-        },
+        acad_session: {required},
         instructors:{
           isValid(){
             const a = vm.coffer.instructors.length
