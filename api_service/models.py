@@ -93,9 +93,16 @@ class BatchAdvisors(BaseModel):
         )
 
 
+class AcademicSession(BaseModel):
+    """A session created on Academic Events; its dates are in AcademicCalendar.
+    Additional sessions (e.g. trimesters, summer) overlap the regular ones and
+    are never picked as the current session."""
+    code = ORM.CharField(max_length=10, unique=True)
+    is_additional = ORM.BooleanField(default=False)
+
+
 class AcademicCalendar(BaseModel):
-    # In the format YYYY-S where S is: 'M' for Monsoon semester,
-    # 'S' for Summer, 'W' for Winter semesters.
+    # The AcademicSession code
     acad_session = ORM.CharField(max_length=10)
 
     # Descriptions and codes defined in static_data.json

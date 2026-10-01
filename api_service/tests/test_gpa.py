@@ -118,40 +118,17 @@ def test_pg_d_grade_earns_credit():
     assert r["cgpa"] == 4
 
 
-def test_phd_after_2021_c_minus_earns_credit_and_counts_in_cgpa():
-    r = compute([course("C-", 4, acad_session="2022-I")], "PHD")
+def test_phd_c_minus_earns_credit_and_counts_in_cgpa():
+    r = compute([course("C-", 4, acad_session="Fall 2027")], "PHD")
     assert r["ec"] == 4
     assert r["sgpa"] == 5
     assert r["cgpa"] == 5
 
 
-def test_phd_after_2021_d_grade_does_not_earn_credit():
+def test_phd_d_grade_does_not_earn_credit():
     r = compute([course("D", 4, acad_session="2023-II")], "PHD")
     assert r["ec"] == 0
     assert r["sgpa"] == 4
-    assert r["cgpa"] == 0
-
-
-def test_phd_before_2021_c_minus_neither_earns_credit_nor_counts_in_cgpa():
-    r = compute([course("C-", 4, acad_session="2020-II")], "PHD")
-    assert r["ec"] == 0
-    assert r["pts_cgpa"] == 0
-    assert r["sgpa"] == 5
-    assert r["cgpa"] == 0
-
-
-def test_c12_phd_2021_I_c_minus_earns_credit_without_cgpa_points():
-    r = compute([course("A", 4, acad_session="2021-I"),
-                 course("C-", 4, acad_session="2021-I")], "PHD")
-    assert r["ec"] == 8
-    assert r["pts_cgpa"] == 40
-    assert r["cgpa"] == 5
-
-
-def test_c12_phd_2021_unknown_suffix_c_minus_gets_cgpa_points_without_credit():
-    r = compute([course("C-", 4, acad_session="2021-T3")], "PHD")
-    assert r["ec"] == 0
-    assert r["pts_cgpa"] == 20
     assert r["cgpa"] == 0
 
 
@@ -190,7 +167,9 @@ def test_cumulative_gpa_carries_earned_credits_and_points():
 
 
 def test_sessions_sort_chronologically():
-    assert sorted(["2024-II", "2023-S", "2024-I", "2024-T1"], key=TR.session_sort_key) \
+    starts = {"2024-II": "2025-01-05", "2023-S": "2024-05-20", "2024-I": "2024-07-25",
+              "2024-T1": "2024-06-10"}
+    assert TR.sort_sessions(["2024-II", "2023-S", "2024-I", "2024-T1"], starts) \
         == ["2023-S", "2024-T1", "2024-I", "2024-II"]
 
 

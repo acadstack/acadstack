@@ -216,8 +216,13 @@ def setup_db_with_demo_data(config):
     _create_acad_sessions()
     _create_users()
     _create_courses()
-    for acs in ACAD_SESS:
-        _create_offerings(acs)
+    # The latest session that has started is open; later ones get no offerings.
+    open_sess = M.AcademicCalendar.select().where(
+        (M.AcademicCalendar.event_code == "SESSION_S")
+        & (M.AcademicCalendar.event_value <= C.DT.now().date().isoformat())) \
+        .order_by(M.AcademicCalendar.event_value.desc()).first().acad_session
+    for acs in ACAD_SESS[:ACAD_SESS.index(open_sess) + 1]:
+        _create_offerings(acs, open_sess)
         # Generate grades data
         R.__process_credits_gen_request(acs)
 
@@ -334,7 +339,8 @@ def _save_acad_cal(sem, evt, yr, mmdd):
     acs = M.AcademicCalendar()
     acs.acad_session = f"{yr}-{sem}"
     acs.event_code = f"{evt}"
-    acs.event_value = f"{yr}-{mmdd}"
+    # The second semester of an academic year runs in the next calendar year.
+    acs.event_value = f"{int(yr) + 1 if sem == 'II' else yr}-{mmdd}"
     acs.save()
 
 def _create_acad_sessions():
@@ -353,6 +359,8 @@ def _create_acad_sessions():
                     ('05-17', '05-27'), ('05-18', '06-15'), ('06-20', '06-20'),
                     ('06-22', '06-22')]
     for yr in ACAD_YEARS:
+        for sem in ("I", "II"):
+            M.AcademicSession.create(code=f"{yr}-{sem}")
         for idx, ec in enumerate(ACAD_EVENTS):
             _save_acad_cal("I", f"{ec}_S", yr, DATES_MMDD_I[idx][0])
             _save_acad_cal("I", f"{ec}_E", yr, DATES_MMDD_I[idx][1])
@@ -360,7 +368,7 @@ def _create_acad_sessions():
             _save_acad_cal("II", f"{ec}_S", yr, DATES_MMDD_II[idx][0])
             _save_acad_cal("II", f"{ec}_E", yr, DATES_MMDD_II[idx][1])
 
-def _create_offerings(acs):
+def _create_offerings(acs, open_sess):
     print("Creating course offerings and enrolling students...")
     facs = list(M.User.select().where(M.User.role == "FAC"))
     stu = list(M.User.select().where(M.User.role == "STU"))
@@ -370,7 +378,7 @@ def _create_offerings(acs):
         co.course = c
         co.acad_session = acs
         co.status = random.choice(CO_STATUSES)
-        if acs != f"{current_year}-II":
+        if acs != open_sess:
             co.status = "F" # Mark past courses as completed
         co.save()
 
@@ -415,7 +423,7 @@ def _create_offerings(acs):
             ce.enrol_status = "ENRO"
             if idx2 % 8 == 0:
                 ce.enrol_status = random.choice(ENROL_STATUSES)
-            if acs != f"{current_year}-II" and ce.enrol_status == "ENRO":
+            if acs != open_sess and ce.enrol_status == "ENRO":
                 ce.grade = random.choice(GRADES)
             ce.save()
             if ce.enrol_status != "ENRO":

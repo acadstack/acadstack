@@ -10,13 +10,24 @@ current_acad_sessions="""
         public.academiccalendar c1
     JOIN 
         public.academiccalendar c2 ON c1.acad_session = c2.acad_session
+    JOIN
+        public.academicsession s ON s.code = c1.acad_session
     WHERE 
-        (POSITION('-T' IN c1.acad_session) = 0 OR NOT %s)
+        (NOT s.is_additional OR NOT %s)
         AND c1.event_code = 'SESSION_S'
         AND c2.event_code = 'SESSION_E'
         AND CURRENT_DATE BETWEEN c1.event_value::date AND c2.event_value::date
     ORDER BY 
         c1.event_value;"""
+
+# The next two sessions starting after today, earliest first.
+upcoming_sessions="""
+    SELECT s.code, s.is_additional
+    FROM public.academiccalendar c
+    JOIN public.academicsession s ON s.code = c.acad_session
+    WHERE c.event_code = 'SESSION_S' AND c.event_value::date > CURRENT_DATE
+    ORDER BY c.event_value
+    LIMIT 2;"""
 
 # Find course-offering wise lectures taken in a semester.
 # We find this by looking for how many times the attendance was uploaded.

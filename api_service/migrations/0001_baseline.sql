@@ -23,6 +23,26 @@ CREATE SEQUENCE public.academiccalendar_id_seq
 
 ALTER SEQUENCE public.academiccalendar_id_seq OWNED BY public.academiccalendar.id;
 
+CREATE TABLE public.academicsession (
+    id bigint NOT NULL,
+    is_deleted boolean NOT NULL,
+    txn_no integer NOT NULL,
+    ins_ts timestamp without time zone NOT NULL,
+    upd_ts timestamp without time zone NOT NULL,
+    txn_login_id character varying(40),
+    code character varying(10) NOT NULL,
+    is_additional boolean NOT NULL
+);
+
+CREATE SEQUENCE public.academicsession_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.academicsession_id_seq OWNED BY public.academicsession.id;
+
 CREATE TABLE public.academicmilestone (
     id bigint NOT NULL,
     is_deleted boolean NOT NULL,
@@ -679,6 +699,8 @@ ALTER SEQUENCE public.workflownote_id_seq OWNED BY public.workflownote.id;
 
 ALTER TABLE ONLY public.academiccalendar ALTER COLUMN id SET DEFAULT nextval('public.academiccalendar_id_seq'::regclass);
 
+ALTER TABLE ONLY public.academicsession ALTER COLUMN id SET DEFAULT nextval('public.academicsession_id_seq'::regclass);
+
 ALTER TABLE ONLY public.academicmilestone ALTER COLUMN id SET DEFAULT nextval('public.academicmilestone_id_seq'::regclass);
 
 ALTER TABLE ONLY public.attendancephoto ALTER COLUMN id SET DEFAULT nextval('public.attendancephoto_id_seq'::regclass);
@@ -737,6 +759,9 @@ ALTER TABLE ONLY public.workflownote ALTER COLUMN id SET DEFAULT nextval('public
 
 ALTER TABLE ONLY public.academiccalendar
     ADD CONSTRAINT academiccalendar_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.academicsession
+    ADD CONSTRAINT academicsession_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.academicmilestone
     ADD CONSTRAINT academicmilestone_pkey PRIMARY KEY (id);
@@ -825,6 +850,10 @@ ALTER TABLE ONLY public.workflownote
 CREATE UNIQUE INDEX academiccalendar_acad_session_event_code ON public.academiccalendar USING btree (acad_session, event_code);
 
 CREATE INDEX academiccalendar_txn_no ON public.academiccalendar USING btree (txn_no);
+
+CREATE UNIQUE INDEX academicsession_code ON public.academicsession USING btree (code);
+
+CREATE INDEX academicsession_txn_no ON public.academicsession USING btree (txn_no);
 
 CREATE INDEX academicmilestone_dc_id ON public.academicmilestone USING btree (dc_id);
 

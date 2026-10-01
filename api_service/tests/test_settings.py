@@ -278,7 +278,9 @@ async def test_university_calendar_event_is_dated_and_shown_open(client, auth):
     make_user("aca", role="ACA")
     await auth.login("aca")
     today = date.today()
-    dates = {"CONVOCATION_S": (today - timedelta(days=1)).isoformat(),
+    dates = {"SESSION_S": (today - timedelta(days=30)).isoformat(),
+             "SESSION_E": (today + timedelta(days=30)).isoformat(),
+             "CONVOCATION_S": (today - timedelta(days=1)).isoformat(),
              "CONVOCATION_E": (today + timedelta(days=1)).isoformat(),
              "RESULT_DECLARATION": today.isoformat()}
     res = await client.post("/acadstack/dates_save",
