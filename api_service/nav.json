@@ -102,6 +102,54 @@
         "menu": "Academic Info"
     },
     {
+        "label": "Lists",
+        "href": "#/lists",
+        "perm": "settings.manage",
+        "menu": "University Setup"
+    },
+    {
+        "label": "Roles & Permissions",
+        "href": "#/roles",
+        "perm": "permissions.manage",
+        "menu": "University Setup"
+    },
+    {
+        "label": "Settings",
+        "href": "#/settings",
+        "perm": "settings.manage",
+        "menu": "University Setup"
+    },
+    {
+        "label": "Academic Events",
+        "href": "#/add.dates",
+        "perm": "calendar.view",
+        "menu": "University Setup"
+    },
+    {
+        "label": "Course Slot Timings",
+        "href": "#/edit.slots",
+        "perm": "slots.manage",
+        "menu": "University Setup"
+    },
+    {
+        "label": "Add Users",
+        "href": "#/add.users",
+        "perm": "users.bulk_add",
+        "menu": "University Setup"
+    },
+    {
+        "label": "Bulk Create Courses",
+        "href": "#/courses.add",
+        "perm": "courses.bulk_add",
+        "menu": "University Setup"
+    },
+    {
+        "label": "Manage Batch Advisors",
+        "href": "#/mba",
+        "perm": "advisors.assign",
+        "menu": "University Setup"
+    },
+    {
         "label": "Courses Offered",
         "href": "#/my.coff",
         "perm": "offerings.edit:own",

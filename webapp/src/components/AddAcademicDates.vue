@@ -50,139 +50,15 @@ Component for adding the academic event dates.
                     <div class="col-md-3">Start Date</div>
                     <div class="col-md-3">End Date</div>
                 </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Academic session</div>
+                <div class="row row-striped mb-2" v-for="r in eventRows" :key="r.code">
+                    <div class="col">{{ r.label }}</div>
                     <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.SESSION_S"
-                            :rule="v$.acad_dates.eventDates.SESSION_S"/>
+                        <date-input v-model.trim="acad_dates.eventDates[r.start]" :rule="rule(r.start)" />
                     </div>
                     <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.SESSION_E"
-                            :rule="v$.acad_dates.eventDates.SESSION_E"/>
+                        <date-input v-if="r.end" v-model.trim="acad_dates.eventDates[r.end]" :rule="rule(r.end)" />
+                        <template v-else>N/A</template>
                     </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Course pre-registration</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.COURSE_REG_S"
-                            :rule="v$.acad_dates.eventDates.COURSE_REG_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.COURSE_REG_E"
-                            :rule="v$.acad_dates.eventDates.COURSE_REG_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Classes</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.CLASSES_S"
-                            :rule="v$.acad_dates.eventDates.CLASSES_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.CLASSES_E"
-                            :rule="v$.acad_dates.eventDates.CLASSES_E" />
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Course drop</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.ADD_DROP_S"
-                            :rule="v$.acad_dates.eventDates.ADD_DROP_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.ADD_DROP_E"
-                            :rule="v$.acad_dates.eventDates.ADD_DROP_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Midsem course feedback</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.FEEDBACK_MID_S"
-                            :rule="v$.acad_dates.eventDates.FEEDBACK_MID_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.FEEDBACK_MID_E"
-                            :rule="v$.acad_dates.eventDates.FEEDBACK_MID_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Mid sem exams</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.MINOR_EXAM_S"
-                            :rule="v$.acad_dates.eventDates.MINOR_EXAM_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.MINOR_EXAM_E"
-                            :rule="v$.acad_dates.eventDates.MINOR_EXAM_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Withdraw</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.WITHDRAW_S"
-                            :rule="v$.acad_dates.eventDates.WITHDRAW_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.WITHDRAW_E" 
-                            :rule="v$.acad_dates.eventDates.WITHDRAW_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">End sem exams</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.MAJOR_EXAM_S"
-                            :rule="v$.acad_dates.eventDates.MAJOR_EXAM_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.MAJOR_EXAM_E" 
-                            :rule="v$.acad_dates.eventDates.MAJOR_EXAM_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Course feedback</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.FEEDBACK_S" 
-                            :rule="v$.acad_dates.eventDates.FEEDBACK_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.FEEDBACK_E" 
-                            :rule="v$.acad_dates.eventDates.FEEDBACK_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Grades submission</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.GRADE_SUB_S" 
-                            :rule="v$.acad_dates.eventDates.GRADE_SUB_S"/>
-                    </div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.GRADE_SUB_E" 
-                            :rule="v$.acad_dates.eventDates.GRADE_SUB_E"/>
-                    </div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Show feedback (midsem)</div>
-                    <div class="col-md-3">
-                        <date-input v-model.trim="acad_dates.eventDates.SHOW_MIDSEM_FB_S" 
-                            :rule="v$.acad_dates.eventDates.SHOW_MIDSEM_FB_S"/>
-                    </div>
-                    <div class="col-md-3">N/A</div>
-                </div>
-                <div class="row row-striped mb-2">
-                    <div class="col">Show feedback (endsem)</div>
-                    <div class="col-md-3">
-                        <date-input v-model="acad_dates.eventDates.SHOW_ENDSEM_FB_S" 
-                            :rule="v$.acad_dates.eventDates.SHOW_ENDSEM_FB_S"/>
-                    </div>
-                    <div class="col-md-3">N/A</div>
-                </div>
-                <div class="row row-striped ">
-                    <div class="col">Result Declaration</div>
-                    <div class="col-md-3">
-                        <date-input v-model="acad_dates.eventDates.RESULT_DECLARATION" 
-                            :rule="v$.acad_dates.eventDates.RESULT_DECLARATION"/>
-                    </div>
-                    <div class="col-md-3">N/A</div>
                 </div>
             </div>
         </div>
@@ -210,21 +86,38 @@ export default {
             session: "",
             acad_dates: {
                 session: "",
-                eventDates: {
-                    SESSION_S: "", SESSION_E: "",
-                    COURSE_REG_S: "", COURSE_REG_E: "",
-                    CLASSES_S: "", CLASSES_E: "",
-                    MINOR_EXAM_S: "", MINOR_EXAM_E: "",
-                    FEEDBACK_MID_S: "", FEEDBACK_MID_E: "",
-                    FEEDBACK_S: "", FEEDBACK_E: "",
-                    MAJOR_EXAM_S: "", MAJOR_EXAM_E: "",
-                    GRADE_SUB_S: "", GRADE_SUB_E: "",
-                    WITHDRAW_S: "", WITHDRAW_E: "",
-                    SHOW_MIDSEM_FB_S: "", SHOW_ENDSEM_FB_S: "",
-                    RESULT_DECLARATION: "", ADD_DROP_S: "",
-                    ADD_DROP_E: ""
-                }
+                eventDates: {}
             }
+        }
+    },
+    computed: {
+        // One row per workflow event, then one per university-defined event.
+        // SESSION_CLOSED is set only by closing the session.
+        eventRows() {
+            const rows = [];
+            for (const e of this.SD.WorkflowEvents) {
+                if (e.id == "SESSION_CLOSED") continue;
+                if (e.id == "RESULT_DECLARATION")
+                    rows.push({ code: e.id, label: e.value, start: e.id, required: true });
+                else if (e.id.startsWith("SHOW_"))
+                    rows.push({ code: e.id, label: e.value, start: e.id + "_S", required: true });
+                else
+                    rows.push({ code: e.id, label: e.value, start: e.id + "_S", end: e.id + "_E", required: true });
+            }
+            for (const e of this.SD.CalendarEvents) {
+                if (e.id)
+                    rows.push({ code: e.id, label: e.value, start: e.id + "_S", end: e.id + "_E", required: false });
+            }
+            return rows;
+        },
+        eventDateRules() {
+            const rules = {};
+            for (const r of this.eventRows) {
+                if (!r.required) continue;
+                rules[r.start] = { required };
+                if (r.end) rules[r.end] = { required };
+            }
+            return rules;
         }
     },
     created: function () {
@@ -232,6 +125,9 @@ export default {
         vm.viewOnly = !vm.hasPermission('calendar.edit');
     },
     methods: {
+        rule(key) {
+            return this.v$.acad_dates.eventDates[key] || {};
+        },
         onAcadSessionChange(acs) {
             this.session = acs;
             this.search();
@@ -241,7 +137,7 @@ export default {
             let valid = true;
             const m = vm.acad_dates.eventDates;
             for (const dt in m) {
-                if (dt.startsWith("SESSION_")) continue;
+                if (dt.startsWith("SESSION_") || !m[dt]) continue;
                 if (m[dt] > m["SESSION_E"] || m[dt] < m["SESSION_S"]) {
                     // console.log("m is "+m[dt]+" "+"Event is "+dt);
                     if (dt == "RESULT_DECLARATION") {
@@ -292,7 +188,7 @@ export default {
                 }
                 console.log("Saving Acadmic Dates");
                 vm.$http
-                    .post("dates_save", vm.acad_dates)
+                    .post("dates_save", vm.datesToSave())
                     .then(function (res) {
                         if (res.data.status == "OK") {
                             vm.setStatusMessage("Saved successfully!");
@@ -305,6 +201,12 @@ export default {
                         vm.setStatusMessage("Error occurred when contacting the server.");
                     });
             }
+        },
+        datesToSave() {
+            const eventDates = {};
+            for (const [k, v] of Object.entries(this.acad_dates.eventDates))
+                if (v) eventDates[k] = v;
+            return { session: this.acad_dates.session, eventDates };
         },
         search() {
             let vm = this;
@@ -337,19 +239,7 @@ export default {
             this.session = "";
             this.acad_dates = {
                 session: "",
-                eventDates: {
-                    SESSION_S: "", SESSION_E: "",
-                    COURSE_REG_S: "", COURSE_REG_E: "",
-                    CLASSES_S: "", CLASSES_E: "",
-                    MINOR_EXAM_S: "", MINOR_EXAM_E: "",
-                    FEEDBACK_MID_S: "", FEEDBACK_MID_E: "",
-                    FEEDBACK_S: "", FEEDBACK_E: "",
-                    MAJOR_EXAM_S: "", MAJOR_EXAM_E: "",
-                    GRADE_SUB_S: "", GRADE_SUB_E: "",
-                    WITHDRAW_S: "", WITHDRAW_E: "",
-                    SHOW_MIDSEM_FB_S: "", SHOW_ENDSEM_FB_S: "",
-                    RESULT_DECLARATION: ""
-                }
+                eventDates: {}
             }
         }
     },
@@ -368,77 +258,7 @@ export default {
                         return this.acadSessionRegExp.test(this.acad_dates.session);
                     }
                 },
-                eventDates: {
-                    SESSION_S: {
-                        required
-                    },
-                    SESSION_E: {
-                        required
-                    },
-                    COURSE_REG_S: {
-                        required
-                    },
-                    COURSE_REG_E: {
-                        required
-                    },
-                    CLASSES_S: {
-                        required
-                    },
-                    CLASSES_E: {
-                        required
-                    },
-                    MINOR_EXAM_S: {
-                        required
-                    },
-                    MINOR_EXAM_E: {
-                        required
-                    },
-                    FEEDBACK_MID_S: {
-                        required
-                    },
-                    FEEDBACK_MID_E: {
-                        required
-                    },
-                    FEEDBACK_S: {
-                        required
-                    },
-                    FEEDBACK_E: {
-                        required
-                    },
-                    MAJOR_EXAM_S: {
-                        required
-                    },
-                    MAJOR_EXAM_E: {
-                        required
-                    },
-                    GRADE_SUB_S: {
-                        required
-                    },
-                    GRADE_SUB_E: {
-                        required
-                    },
-                    WITHDRAW_S: {
-                        required
-                    },
-                    WITHDRAW_E: {
-                        required
-                    },
-                    SHOW_MIDSEM_FB_S: {
-                        required
-                    },
-                    SHOW_ENDSEM_FB_S: {
-                        required
-                    },
-                    RESULT_DECLARATION: {
-                        required
-                    },
-                    ADD_DROP_S: {
-                        required
-                    },
-                    ADD_DROP_E: {
-                        required
-                    }
-                }
+                eventDates: this.eventDateRules
             }
         }
     }
