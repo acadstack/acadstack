@@ -126,6 +126,12 @@
         "menu": "University Setup"
     },
     {
+        "label": "Grading Scheme",
+        "href": "#/grading",
+        "perm": "settings.manage",
+        "menu": "University Setup"
+    },
+    {
         "label": "Course Slot Timings",
         "href": "#/edit.slots",
         "perm": "slots.manage",
