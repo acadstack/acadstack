@@ -91,7 +91,7 @@ async def test_hod_of_other_department_cannot_save(client, auth, people):
     make_user("hod", role="HOD", dept_name="MEC")
     await auth.login("hod")
     _, body = await dc_save(client, dc_payload(people))
-    assert body["body"] == "Only HOD of student's own dept. can make changes!"
+    assert body["body"] == "Only the head of the student's department can make changes!"
 
 
 async def test_overlapping_dc_dates_are_rejected(client, auth, people):

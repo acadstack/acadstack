@@ -18,8 +18,6 @@ import StudentSearch from "../components/StudentSearch.vue";
 import CourseSearch from "../components/CourseSearch.vue";
 import CourseDetails from "../components/CourseDetails.vue";
 import CourseDetailsPrintable from "../components/CourseDetailsPrintable.vue";
-import InstructorSearch from "../components/InstructorSearch.vue";
-import InstructorDetails from "../components/InstructorDetails.vue";
 import CourseOfferingSearch from "../components/CourseOfferingSearch.vue";
 import CourseOfferingDetails from "../components/CourseOfferingDetails.vue";
 import CourseEnrollmentDetails from "../components/CourseEnrollmentDetails.vue";
@@ -153,16 +151,6 @@ const appRoutes = [{
   name: 'cour.print',
   path: '/cour.print/:id?',
   component: CourseDetailsPrintable
-},
-{
-  name: 'ins.find',
-  path: '/ins.find',
-  component: InstructorSearch
-},
-{
-  name: 'ins.detail',
-  path: '/ins.detail/:id?',
-  component: InstructorDetails
 },
 {
   name: 'co.find',

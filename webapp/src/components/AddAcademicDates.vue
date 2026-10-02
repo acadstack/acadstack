@@ -141,12 +141,9 @@ export default {
             for (const dt in m) {
                 if (dt.startsWith("SESSION_") || !m[dt]) continue;
                 if (m[dt] > m["SESSION_E"] || m[dt] < m["SESSION_S"]) {
-                    // console.log("m is "+m[dt]+" "+"Event is "+dt);
-                    if (dt == "RESULT_DECLARATION") {
-                        valid = true;
-                        break;
-                    }
-                    else valid = false;
+                    // Results may be declared after the session ends.
+                    if (dt == "RESULT_DECLARATION") continue;
+                    valid = false;
                     break;
                 }
             }

@@ -175,8 +175,8 @@ Component for user details.
           <div class="row mb-2">
             <div class="col-md-3" v-if="isStudent">
               <div>
-                <label for="st_cat">Student Current Status</label>
-                <select class="form-select" id="st_cat" v-model="user.person.current_status"
+                <label for="st_status">Student Current Status</label>
+                <select class="form-select" id="st_status" v-model="user.person.current_status"
                 :disabled="viewOnly">
                   <option
                     v-for="cs in SD.StudentStatus"
@@ -188,8 +188,8 @@ Component for user details.
             </div>           
             <div class="col" v-if="isStudent">
               <div>
-                <label for="st_cat">Type of Degree</label>
-                <select class="form-select" id="st_cat" v-model="user.person.deg_type"
+                <label for="st_degtype">Type of Degree</label>
+                <select class="form-select" id="st_degtype" v-model="user.person.deg_type"
                 :disabled="viewOnly">
                   <option
                     v-for="cs in SD.DegreeType"
@@ -201,8 +201,8 @@ Component for user details.
             </div>
              <div class="col" v-if="isStudent">
               <div>
-                <label for="st_cat">Minor/Concentration Specialization</label>
-                <select class="form-select" id="st_cat" v-model="user.person.deg_type_spec"
+                <label for="st_degspec">Minor/Concentration Specialization</label>
+                <select class="form-select" id="st_degspec" v-model="user.person.deg_type_spec"
                 :disabled="viewOnly">
                   <option
                     v-for="cs in SD.MinorConcSpecialization"

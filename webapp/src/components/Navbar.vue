@@ -8,7 +8,7 @@ Component for the application's navigation bar.
     <nav class="navbar navbar-expand-lg" style="background-color: #b8d6d9;" data-bs-theme="light" v-bind:class=" { 'navbarOpen': show }">
       <a class="navbar-brand ms-2" href="#">
         <img :src="logo" alt="Logo" width="30" height="30" class="d-inline-block align-text-top">
-        AcadStack</img>
+        AcadStack
       </a>
       <button
         class="navbar-toggler"

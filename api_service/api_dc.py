@@ -274,7 +274,7 @@ def _raise_on_invalid_dc_change(actor, sup_id, stu_id, old_status, new_status):
     if not actor.allowed("dc.edit", own=lambda: sup_id == actor.id,
                          dept=lambda: actor.dept == stu_per.dept_name):
         if actor.has("dc.edit:dept"):
-            raise C.AcadStackException("Only HOD of student's own dept. can make changes!")
+            raise C.AcadStackException("Only the head of the student's department can make changes!")
         raise C.AcadStackException("You must be the supervisor/HoD/Dean to make changes to ")
     
 

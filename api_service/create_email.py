@@ -104,7 +104,7 @@ def send_password_changed_alert(email, name):
 def send_user_creation_email(email, login_id):
     try:
         body = __make_email_body("new_user.txt", {"login_id": login_id, "app_url": ST.get("app_url")})
-        subject = "DB.User Account created"
+        subject = "User Account created"
         emailer.send_mail(email, subject, body)
 
     except Exception as ex:
@@ -161,7 +161,7 @@ def send_credit_violation_email(student_data):
         body = __make_email_body("send_credit_violation_email.txt",
                                  student_data)
         to = student_data["email"]
-        subject = "DB.Course credits violation"
+        subject = "Course credits violation"
         emailer.send_mail(to, subject, body)
     except Exception as ex:
         msg = "Error when creating template."
@@ -179,7 +179,7 @@ def send_access_violation_alert(message_txt):
             u.is_locked = True
             apiVC.save_entity(u)
             to_list.append(u.email)
-            message_txt += " DB.User's AcadStack account has been locked."
+            message_txt += " User's AcadStack account has been locked."
             apiVC.logout(send_response=False)
         body = __make_email_body("access_violation.txt",
                                 {"message": message_txt})

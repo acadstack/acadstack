@@ -124,29 +124,6 @@ credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role,
     HAVING u.role = ANY(%s);
     """
 
-core_courses_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
-    count(*) as core,t.acad_session  from (Select u.id, u.first_name,
-    u.last_name, u.role,o.acad_session from public.user u 
-    join  public.courseinstructor i  on u.id = i.instructor_id
-    join public.courseoffering o on i.offering_id = o.id
-    left join public.coursecategory c on o.id=c.offering_id
-    Where c.category in (SELECT code FROM public.vocabitem
-            WHERE vocab='CourseTypes' AND attrs->>'group'='CORE')) t
-    group by t.id,t.acad_session having t.acad_session = %s;
-    """
-
-electives_taught = """SELECT t.id,t.first_name,t.last_name,t.role,
-    count(*) as elective,t.acad_session from
-    (Select u.id, u.first_name,u.last_name,u.role,o.acad_session
-    from public.user u 
-    join public.courseinstructor i on u.id = i.instructor_id
-    join public.courseoffering o on i.offering_id = o.id
-    left join public.coursecategory c on o.id=c.offering_id
-    Where c.category in (SELECT code FROM public.vocabitem
-            WHERE vocab='CourseTypes' AND attrs->>'group'='ELECTIVE')) t
-    group by t.id,t.acad_session having t.acad_session= %s;
-    """
-
 lectures_taken = """SELECT count(*) as student, o.acad_session, o.id
     FROM public.studentattendance a   
     join public.courseenrollment e on e.id=a.enrollment_id
@@ -179,33 +156,6 @@ student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
         AND ff.is_active=true
         AND ff.form_type=%s
         );"""
-
-dept_wise_course_load = """
-    SELECT count(*) class_size, p.dept_name,
-    u.first_name, u.last_name, c.title, c.code, c.ltp,
-    co.acad_session,
-    CASE 
-        WHEN EXISTS (SELECT 1 FROM public.coursecategory cc 
-            WHERE cc.offering_id=co.id AND cc.category IN (SELECT code FROM public.vocabitem
-            WHERE vocab='CourseTypes' AND attrs->>'group'='CORE'))
-        THEN 'Core course' 
-        WHEN EXISTS (SELECT 1 FROM public.coursecategory cc 
-            WHERE cc.offering_id=co.id AND cc.category IN (SELECT code FROM public.vocabitem
-            WHERE vocab='CourseTypes' AND attrs->>'group'='ELECTIVE'))
-        THEN 'Elective course' 
-        ELSE '--'
-    END AS course_type
-    FROM public.courseenrollment ce
-    JOIN public.courseoffering co on co.id=ce.course_offering_id
-    JOIN public.course c on c.id=co.course_id
-    JOIN public.courseinstructor ci on ci.offering_id=co.id
-    JOIN public.user u on u.id=ci.instructor_id
-    JOIN public.person p on p.id=u.person_id
-    LEFT OUTER JOIN public.coursecategory cc on cc.offering_id=co.id
-    WHERE co.acad_session=%s 
-    AND (%s IS NULL OR p.dept_name = %s)
-    GROUP BY co.id, p.dept_name, u.first_name, u.last_name, c.title, c.code, co.acad_session
-    ORDER BY p.dept_name, class_size;"""
 
 enrolment_info = """
     SELECT (c.title || ' :: ' || c.code) as course, 

@@ -84,6 +84,7 @@ Component for managing course slot timings.
             >
               <i class="bi bi-trash"></i>
             </button>
+            <div v-if="s.save_error" class="text-danger small">Not saved: {{ s.save_error }}</div>
           </div>
         </div>
       </div>
@@ -125,6 +126,8 @@ export default {
         .post("save_slot", s)
         .then(function (res) {
           if (res.data.status == "OK") {
+            delete s.save_error;
+            s.id = res.data.body.id;
             if (s.is_deleted) {
               vm.slot_timings = vm.slot_timings.filter(
                 (item) => !item.is_deleted
@@ -134,6 +137,9 @@ export default {
               vm.setStatusMessage("Saved successfully!");
             }
           } else {
+            // Mark the row so it is not taken as saved.
+            s.is_deleted = false;
+            s.save_error = res.data.body;
             vm.setStatusMessage(res.data.body);
           }
         })
