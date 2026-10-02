@@ -82,7 +82,7 @@
 
         {% if institute_name %}
         #bottomtable, #bottomtable2 {
-            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' version='1.1' height='15px' width='{{ 8 * institute_name | length }}px'><text transform='translate(12, 12) rotate(0)' fill='rgba(95,95,95, 0.4)' font-size='13' >{{ institute_name | upper | e }}</text></svg>");
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' version='1.1' height='15px' width='{{ 8 * institute_name | length }}px'><text transform='translate(12, 12) rotate(0)' fill='rgba(95,95,95, 0.4)' font-size='13' >{{ institute_name | upper | e | urlencode }}</text></svg>");
         }
         {% endif %}
 
@@ -112,7 +112,7 @@
                     <td style='border: 0px solid black;font-size: 12px;'>
                         Program Name:</td>
                     <td style='border: 0px solid black;font-size: 12px;'>
-                        <b> {{degree_title}} {{dept_name}} {% if specialisation %}({{specialisation.upper()}}){% endif %}</b>
+                        <b> {{degree_title | e}} {{dept_name | e}} {% if specialisation %}({{specialisation.upper() | e}}){% endif %}</b>
                     </td>
                 </tr>
                 <tr>

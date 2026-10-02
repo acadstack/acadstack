@@ -2,6 +2,7 @@
 web app and the report templates."""
 
 import pytest
+from jinja2.sandbox import SecurityError
 
 import common as C
 import create_email
@@ -93,6 +94,18 @@ def test_template_in_override_folder_is_used(tmp_path):
         "report_templates", "degree.html", _certificate_data(), str(tmp_path / "none"))
 
 
+def test_certificate_escapes_text_fields():
+    html = C.fill_template("report_templates", "degree.html", _certificate_data(
+        institute_name="Arts <& Science>", printed_name="B<b>Tech"))
+    assert "ARTS &lt;&amp; SCIENCE&gt;" in html and "B&lt;b&gt;Tech" in html
+
+
+def test_override_template_is_sandboxed(tmp_path):
+    (tmp_path / "degree.html").write_text("{{ ''.__class__.__mro__ }}")
+    with pytest.raises(SecurityError):
+        C.fill_template("report_templates", "degree.html", {}, str(tmp_path))
+
+
 def _certificate_data(**fields):
     return {"name": "Asha Rao", "entry_no": "X1", "doc_sr_no": "1/2", "degree": "B.Tech",
             "degree_level": "UG", "printed_name": "Bachelor of Technology",
@@ -127,10 +140,14 @@ def test_grade_sheet_uses_program_attrs_and_institute_name():
             "date_issue": ""}
     html = C.fill_template("report_templates", "consolidatedGradeSheetnew.html", data)
     assert "MASTER OF TECHNOLOGY IN EE (SPECIALIZATION IN POWER)" in html
-    assert "OPEN UNIVERSITY</text>" in html
+    assert "OPEN%20UNIVERSITY</text>" in html
     html = C.fill_template("report_templates", "consolidatedGradeSheetnew.html",
                            {**data, "institute_name": ""})
     assert "<svg" not in html
+    # characters that are special in HTML or in a URL must not cut the data: URI
+    html = C.fill_template("report_templates", "consolidatedGradeSheetnew.html",
+                           {**data, "institute_name": "King's #1 <College>"})
+    assert "KING%26%2339%3BS%20%231%20%26lt%3BCOLLEGE%26gt%3B</text>" in html
 
 
 @pytest.fixture

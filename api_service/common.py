@@ -14,7 +14,8 @@ from datetime import date
 from quart import current_app
 from quart import session
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import FileSystemLoader
+from jinja2.sandbox import SandboxedEnvironment
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from playhouse.shortcuts import update_model_from_dict
@@ -197,7 +198,8 @@ def fill_template(templ_dir:str, templ_name:str, data_dict:dict,
     Returns:
         str: Populated template.
     """
-    env = Environment(loader=FileSystemLoader([override_dir, templ_dir] if override_dir
+    # sandboxed: a template in the override folder is not fully trusted code
+    env = SandboxedEnvironment(loader=FileSystemLoader([override_dir, templ_dir] if override_dir
                                               else templ_dir))
     tpl = env.get_template(templ_name)
     return tpl.render(data_dict)

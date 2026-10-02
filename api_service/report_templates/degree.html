@@ -122,9 +122,9 @@
 			<div class="myContainer">
 				<div class="row top">
 					<div class="six columns" >
-						<h3  style="font-size: 18px;"><i>Sr. No. {{doc_sr_no}}  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						<h3  style="font-size: 18px;"><i>Sr. No. {{doc_sr_no | e}}  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 							 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-							&nbsp;&nbsp;&nbsp;&nbsp;Entry No. {{entry_no.upper()}}</i></h3>
+							&nbsp;&nbsp;&nbsp;&nbsp;Entry No. {{entry_no.upper() | e}}</i></h3>
 					</div>
 				</div>
 				<div class="row">
@@ -143,26 +143,26 @@
 							<center><h2 style="font-size: 32px;font-family: 'Simpler';margin-bottom: 10px;"><b>The Board of Governors</b></h2>
 								{% if institute_name %}
 								<h3 style="padding-top: 5px;font-size: 32px;font-family: 'CloisterBlack BT', Arial;margin-bottom: 10px;margin-top: 10px;">of the</h3>
-										<h1 style="font-size: 35px;padding-left: 10px;padding-right: 10px;padding-top: 5px;font-family: 'Simpler';margin-bottom: 10px;margin-top: 10px;"><b>{{institute_name.upper()}}</b></h1>
+										<h1 style="font-size: 35px;padding-left: 10px;padding-right: 10px;padding-top: 5px;font-family: 'Simpler';margin-bottom: 10px;margin-top: 10px;"><b>{{institute_name.upper() | e}}</b></h1>
 								{% endif %}
 										<p class="setmargin blue" style="color:#0470c7;font-size: 32px;">upon the recommendation of the Senate hereby confers on</p>
-										<h2 style="font-size: 33px;font-family: 'Simpler';"><b>{{name.upper() | replace("_", "") }} </b></h2>
+										<h2 style="font-size: 33px;font-family: 'Simpler';"><b>{{name.upper() | replace("_", "") | e }} </b></h2>
 										{% if degree_level == "PHD" %}
 											<p class="blue" >the Degree of </h3>
-											<p class="red" style="margin: 3px;">{{printed_name}}  </h3>
+											<p class="red" style="margin: 3px;">{{printed_name | e}}  </h3>
 											<p class="blue" style="margin: 3px;">for thesis entitled </h3>
-											<h3 class="sired" style="padding-left: 60px;padding-right: 60px;font-family: 'Simpler';font-weight: bold;font-size: 20px;text-indent:-40px;line-height:25px;"><b>{{thesis_title.upper()}}</b></h3>
+											<h3 class="sired" style="padding-left: 60px;padding-right: 60px;font-family: 'Simpler';font-weight: bold;font-size: 20px;text-indent:-40px;line-height:25px;"><b>{{thesis_title.upper() | e}}</b></h3>
 										{% else %}
 											<p class="blue" >the Degree of </h3>
-											<p class="red" style="margin: 3px;">{{printed_name}} </h3>
+											<p class="red" style="margin: 3px;">{{printed_name | e}} </h3>
 											<p class="blue" style="margin: 3px;">in </h3>
-											<p class="red" style="margin: 3px;">{{dept_name}}</p>
+											<p class="red" style="margin: 3px;">{{dept_name | e}}</p>
 										{% if specialisation %}
-												<p class="red" style="margin: 3px;">({{specialisation}})</h3>
+												<p class="red" style="margin: 3px;">({{specialisation | e}})</h3>
 										{% endif %}
 										{% if min_con_specialization %}
 											<p class="blue" style="margin: 3px;">with </h3><br>
-											<p class="red" style="margin: 3px;">{{min_con_specialization}}</h3>
+											<p class="red" style="margin: 3px;">{{min_con_specialization | e}}</h3>
 										{% endif %}
 										{% endif %}
 										<div class="twelve columns ">
@@ -170,10 +170,10 @@
 									   </div><br/>
 										<p class="blue" style="line-height: 20px;">on having fulfilled the requirements.</p>
 										{% if institute_place %}
-										<p class="blue" style="line-height: 5px;">Given at {{institute_place}}</p>
+										<p class="blue" style="line-height: 5px;">Given at {{institute_place | e}}</p>
 										{% endif %}
 										{% if convocation_date %}
-										<p class="blue" style="line-height: 10px;font-size: 32px;">on {{convocation_date}}.</p>
+										<p class="blue" style="line-height: 10px;font-size: 32px;">on {{convocation_date | e}}.</p>
 										{% endif %}
 								</center>
 					</div>

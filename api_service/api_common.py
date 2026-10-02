@@ -15,6 +15,7 @@ import settings as ST
 import policy as P
 import transcript as TR
 from typing import Any, Dict, Type
+from functools import lru_cache
 from pathlib import Path
 from html import escape
 from io import BytesIO
@@ -92,10 +93,15 @@ def get_current_user_and_nav():
         return error_json("User not logged in.")
 
 
+@lru_cache(maxsize=1)
+def _login_page():
+    return Path(APP.static_folder, "default.html").read_text(encoding="utf-8")
+
+
 async def index():
     """The login page, with the institute's name and help address filled in
     where the page has placeholders; a blank setting leaves its part out."""
-    page = Path(APP.static_folder, "default.html").read_text(encoding="utf-8")
+    page = _login_page()
     name, help_email = ST.get("institute_name"), ST.get("help_email")
     page = page.replace("<!--INSTITUTE_META-->", f'<meta name="author" content="{escape(name)}">'
                         if name else "")
@@ -139,6 +145,15 @@ def degree_attrs(code):
     row = M.VocabItem.get_or_none((M.VocabItem.vocab == "Degrees") &
                                   (M.VocabItem.code == code))
     return row.attrs if row else {}
+
+
+def degree_print_fields(code, label):
+    """The level, printed name and specialisation that reports show for the
+    program with this code; the printed name defaults to its label."""
+    attrs = degree_attrs(code)
+    return {"degree_level": attrs.get("level"),
+            "printed_name": attrs.get("printed_name") or label,
+            "specialisation": attrs.get("specialisation", "")}
 
 
 def degree_level(code):
