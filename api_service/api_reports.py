@@ -54,7 +54,7 @@ def __get_total_credits_data(form_data):
     min_cr = form_data.get("min_credits") or 0
     max_cr = form_data.get("max_credits") or 9999
     acad_session = form_data.get("acad_session") or ""
-    exclude_course = form_data.get("exclude_courses") or ""
+    exclude_course = form_data.get("exclude_course") or ""
     cursor = DB.db.execute_sql(C.sql_by_id("credits_earned_report"),
                             [
                                 str(exclude_course),

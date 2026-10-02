@@ -41,6 +41,12 @@ def _course_levels():
     return [cl["id"] for cl in C.static_data_json()["CourseLevels"]]
 
 
+def _ltpsc_valid(ltpsc):
+    """The credits are given as L-T-P-S-C, five numbers such as 3-0-2-6-4."""
+    parts = (ltpsc or "").split("-")
+    return len(parts) == 5 and all(re.fullmatch(r"[0-9]+(\.[0-9]+)?", x) for x in parts)
+
+
 @P.require("courses.edit")
 async def course_save():
     try:
@@ -52,6 +58,8 @@ async def course_save():
         levels = _course_levels()
         if "level" in fd and fd["level"] not in levels:
             return apiVC.error_json(f"Course level must be one of {', '.join(levels)}.")
+        if (crs_id <= 0 or "ltp" in fd) and not _ltpsc_valid(fd.get("ltp")):
+            return apiVC.error_json("The credits must be in the L-T-P-S-C format, e.g. 3-0-2-6-4.")
 
         if crs_id > 0:
             # Edit case: the author stays as stored
@@ -68,6 +76,14 @@ async def course_save():
             if "author" not in fd:
                 fd["author"] = {}
             fd["author"]["id"] = apiVC.logged_in_user().id
+
+        # The pg scope covers PG and all-level courses only, also as the level saved
+        actor = P.current_actor()
+        author_id = old.author_id if crs_id > 0 else actor.id
+        level = fd.get("level") or (old.level if crs_id > 0 else DB.Course.level.default)
+        if level not in ("PG", "ALL") and \
+                not actor.allowed("courses.edit", own=lambda: author_id == actor.id):
+            return apiVC.error_json("You can create or edit only PG or all-level courses!")
 
         if crs_id:
             crs = DB.Course.get_by_id(crs_id)
@@ -202,9 +218,7 @@ async def bulk_add_courses():
                             f"Course {row.get('code')}: level must be one of "
                             f"{', '.join(levels)}.")
                     ltpsc = (row["ltp"] or "").strip()
-                    parts = ltpsc.split("-")
-                    if len(parts) != 5 or not all(
-                            re.fullmatch(r"[0-9]+(\.[0-9]+)?", x) for x in parts):
+                    if not _ltpsc_valid(ltpsc):
                         raise C.AcadStackException(
                             f"Course {row.get('code')}: ltp must be in the "
                             "L-T-P-S-C format, e.g. 3-0-2-6-4.")

@@ -17,6 +17,7 @@ import models as M
 import api_common as apiVC
 import common as C
 import policy as P
+import validation_checks as VAL
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/wfnote_find/<string:entity_name>/<int:entity_key>', 
@@ -108,6 +109,9 @@ async def dates_save():
         if unknown:
             return apiVC.error_json(f"Unknown calendar events: {', '.join(unknown)}")
         acs = M.AcademicSession.get_or_none(M.AcademicSession.code == session)
+        # A closed session's dates also decide its grading rules, which closing froze
+        if acs and VAL.is_session_closed(session):
+            return apiVC.error_json(f"Session {session} is closed; its dates cannot change.")
         # A session is ordered and picked as current by its start and end dates.
         if not acs and not {"SESSION_S", "SESSION_E"} <= set(eventdates):
             return apiVC.error_json("A new session needs its start and end dates.")

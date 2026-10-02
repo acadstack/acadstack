@@ -172,3 +172,17 @@ async def test_no_current_session_between_sessions(client, auth):
     assert not VAL.is_today_between_events("COURSE_REG_S", "COURSE_REG_E")
     with pytest.raises(C.AcadStackException, match="not configured"):
         VAL.get_event_date("COURSE_REG_S")
+
+
+async def test_closed_session_dates_cannot_change(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    await _save_session(client, "Fall 2027", _days(-90), _days(-10))
+    M.AcademicCalendar.create(acad_session="Fall 2027", event_code="SESSION_CLOSED",
+                              event_value=_days(-5))
+
+    body = await _save_session(client, "Fall 2027", _days(-60), _days(-10))
+    assert body["status"] == "ERROR" and "closed" in body["body"]
+    start = M.AcademicCalendar.get((M.AcademicCalendar.acad_session == "Fall 2027") &
+                                   (M.AcademicCalendar.event_code == "SESSION_S"))
+    assert start.event_value == _days(-90)

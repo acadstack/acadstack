@@ -298,3 +298,13 @@ async def test_academic_section_can_make_any_transition(client, auth, people):
                                    "status": "DRA", "txn_no": 1})
     assert body["status"] == "OK"
     assert M.PhDProgressReport.get_by_id(ppr.id).status == "DRA"
+
+
+async def test_dc_search_by_supervisor(client, auth, people):
+    dc = make_dc(people)
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    for mem, found in (("sup", [dc.id]), ("mem", [])):
+        body = await (await client.post("/acadstack/dc_find", json={
+            "member_id": people[mem].id, "member_role": "SU"})).get_json()
+        assert [d["id"] for d in body["body"]] == found
