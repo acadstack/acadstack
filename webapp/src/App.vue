@@ -35,6 +35,7 @@ export default {
       user: {},
       statusMessage: '',
       staticData: {},
+      institute: {},
       viewOnlyFlag: false,
       eventsStatusMap: []
     }
@@ -146,6 +147,7 @@ export default {
     async onLogin(sessData) {
       console.log("User logged IN.");
       this.setCurrentUser(sessData.user);
+      this.institute = sessData.institute;
       this.isOAuth = sessData.user.is_oauth !== undefined && sessData.user.is_oauth;
       await this.getStaticData();
       await this.get_events_status();

@@ -182,7 +182,8 @@ async def close_db_connection(exc=None):
         logging.exception("Failed to close DB connection.")
 
 
-def fill_template(templ_dir:str, templ_name:str, data_dict:dict) -> str:
+def fill_template(templ_dir:str, templ_name:str, data_dict:dict,
+                  override_dir:Optional[str]=None) -> str:
     """Loads a Jinja templare from local file system and renders the supplied
     data in the template.
 
@@ -190,11 +191,14 @@ def fill_template(templ_dir:str, templ_name:str, data_dict:dict) -> str:
         templ_dir (str): Path of the templates folder.
         templ_name (str): Name of the template file.
         data_dict (dict): Data to use to populate the template.
+        override_dir (str, optional): A folder searched before ``templ_dir``,
+            so that an institute can supply its own version of a template.
 
     Returns:
         str: Populated template.
     """
-    env = Environment(loader=FileSystemLoader(templ_dir))
+    env = Environment(loader=FileSystemLoader([override_dir, templ_dir] if override_dir
+                                              else templ_dir))
     tpl = env.get_template(templ_name)
     return tpl.render(data_dict)
 

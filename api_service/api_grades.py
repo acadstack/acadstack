@@ -19,6 +19,7 @@ import shutil
 import api_common as apiVC
 import common as C
 import models as DB
+import settings as ST
 import tasks_helper as TH
 import validation_checks as VAL
 
@@ -44,6 +45,16 @@ def _html_to_pdf(html, target=None, size_mm=(210, 297), margin_mm=10):
         presentational_hints=True)
 
 
+def _fill_report(template, data):
+    """Renders a report template with the institute's name and place added to
+    the data. A template of the same name in the report_templates folder of
+    the upload folder is used in place of the one shipped with the app."""
+    data = {"institute_name": ST.get("institute_name"),
+            "institute_place": ST.get("institute_place"), **data}
+    return C.fill_template("report_templates", template, data,
+                           os.path.join(apiVC.get_upload_folder(), "report_templates"))
+
+
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/download_grade_distribution/<string:acad_session>/<string:degree>',
                        view_func=download_grade_distribution, methods=['GET'])
@@ -63,7 +74,7 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/get_gradesheets/<string:job_key>', 
                        view_func=get_bulk_gradesheets, methods=['GET'])
     bp.add_url_rule(('/download_degree_certifcate/<string:entry_no>/<string:hi_name>'
-                        '/<string:thesis_title>/<string:doc_sr_no>'),
+                        '/<string:thesis_title>/<string:doc_sr_no>/<string:convocation_date>'),
                        view_func=download_degree_certifcate, methods=['GET'])
     bp.add_url_rule('/download_consolidated_grade_sheet/<string:entry_no>/<string:enrol_type>',
                        view_func=download_consolidated_grade_sheet, methods=['GET'])
@@ -136,7 +147,10 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
             degree = apiVC.label_for_static_data_item(degree, degreetypes).upper()
 
             report_data["degree"] = degree
-            report_data["degree_level"] = apiVC.degree_level(stu.person.degree)
+            attrs = apiVC.degree_attrs(stu.person.degree)
+            report_data["degree_level"] = attrs.get("level")
+            report_data["printed_name"] = attrs.get("printed_name") or degree
+            report_data["specialisation"] = attrs.get("specialisation", "")
 
             dept_name = stu.person.dept_name
             depttypes = apiVC.static_data_item("Departments")
@@ -159,8 +173,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
             file_folder = os.path.join(apiVC.get_upload_folder(), static_file_dir)
             report_data["static_file_path"] = file_folder
 
-            html = C.fill_template("report_templates", 
-                    "consolidatedGradeSheetnew.html", report_data)
+            html = _fill_report("consolidatedGradeSheetnew.html", report_data)
             # US Legal paper with 0.1in margins
             pdf_str = _html_to_pdf(html, size_mm=(215.9, 355.6), margin_mm=2.54)
             fp = BytesIO()
@@ -261,7 +274,7 @@ async def download_sem_grade(acad_session, entry_no, enrol_type):
         data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
         data['enrol_type'] = enrol_type
         # TODO: Check the HTML and the data's structure
-        html = C.fill_template("report_templates", "semester_grades.html", data)
+        html = _fill_report("semester_grades.html", data)
 
         pdf_str = _html_to_pdf(html)
         fp = BytesIO()
@@ -314,7 +327,7 @@ def _bulk_download_sem_grade(form_data, job_key):
             data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
             if data:
                 data['enrol_type'] = enrol_type
-                html = C.fill_template("report_templates", "semester_grades.html", data)
+                html = _fill_report("semester_grades.html", data)
                 out_pdf = f"{file_folder}/grades_{entry_no}_{acad_session}.pdf"
                 _html_to_pdf(html, out_pdf)
             else:
@@ -398,9 +411,18 @@ async def download_cgpa_sgpa(acad_session):
 
 
 @P.require("grades.reports")
-async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no):
+async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no,
+                                     convocation_date):
         try:
             report_data = {}
+            if convocation_date == "NA":
+                report_data["convocation_date"] = ""
+            else:
+                try:
+                    d = datetime.date.fromisoformat(convocation_date)
+                    report_data["convocation_date"] = f"{d.day} {d:%B %Y}"
+                except ValueError:
+                    raise C.AcadStackException("The convocation date is not a valid date.")
             stu = get_user_by_org_id(entry_no)
             doc_sr_no = doc_sr_no.replace("-", "/")
             if not stu:
@@ -419,7 +441,10 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
             degree = apiVC.label_for_static_data_item(degree, degreetypes)
 
             report_data["degree"] = degree
-            report_data["degree_level"] = apiVC.degree_level(stu.person.degree)
+            attrs = apiVC.degree_attrs(stu.person.degree)
+            report_data["degree_level"] = attrs.get("level")
+            report_data["printed_name"] = attrs.get("printed_name") or degree
+            report_data["specialisation"] = attrs.get("specialisation", "")
 
             dept_name = stu.person.dept_name
             depttypes = apiVC.static_data_item("Departments")
@@ -443,7 +468,7 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no)
             file_folder = os.path.join(apiVC.get_upload_folder(), static_file_dir)
             report_data["static_file_path"] = file_folder
 
-            html = C.fill_template("report_templates", "degree.html", report_data)
+            html = _fill_report("degree.html", report_data)
             pdf_str = _html_to_pdf(html)
             fp = BytesIO()
             fp.write(pdf_str)

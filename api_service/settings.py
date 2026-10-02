@@ -7,6 +7,7 @@ cache, so a value changed directly with SQL is seen after a restart.
 
 import logging
 import math
+import re
 
 import common as C
 import models as M
@@ -26,6 +27,14 @@ def _label_overrides_valid(v):
         type(labels) is dict and labels.keys() <= _codes(lst) and
         all(type(l) is str and l.strip() for l in labels.values())
         for lst, labels in v.items())
+
+
+def _text(v):
+    return type(v) is str and v == v.strip()
+
+
+def _email_valid(v):
+    return type(v) is str and re.fullmatch(r"[^@\s,]+@[^@\s,]+", v) is not None
 
 
 _SCHEME_KEYS = {"name", "level", "from_session", "until_session", "grades"}
@@ -100,6 +109,14 @@ SETTINGS = {
     "hidden_enrol_types": ([], lambda v: type(v) is list and all(
                                type(c) is str and c in _codes("EnrolTypes") - {"C"} for c in v),
                            "Enrolment types that are not offered."),
+    "institute_name": ("", _text, "Name of the institute, printed on grade sheets and certificates."),
+    "institute_place": ("", _text, "Place of the institute, printed on certificates."),
+    "app_url": ("", lambda v: _text(v) and (v == "" or re.fullmatch(r"https?://\S+", v) is not None),
+                "Web address of this application, given to users in emails."),
+    "help_email": ("", lambda v: v == "" or _email_valid(v),
+                   "Address for help requests; also receives access-violation alerts."),
+    "broadcast_emails": ([], lambda v: type(v) is list and all(_email_valid(a) for a in v),
+                         "Addresses that receive the academic calendar alerts."),
     "grading_schemes": ([ten_point_scheme(l) for l in ("UG", "PG", "PHD")],
                         _grading_schemes_valid,
                         "Grades and their rules, per program level and range of sessions."),

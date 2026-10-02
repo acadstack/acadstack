@@ -12,6 +12,7 @@ from jinja2 import Environment, FileSystemLoader
 from common import emailer, sql_by_id
 import api_common as apiVC
 import policy as P
+import settings as ST
 import models as DB
 
 
@@ -102,7 +103,7 @@ def send_password_changed_alert(email, name):
 
 def send_user_creation_email(email, login_id):
     try:
-        body = __make_email_body("new_user.txt", {"login_id": login_id})
+        body = __make_email_body("new_user.txt", {"login_id": login_id, "app_url": ST.get("app_url")})
         subject = "DB.User Account created"
         emailer.send_mail(email, subject, body)
 
@@ -183,9 +184,10 @@ def send_access_violation_alert(message_txt):
         body = __make_email_body("access_violation.txt",
                                 {"message": message_txt})
         subject = "AcadStack access violation alert"
-        to_list.append("acadstack_help@iitrpr.ac.in")
-        to = ', '.join(to_list)
-        emailer.send_mail(to, subject, body)
+        if ST.get("help_email"):
+            to_list.append(ST.get("help_email"))
+        if to_list:
+            emailer.send_mail(', '.join(to_list), subject, body)
     except Exception as ex:
         msg = "Error when sending access violation alert."
         logging.exception(msg)
@@ -196,9 +198,10 @@ def send_events_alert_email(events_today, events_tomorrow):
         data = {"events_today": events_today, 
                 "events_tomorrow": events_tomorrow}
         body = __make_email_body("upcoming_events.txt", data)
-        # Send to both students and faculty
-        # TODO: Get the email ids from some config
-        to = "students@iitrpr.ac.in,faculty-broadcast@iitrpr.ac.in"
+        to = ",".join(ST.get("broadcast_emails"))
+        if not to:
+            logging.info("No broadcast_emails set; the events alert is not sent.")
+            return
         subject = "Academic calendar event(s) alert"
         emailer.send_mail(to, subject, body)
     except Exception as ex:
