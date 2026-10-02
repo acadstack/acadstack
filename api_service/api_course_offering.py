@@ -133,7 +133,7 @@ async def course_offering_save():
                     return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
                 return apiVC.error_json("Only the course cordinator can make changes.")
 
-        acad_session = (fd.get("acad_session") or "").upper()
+        acad_session = (fd.get("acad_session") or "").strip()
         fd["acad_session"] = acad_session
 
         if not apiVC.academic_session_valid(acad_session):

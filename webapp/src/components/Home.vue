@@ -9,7 +9,7 @@
     </p>
     Please proceed by choosing a menu item from the top bar.
     <p>
-    <B>Before contacting @acadstack_help for any issues, 
+    <B>Before contacting the help desk for any issues, 
       please check the <a href="https://bit.ly/AcadStackGuide" target="_blank">User Guide</a> for solution.</B>
     </p>
     <div class="card" v-if="hasPermission('users.view_active')">
@@ -22,7 +22,6 @@
       <b>NOTE:</b>
       <ul>
         <li>Please directly contact the course instructor for any changes to your enrolment requests.</li>
-        <li>We have not yet fully imported your past enrolments data into this system. You may not get to see grades for some of your past courses.</li>
       </ul>
     </div>
   </div>

@@ -15,54 +15,8 @@
     <tr rowspan=2><td></td><td></td><td></td>
     <td></td><td>&nbsp;</td><td>&nbsp;</td>
     <td style = "font-size:13pt;">PROGRAMME</td>
-        {% set spec = "" %}
-        {% if degree_level == "PHD" %}
-            {% set degree = "Ph.D." + " " + "IN" %}
-        {% elif "M.SC" in degree %}
-            {% set degree = "M.Sc." %}
-        {% elif "B.TECH-M.TECH DUAL" in degree %}
-            {% set degree = "B.TECH.-M.TECH. (DUAL DEGREE)" + " " + "IN"  %}
-        {% elif "M.TECH(AI)" in degree %}
-            {% set degree = "M.TECH. ARTIFICIAL INTELLIGENCE" %}
-            {% set dept_name = "" %}
-        {% elif "M.TECH(SIGNAL PROCESSING)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN COMMUNICATION AND SIGNAL PROCESSING)" %}
-        {% elif "M.TECH(MICRO. & VLSI)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN MICROELECTRONICS AND VLSI DESIGN)" %}
-        {% elif "M.TECH(POWER ENGG.)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN POWER ENGINEERING)" %}
-        {% elif "M.TECH(THERMAL ENGG.)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN THERMAL & FLUIDS ENGINEERING)" %}
-        {% elif "M.TECH(MANUFACTURING)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN MANUFACTURING ENGINEERING)" %}
-        {% elif "M.TECH(MECHANICS AND DESIGN)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN MECHANICS AND DESIGN)" %}            
-        {% elif "M.TECH(WATER RESO. & ENVIRN.)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN WATER RESOURCES AND ENVIRONMENT)" %}
-        {% elif "M.TECH(STRUC. AND GEOMECH.)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN STRUCTURAL ENGINEERING AND GEOMECHANICS)" %}
-        {% elif "M.TECH(COMPUTATIONAL MECHANICS)" in degree %}
-            {% set degree = "M.TECH." %}
-            {% set specdegree = "(SPECIALIZATION IN COMPUTATIONAL MECHANICS)" %}
-        {% elif "M.TECH" in degree %}
-            {% set degree = degree + '.' +  " " %}
-        {% elif "B.TECH" in degree and "PHYSICS" in dept_name %}
-            {% set degree = degree + '.' +  " " + "IN" + " " + "ENGINEERING" %}
-        {% elif "B.TECH(M&C)" in degree %}
-            {% set degree = "B.TECH." + " " +  "IN" +  " " + "MATHEMATICS AND COMPUTING"%}
-            {% set dept_name = " " %}
-        {% else %}
-        {% set degree = degree + '.' +  " " + "IN" %}
-        {% endif %}
-<td style = "font-size:13pt;padding-left:100px;margin-left: 20px">{{degree}} {{dept_name}} {{specdegree}} </td></tr>
+        {% set degree_title = printed_name.upper() + (" IN" if degree_level != "PHD" else "") %}
+<td style = "font-size:13pt;padding-left:100px;margin-left: 20px">{{degree_title | e}} {{dept_name | e}} {% if specialisation %}({{specialisation.upper() | e}}){% endif %}</td></tr>
     <tr rowspan=2><td></td><td></td><td></td>
         <td></td><td>&nbsp;</td><td>&nbsp;</td>
         <td style = "font-size:13pt;">&nbsp;</td>
@@ -71,36 +25,14 @@
             {% endif %}
         <td style = "font-size:13pt;padding-left:100px;margin-left: 20px">{{specialization}} </td></tr>
     </table><br>
-            {%  set acad_session_list = last_acad_session.split('-') %}
-            {%  set next_acad_session =  acad_session_list[0] | int + 1 %}
-          
-            
-            {%  set acad_session_number = acad_session_list[1] %}
-          
-           {%  if "T1" in acad_session_list[1] %}
-           {% set acad_session_number = "I" %}
-           {% endif %}
-           {%  if "T2" in acad_session_list[1] %}
-           {% set acad_session_number = "II" %}
-           {% endif %}
-           {%  if "S" in acad_session_list[1] %}
-           {% set acad_session_number = "SUMMER" %}
-           {% endif %}
-
-            
     <table border=0 style="font-family:Arial;width:600px">
     <tr>
-    <td style = "font-size:13pt;padding-left:15px;"> &nbsp;&nbsp;&nbsp;&nbsp;{{ acad_session_number }} SEMESTER OF ACADEMIC YEAR {{acad_session_list[0] + "-" + next_acad_session | string }} </td>
+    <td style = "font-size:13pt;padding-left:15px;"> &nbsp;&nbsp;&nbsp;&nbsp;{{ last_acad_session | e }} </td>
     </tr>
     </table>
     <br>_________________________________________________________________________________________________________________________________________________
 
     <table border=0 width="100%" cellspacing=2 cellpadding=3  style=font-family:Arial;>
-        <tr><td width='160' align='left' style = font-size:13pt;">&nbsp;&nbsp;&nbsp; पाठ्यक्रम सं.</td>
-        <td width='600' align='center' style = font-size:13pt;">पाठ्यक्रम शीर्षक</td>
-        <td width='100'align=center style = font-size:13pt;" align='right'>क्रेडिट </td>
-        <td align='center' width='200' style = font-size:13pt;" >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ग्रेड </td>
-        </tr>
         <tr><td width='160' align='left' style = font-size:13pt;">&nbsp;&nbsp;&nbsp; COURSE NO</td>
         <td width='750' align='center' style = font-size:13pt;">COURSE TITLE</td>
         <td width='80'align=center style = font-size:13pt;" align='right'> CREDITS</td>

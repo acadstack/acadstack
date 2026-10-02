@@ -10,7 +10,7 @@
       </div>
     <div class="col-2">
             <div class=" me-2 mt-2"> 
-          <label for="hindi_name">Enter Name in Hindi: </label>
+          <label for="hindi_name">Name in a second language: </label>
              &nbsp;<input id="hindi_name" class="form-control" type="text"  v-model="hindiName" />
             </div> 
     </div>

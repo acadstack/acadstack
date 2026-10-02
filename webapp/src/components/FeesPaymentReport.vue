@@ -122,7 +122,7 @@ export default {
   },
   methods: {
     txnEntry(t) {
-      return `₹${t.txn_amt}/- on ${t.txn_dt} Trans. No. ${t.txn_no}. Bank ${t.bank}`;
+      return `${t.txn_amt} on ${t.txn_dt} Trans. No. ${t.txn_no}. Bank ${t.bank}`;
     },
     search() {
       let vm = this;
