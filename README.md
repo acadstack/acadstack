@@ -83,11 +83,9 @@ current shell: `source app_env_vars.env`
 script for more details and options. To start with an empty database instead, skip this step: when the
 application starts it creates the schema (see `api_service/migrations/`) and, if there are no users yet,
 a superuser `admin` whose password it prints once.
-The lists that differ between universities (departments, degrees, course slots, course types, minors and
-concentrations) are rows of the `vocabitem` table; edit them with SQL (`is_deleted = true` hides an entry).
-The known thresholds (maximum credits, face-match tolerance, lockout limit, page size, fee check) are listed
-in `api_service/settings.py`; a superuser changes them with `POST /acadstack/setting_save`
-(`{"key": ..., "value": ...}`) and lists them with `GET /acadstack/settings`.
+Everything that differs between universities (departments, programs, roles, academic sessions, grading
+scheme, institute name and so on) is set up on the application's *University Setup* menu, not with SQL or
+by editing files. See [docs/university_setup.md](docs/university_setup.md) for the steps.
 1. Run `python main.py` to start the web application.
 1. Open `http://localhost:5300/acadstack/app/index.html` Change the port as per your config.json setting.
 1. Login using ID `acad.user` and password `abcd1234`
