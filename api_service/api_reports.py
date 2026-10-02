@@ -636,9 +636,9 @@ async def generate_grade_status():
         else:
             sql_id = 'grades_status_pending'
 
-        params = [str(acad_session)] if grades_st == "GS" else \
-            [str(acad_session), apiVC.scheme_grades()]
-        cursor = DB.db.execute_sql(C.sql_by_id(sql_id), params)
+        # Submitted: a grade of the grading schemes; pending: any other
+        cursor = DB.db.execute_sql(C.sql_by_id(sql_id),
+                                   [str(acad_session), apiVC.scheme_grades()])
         data = []
         for row in cursor.fetchall():
             data.append({'code': row[0], 'acad_session': row[1], 

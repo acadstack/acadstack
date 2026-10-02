@@ -79,9 +79,9 @@ async def download_grade_status(grades_st, acad_session):
         else:
             sql_id = 'grades_status_pending'
 
-        params = [str(acad_session)] if grades_st == "GS" else \
-            [str(acad_session), apiVC.scheme_grades()]
-        cursor = DB.db.execute_sql(C.sql_by_id(sql_id), params)
+        # Submitted: a grade of the grading schemes; pending: any other
+        cursor = DB.db.execute_sql(C.sql_by_id(sql_id),
+                                   [str(acad_session), apiVC.scheme_grades()])
 
         fp = apiVC.db_result_to_excel(cursor)
         return await send_file(fp,
@@ -574,24 +574,30 @@ async def grades_upload():
 
         # If all is OK, then update the grades in DB
         upd_count = 0
-        audit_grades = apiVC.valid_audit_grades()
+        # The grade rules of each program level in the offering's session
+        level_rules = {}
         with DB.db.atomic() as txn:
             with open(file_path, newline='') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     roll_no = row["ROLL_NO"].upper().strip()
                     grade = row["GRADE"].upper().strip()
-                    stu = DB.User.select(DB.User.id).join(DB.Person)\
+                    stu = DB.User.select(DB.User, DB.Person).join(DB.Person)\
                         .where(DB.Person.org_id == roll_no)[0]
                     coe = DB.CourseEnrollment.select().where(
                         (DB.CourseEnrollment.course_offering == co_id) &
                         (DB.CourseEnrollment.student == stu.id)
                     )[0]
 
-                    if coe.enrol_type == "A" and grade not in audit_grades:
+                    level = apiVC.degree_level(stu.person.degree) or "PG"
+                    if level not in level_rules:
+                        level_rules[level] = apiVC.grading_rules(
+                            level, [co_obj.acad_session])[co_obj.acad_session]
+                    allowed = apiVC.allowed_grades(level_rules[level], coe.enrol_type)
+                    if grade not in allowed:
+                        kind = "audited course" if coe.enrol_type == "A" else f"{level} student"
                         raise C.AcadStackException(f"Invalid grade {grade} assigned "
-                                f"to {roll_no} for audited course. "
-                                f"Allowed audit grades are: {audit_grades}")
+                                f"to {roll_no} ({kind}). Allowed grades are: {allowed}")
 
                     if coe.grade == grade:
                         logging.debug("Grade unchanged, skipping the update.")
@@ -643,7 +649,7 @@ async def close_session():
                 (DB.CourseOffering.acad_session == acad_session) &
                 (DB.CourseOffering.status.not_in(["C", "D"])) &
                 (DB.CourseEnrollment.enrol_status == "ENRO") &
-                (DB.CourseEnrollment.grade == "NA"))
+                (DB.CourseEnrollment.grade.not_in(apiVC.scheme_grades())))
         pending = sorted({ce.course_offering.course.code for ce in pending})
         if pending:
             return apiVC.error_json("Grades are pending in these courses: "

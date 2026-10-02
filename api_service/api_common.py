@@ -197,12 +197,11 @@ def session_order():
 def grading_rules(level, acad_sessions):
     """The grade rules ({grade: entry}) of the grading scheme that applies to a
     student of this program level in each of the given sessions, as
-    {session: rules}."""
+    {session: rules}. A program without a level is taken as PG."""
     schemes, order = ST.get("grading_schemes"), session_order()
+    level = level or "PG"
     res = {}
     for s in acad_sessions:
-        if not level:
-            raise C.AcadStackException("The student's program has no level (UG, PG or PHD).")
         res[s] = TR.resolve_scheme(schemes, level, s, order)
         if res[s] is None:
             raise C.AcadStackException(
@@ -223,13 +222,12 @@ def valid_grades():
     return [C.NO_GRADE] + scheme_grades()
 
 
-def valid_audit_grades():
-    """The grades an audit enrolment may be given."""
-    grades = [C.NO_GRADE]
-    for s in ST.get("grading_schemes"):
-        grades += [g["grade"] for g in s["grades"]
-                   if g["allowed_for_audit"] and g["grade"] not in grades]
-    return grades
+def allowed_grades(rules, enrol_type):
+    """The grades an enrolment of this type may be given under the grade rules
+    ({grade: entry}) of its student's scheme: no grade yet, or a grade of the
+    rules; for an audit enrolment, only one allowed for audit."""
+    return [C.NO_GRADE] + [g for g, r in rules.items()
+                           if enrol_type != "A" or r["allowed_for_audit"]]
 
 
 def graded_rows(flag):

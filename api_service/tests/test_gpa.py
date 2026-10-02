@@ -86,6 +86,21 @@ def test_s_grade_earns_credit_but_is_excluded_from_gpa():
     assert r["cgpa"] == 10
 
 
+def test_phd_s_grade_earns_no_credit_and_is_excluded_from_gpa():
+    r = compute([course("A", 4), course("S", 4)], "PHD")
+    assert r["ec"] == 4
+    assert r["s_ec"] == 0
+    assert r["sgpa"] == 10
+    assert r["cgpa"] == 10
+
+
+@pytest.mark.parametrize("grade", ["I", "W"])
+def test_audit_i_w_grades_leave_the_sgpa_denominator_alone(grade):
+    r = compute([course("A", 4), course(grade, 3, enrol_type="A")], "UG")
+    assert r["sgpa"] == 10
+    assert r["creg"] == 7
+
+
 @pytest.mark.parametrize("grade", ["U", "I", "W"])
 def test_u_i_w_grades_are_excluded_from_sgpa_denominator(grade):
     r = compute([course("A", 4), course(grade, 3)], "UG")

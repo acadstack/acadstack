@@ -63,7 +63,7 @@ def session_gpa(courses, rules):
     """SGPA, earned credits and CGPA points of one session's course rows, under
     the grade rules ({grade: entry} of a grading scheme) of that session."""
     ec, s_ec, pts_sgpa, pts_cgpa, u_ec = 0, 0, 0, 0, 0
-    creg, creg_wo_audit = 0, 0
+    creg, creg_wo_audit, wo_gpa = 0, 0, 0
     for c in courses:
         # Take only confirmed enrolments in finished courses
         if c["enrol_status"] != "ENRO":
@@ -80,9 +80,13 @@ def session_gpa(courses, rules):
         # have (such as NA, not graded yet) has no points and earns nothing.
         rule = rules.get(c["grade"], {})
 
-        if rule.get("credit_without_gpa"):
-            s_ec += cc
-        if rule.get("excluded_from_gpa"):
+        # Only credit courses count towards the GPAs. Credit without a GPA
+        # leaves the SGPA; it leaves the CGPA only if it was earned.
+        if rule.get("credit_without_gpa") and is_credit_course:
+            wo_gpa += cc
+            if rule.get("earns_credit"):
+                s_ec += cc
+        if rule.get("excluded_from_gpa") and is_credit_course:
             u_ec += cc
         if rule.get("earns_credit") and is_credit_course:
             ec += cc
@@ -94,7 +98,7 @@ def session_gpa(courses, rules):
         else:
             logging.debug(f"Points not mapped for grade {c['grade']}!")
 
-    creg_sgpa = (creg_wo_audit - s_ec) - u_ec
+    creg_sgpa = (creg_wo_audit - wo_gpa) - u_ec
     ec_cgpa = (ec - s_ec)
     sgpa = round(pts_sgpa / creg_sgpa, 2) if creg_sgpa > 0 else 0
     cgpa = round(pts_cgpa / ec_cgpa, 2) if ec_cgpa > 0 else 0

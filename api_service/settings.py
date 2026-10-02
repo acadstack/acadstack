@@ -6,6 +6,7 @@ cache, so a value changed directly with SQL is seen after a restart.
 """
 
 import logging
+import math
 
 import common as C
 import models as M
@@ -37,8 +38,13 @@ def _grade_valid(g):
     return (type(g) is dict and g.keys() == {"grade", "points"} | _GRADE_FLAGS and
             type(g["grade"]) is str and 1 <= len(g["grade"]) <= 2 and
             g["grade"] == g["grade"].strip().upper() and g["grade"] != C.NO_GRADE and
-            (g["points"] is None or (type(g["points"]) in (int, float) and g["points"] >= 0)) and
-            all(type(g[f]) is bool for f in _GRADE_FLAGS))
+            (g["points"] is None or (type(g["points"]) in (int, float) and
+                                     math.isfinite(g["points"]) and g["points"] >= 0)) and
+            all(type(g[f]) is bool for f in _GRADE_FLAGS) and
+            # A grade counted in the CGPA has points and earns credit; a grade
+            # kept out of the GPAs has none.
+            (not g["in_cgpa"] or (g["points"] is not None and g["earns_credit"])) and
+            (g["points"] is None or not (g["credit_without_gpa"] or g["excluded_from_gpa"])))
 
 
 def _grading_schemes_valid(v):
@@ -53,6 +59,27 @@ def _grading_schemes_valid(v):
         type(s["grades"]) is list and s["grades"] and all(_grade_valid(g) for g in s["grades"]) and
         len({g["grade"] for g in s["grades"]}) == len(s["grades"])
         for s in v)
+
+
+def ten_point_scheme(level):
+    """The 10-point grading scheme of a program level (UG, PG or PHD), for every
+    session; the default of the grading_schemes setting."""
+    def g(grade, points=None, earns=False, cgpa=False, wo_gpa=False, excl=False,
+          audit=False):
+        return {"grade": grade, "points": points, "earns_credit": earns,
+                "in_cgpa": cgpa, "credit_without_gpa": wo_gpa,
+                "excluded_from_gpa": excl, "allowed_for_audit": audit}
+    phd = level == "PHD"
+    grades = [g(x, p, earns=True, cgpa=True) for x, p in
+              (("A", 10), ("A-", 9), ("B", 8), ("B-", 7), ("C", 6), ("C-", 5))]
+    # PhD students earn no credit for D, and none for S (which still has no GPA);
+    # only UG students earn credit for NP.
+    grades += [g("D", 4, earns=not phd, cgpa=not phd), g("E", 2), g("F", 0),
+               g("NP", earns=level == "UG", audit=True), g("NF", audit=True),
+               g("I", excl=True, audit=True), g("W", excl=True, audit=True),
+               g("S", earns=not phd, wo_gpa=True), g("U", excl=True)]
+    return {"name": f"10-point {level}", "level": level, "from_session": None,
+            "until_session": None, "grades": grades}
 
 
 # key: (default, check, description)
@@ -73,7 +100,8 @@ SETTINGS = {
     "hidden_enrol_types": ([], lambda v: type(v) is list and all(
                                type(c) is str and c in _codes("EnrolTypes") - {"C"} for c in v),
                            "Enrolment types that are not offered."),
-    "grading_schemes": ([], _grading_schemes_valid,
+    "grading_schemes": ([ten_point_scheme(l) for l in ("UG", "PG", "PHD")],
+                        _grading_schemes_valid,
                         "Grades and their rules, per program level and range of sessions."),
 }
 

@@ -156,21 +156,8 @@ def set_event_window(acad_session, event, open_=True):
 def ten_point_scheme(level, from_session=None, until_session=None, name=None):
     """The 10-point grading scheme of a level (UG, PG or PHD), as one entry of
     the grading_schemes setting."""
-    def g(grade, points=None, earns=False, cgpa=False, wo_gpa=False, excl=False,
-          audit=False):
-        return {"grade": grade, "points": points, "earns_credit": earns,
-                "in_cgpa": cgpa, "credit_without_gpa": wo_gpa,
-                "excluded_from_gpa": excl, "allowed_for_audit": audit}
-    phd = level == "PHD"
-    grades = [g(x, p, earns=True, cgpa=True) for x, p in
-              (("A", 10), ("A-", 9), ("B", 8), ("B-", 7), ("C", 6), ("C-", 5))]
-    grades += [g("D", 4, earns=not phd, cgpa=not phd), g("E", 2), g("F", 0),
-               g("NP", earns=level == "UG", audit=True), g("NF", audit=True),
-               g("I", excl=True, audit=True), g("W", excl=True, audit=True),
-               g("S", earns=not phd, wo_gpa=True), g("U", excl=True)]
-    return {"name": name or f"10-point {level}", "level": level,
-            "from_session": from_session, "until_session": until_session,
-            "grades": grades}
+    return dict(settings.ten_point_scheme(level), from_session=from_session,
+                until_session=until_session, name=name or f"10-point {level}")
 
 
 @pytest.fixture

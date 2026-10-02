@@ -87,14 +87,15 @@ async def test_session_without_a_scheme_is_reported(client, auth, sessions):
                     "body": "No grading scheme applies to UG students in session Spring 26."}
 
 
-async def test_program_without_a_level_is_reported(client, auth, grading_schemes):
+async def test_program_without_a_level_is_graded_as_pg(client, auth, sessions):
+    settings.save("grading_schemes", [ten_point_scheme("UG"), pass_fail(level="PG")])
     program("XYZ", None)
     stu = make_user("stu", role="STU", degree="XYZ", year_of_entry="2024")
-    enrol(stu, make_offering(status="F"), grade="A")
+    enrol(stu, make_offering(acad_session="Fall 25", status="F"), grade="P")
     await auth.login("stu")
     body = await academics(client, stu)
-    assert body == {"status": "ERROR",
-                    "body": "The student's program has no level (UG, PG or PHD)."}
+    assert body["status"] == "OK"
+    assert body["body"]["enrollments"]["C"]["enrollments"]["Fall 25"]["sgpa"] == 4
 
 
 # ---- saving ----
@@ -162,13 +163,29 @@ def renamed(grade, index=0):
 async def test_invalid_schemes_are_refused(client, sup, value):
     body = await save(client, value)
     assert body["status"] == "ERROR"
-    assert settings.get("grading_schemes") == []
+    assert settings.get("grading_schemes") == settings.SETTINGS["grading_schemes"][0]
 
 
-async def test_negative_points_are_refused(client, sup):
+@pytest.mark.parametrize("change", [
+    {"points": -1}, {"points": float("inf")},
+    {"earns_credit": False}, {"points": None},
+    {"credit_without_gpa": True}, {"excluded_from_gpa": True},
+], ids=["negative points", "infinite points", "in CGPA without credit",
+        "in CGPA without points", "points without GPA", "points excluded from GPA"])
+async def test_inconsistent_grades_are_refused(client, sup, change):
     s = ten_point_scheme("UG")
-    s["grades"][0]["points"] = -1
-    assert (await save(client, [s]))["status"] == "ERROR"
+    s["grades"][0].update(change)
+    if change.get("points") == float("inf"):
+        # JSON has no Infinity, so check the value the way saving does.
+        with pytest.raises(ValueError):
+            settings.save("grading_schemes", [s])
+    else:
+        assert (await save(client, [s]))["status"] == "ERROR"
+
+
+def test_default_is_the_ten_point_scheme(db):
+    assert [s["level"] for s in settings.get("grading_schemes")] == ["UG", "PG", "PHD"]
+    assert "A" in apiVC.valid_grades()
 
 
 # ---- what follows from the schemes ----
@@ -185,7 +202,6 @@ async def test_course_grades_follow_the_schemes(client, auth, grading_schemes):
                                      "F", "NP", "NF", "I", "W", "S", "U"]
     settings.save("grading_schemes", [pass_fail()])
     assert await course_grades() == ["", "NA", "P", "F"]
-    assert apiVC.valid_audit_grades() == ["NA"]
 
 
 async def test_earned_credit_report_agrees_with_transcripts(client, auth, grading_schemes):

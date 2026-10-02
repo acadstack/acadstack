@@ -47,6 +47,20 @@ def record_grade_change(ce, old_grade, actor, reason=None):
                                      reason=reason))
 
 
+def check_enrolment_grade(coe):
+    """Raises AcadStackException unless the enrolment's grade is one that the
+    grading scheme of its student allows for its enrolment type."""
+    if coe.grade == C.NO_GRADE:
+        return
+    acs = coe.course_offering.acad_session
+    level = apiVC.degree_level(coe.student.person.degree) or "PG"
+    allowed = apiVC.allowed_grades(apiVC.grading_rules(level, [acs])[acs], coe.enrol_type)
+    if coe.grade not in allowed:
+        kind = "an audit" if coe.enrol_type == "A" else f"a {level} student's"
+        raise AcadStackException(f"Grade {coe.grade} is not allowed for {kind} "
+                                 f"enrolment. Allowed grades are: {allowed}")
+
+
 def __get_existing_enrolment(co_id, student_id):
     qry = DB.CourseEnrollment.select().where(
         (DB.CourseEnrollment.course_offering == co_id) &
@@ -750,6 +764,8 @@ async def course_enrollment_save():
                 else:
                     allowed = COE_EDIT_FIELDS
                 C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})
+                if coe.grade != old_grade or coe.enrol_type != old_data["enrol_type"]:
+                    check_enrolment_grade(coe)
                 if coe.grade != old_grade:
                     record_grade_change(coe, old_grade, P.current_actor(),
                                         fd.get("grade_change_reason"))
@@ -761,6 +777,7 @@ async def course_enrollment_save():
                     return apiVC.error_json("User not allowed to create enrollment!")
                 allowed = COE_EDIT_FIELDS + ["course_offering", "student"]
                 C.update_model_skip_unknown(coe, {k: v for k, v in fd.items() if k in allowed})
+                check_enrolment_grade(coe)
                 apiVC.save_entity(coe)
                 logging.debug(f"Inserted DB.CourseEnrollment: {coe}")
 
