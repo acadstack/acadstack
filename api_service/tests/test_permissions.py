@@ -11,6 +11,7 @@ import pytest
 import common as C
 import models as M
 import policy as P
+import settings
 from conftest import enrol, make_offering, make_user, set_event_window
 
 ROLES = ["STU", "ACA", "FAC", "HOD", "DEA", "SUP", "GUE", "PLA", "ADV", "RES"]
@@ -548,8 +549,9 @@ async def test_static_data_roles_carry_their_roster_flags(client, auth):
 # ---- refusals reported as access violations ----
 
 @pytest.fixture
-def alerts(monkeypatch):
+def alerts(client, monkeypatch):
     import create_email
+    settings.save("help_email", "help@example.org")
     sent = []
     monkeypatch.setattr(create_email.emailer, "send_mail",
                         lambda to, subject, body: sent.append((to, subject)))

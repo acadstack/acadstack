@@ -302,7 +302,7 @@ async def login():
             nav = apiVC.init_navbar_items(actor, user_obj["degree_level"])
             APP.active_users[C.this_user_name_login_id()] = DT.now()
             return apiVC.ok_json({"user": {**user_obj, "perms": sorted(actor.perms)},
-                                  "nav": nav})
+                                  "nav": nav, "institute": apiVC.institute_info()})
     except Exception as ex:
         msg = "Error when authenticating."
         logging.exception(msg)

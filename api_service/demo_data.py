@@ -56,25 +56,25 @@ VOCAB_SEED = {
         ("PREP", "Preparatory Dept."),
     ],
     "Degrees": [
-        ("BTE", "B.Tech", {"level": "UG"}),
-        ("BTE_MC", "B.Tech(M&C)", {"level": "UG"}),
-        ("MTE", "M.Tech", {"level": "PG"}),
-        ("MCS_AI", "M.Tech(AI)", {"level": "PG"}),
-        ("MCE_WATER", "M.Tech(Water Reso. & Envirn.)", {"level": "PG"}),
-        ("MCE_STRUC", "M.Tech(Struc. and Geomech.)", {"level": "PG"}),
-        ("MEE_SIGNAL", "M.Tech(Signal Processing)", {"level": "PG"}),
-        ("MEE_MICRO", "M.Tech(Micro. & VLSI)", {"level": "PG"}),
-        ("MEE_POWER", "M.Tech(Power Engg.)", {"level": "PG"}),
-        ("MME_THERM", "M.Tech(Thermal Engg.)", {"level": "PG"}),
-        ("MME_MANUF", "M.Tech(Manufacturing)", {"level": "PG"}),
-        ("MCE_MECHA", "M.Tech(Mechanics And Design)", {"level": "PG"}),
-        ("MME_MCPMC", "M.Tech(Computational Mechanics)", {"level": "PG"}),
-        ("MSR", "M.S (Research)", {"level": "PG"}),
-        ("MSC", "M.Sc", {"level": "PG"}),
-        ("BMD", "B.Tech-M.Tech Dual", {"level": "UG"}),
+        ("BTE", "B.Tech", {"level": "UG", "printed_name": "Bachelor of Technology"}),
+        ("BTE_MC", "B.Tech(M&C)", {"level": "UG", "printed_name": "Bachelor of Technology"}),
+        ("MTE", "M.Tech", {"level": "PG", "printed_name": "Master of Technology"}),
+        ("MCS_AI", "M.Tech(AI)", {"level": "PG", "printed_name": "Master of Technology"}),
+        ("MCE_WATER", "M.Tech(Water Reso. & Envirn.)", {"level": "PG", "printed_name": "Master of Technology", "specialisation": "Specialization in Water Resources and Environment"}),
+        ("MCE_STRUC", "M.Tech(Struc. and Geomech.)", {"level": "PG", "printed_name": "Master of Technology"}),
+        ("MEE_SIGNAL", "M.Tech(Signal Processing)", {"level": "PG", "printed_name": "Master of Technology", "specialisation": "Specialization in Communication & Signal Processing"}),
+        ("MEE_MICRO", "M.Tech(Micro. & VLSI)", {"level": "PG", "printed_name": "Master of Technology", "specialisation": "Specialization in Microelectronics & VLSI Design"}),
+        ("MEE_POWER", "M.Tech(Power Engg.)", {"level": "PG", "printed_name": "Master of Technology", "specialisation": "Specialization in Power Engineering"}),
+        ("MME_THERM", "M.Tech(Thermal Engg.)", {"level": "PG", "printed_name": "Master of Technology", "specialisation": "Specialization in Thermal & Fluids Engineering"}),
+        ("MME_MANUF", "M.Tech(Manufacturing)", {"level": "PG", "printed_name": "Master of Technology", "specialisation": "Specialization in Manufacturing Engineering"}),
+        ("MCE_MECHA", "M.Tech(Mechanics And Design)", {"level": "PG", "printed_name": "Master of Technology", "specialisation": "Specialization in Mechanics & Design"}),
+        ("MME_MCPMC", "M.Tech(Computational Mechanics)", {"level": "PG", "printed_name": "Master of Technology"}),
+        ("MSR", "M.S (Research)", {"level": "PG", "printed_name": "Master of Science"}),
+        ("MSC", "M.Sc", {"level": "PG", "printed_name": "Master of Science"}),
+        ("BMD", "B.Tech-M.Tech Dual", {"level": "UG", "printed_name": "Master of Technology"}),
         ("JEE_PREP", "JEE Preparatory", {"level": "UG"}),
-        ("ADD_INTRN", "Additional Internship", {"level": "UG"}),
-        ("PHD", "PhD", {"level": "PHD"}),
+        ("ADD_INTRN", "Additional Internship", {"level": "UG", "printed_name": "Bachelor of Technology", "specialisation": "Additional Internship"}),
+        ("PHD", "PhD", {"level": "PHD", "printed_name": "Doctor of Philosophy"}),
     ],
     "CourseSlots": [
         ("S", "Seminars or a core course (one hour per week)"),
@@ -209,6 +209,8 @@ def setup_db_with_demo_data(config):
     print("========== Setting up DEMO database ==========")
     recreate_db(config)
     _seed_vocab()
+    ST.save("institute_name", "Indian Institute of Technology Ropar")
+    ST.save("institute_place", "Rupnagar")
     global DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT
     DEPTS = _vocab_codes("Departments")
     DEGREES = _vocab_codes("Degrees")

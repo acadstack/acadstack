@@ -307,6 +307,7 @@ def test_upcoming_events_email_uses_labels(db, monkeypatch):
     today = date.today().isoformat()
     for code in ("CONVOCATION_S", "GRADE_SUB_E", "MINOR_EXAM_E", "RESULT_DECLARATION"):
         M.AcademicCalendar.create(acad_session="2026-I", event_code=code, event_value=today)
+    settings.save("broadcast_emails", ["all@example.org"])
     sent = []
     monkeypatch.setattr(C.emailer, "send_mail", lambda to, subj, body: sent.append(body))
     api_dc.schedule_event_alerts()

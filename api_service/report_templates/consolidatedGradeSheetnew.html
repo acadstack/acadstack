@@ -80,9 +80,11 @@
             url('{{static_file_path}}/Tt0757m_.woff') format('woff');
         }
 
+        {% if institute_name %}
         #bottomtable, #bottomtable2 {
-            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' version='1.1' height='15px' width='288px'><text transform='translate(12, 12) rotate(0)' fill='rgba(95,95,95, 0.4)' font-size='13' >INDIAN INSTITUTE OF TECHNOLOGY ROPAR</text></svg>");
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' version='1.1' height='15px' width='{{ 8 * institute_name | length }}px'><text transform='translate(12, 12) rotate(0)' fill='rgba(95,95,95, 0.4)' font-size='13' >{{ institute_name | upper | e | urlencode }}</text></svg>");
         }
+        {% endif %}
 
         .blue {
             color: #057ad9;
@@ -101,46 +103,7 @@
                     <td colspan="3">&nbsp;&nbsp;&nbsp;</td>
                 </tr>
                 </td>
-                {% set spec = "" %}
-                {% if degree_level == "PHD" %}
-                {% set degree = "Ph.D." %}
-                {% elif "M.SC" in degree %}
-                {% set degree = "M.Sc." %}
-                {% elif "B.TECH-M.TECH DUAL" in degree %}
-                {% set degree = "B.TECH.-M.TECH. (DUAL DEGREE)" + " " + "IN" %}
-                {% elif "M.TECH(AI)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% elif "M.TECH(SIGNAL PROCESSING)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% set specdegree = "(SPECIALIZATION IN COMMUNICATION AND SIGNAL PROCESSING)" %}
-                {% elif "M.TECH(MICRO. & VLSI)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% set specdegree = "(SPECIALIZATION IN MICROELECTRONICS AND VLSI DESIGN)" %}
-                {% elif "M.TECH(POWER ENGG.)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% set specdegree = "(SPECIALIZATION IN POWER ENGINEERING)" %}
-                {% elif "M.TECH(THERMAL ENGG.)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% set specdegree = "(SPECIALIZATION IN THERMAL & FLUIDS ENGINEERING)" %}
-                {% elif "M.TECH(MANUFACTURING)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% set specdegree = "(SPECIALIZATION IN MANUFACTURING ENGINEERING)" %}
-                {% elif "M.TECH(MECHANICS AND DESIGN)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% set specdegree = "(SPECIALIZATION IN MECHANICS AND DESIGN)" %}
-                {% elif "M.TECH(WATER RESO. & ENVIRN.)" in degree %}
-                {% set degree = "M.TECH." %}
-                {% set specdegree = "(SPECIALIZATION IN WATER RESOURCES AND ENVIRONMENT)" %}
-                {% elif "M.TECH" in degree %}
-                {% set degree = degree + '.' + " " %}
-                {% elif "B.TECH" in degree and "PHYSICS" in dept_name %}
-                {% set degree = degree + '.' + " " + "IN" + " " + "ENGINEERING" %}
-                {% elif "B.TECH(M&C)" in degree %}
-                {% set degree = "B.TECH." + " " + "IN" + " " + "MATHEMATICS AND COMPUTING"%}
-                {% set dept_name = " " %}
-                {% else %}
-                {% set degree = degree + '.' + " " + "IN" %}
-                {% endif %}
+                {% set degree_title = printed_name.upper() + (" IN" if degree_level != "PHD" else "") %}
                 <tr>
                     <td style='border: 0px solid black;font-size: 12px'>Entry No.:</td>
                     <td style='border: 0px solid black;font-size: 12px'>
@@ -149,7 +112,7 @@
                     <td style='border: 0px solid black;font-size: 12px;'>
                         Program Name:</td>
                     <td style='border: 0px solid black;font-size: 12px;'>
-                        <b> {{degree}} {{dept_name}} {{specdegree}}</b>
+                        <b> {{degree_title | e}} {{dept_name | e}} {% if specialisation %}({{specialisation.upper() | e}}){% endif %}</b>
                     </td>
                 </tr>
                 <tr>

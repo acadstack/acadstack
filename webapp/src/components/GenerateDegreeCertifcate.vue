@@ -26,10 +26,16 @@
              &nbsp;<input id="doc_sr_no" class="form-control" type="text"  v-model="doc_sr_no" />
             </div> 
     </div>
+    <div class="col-2">
+            <div class=" me-2 mt-2">
+          <label for="convocation_date">Convocation date</label>
+             &nbsp;<input id="convocation_date" class="form-control" type="date"  v-model="convocation_date" />
+            </div>
+    </div>
        <div class="col-md-3">
         <button class="btn btn-outline-success me-2 mt-4"  aria-haspopup="true" 
                     aria-expanded="false">
-            <a class="dropdown-item" :href="`download_degree_certifcate/${myInput}/${hindiName}/${thesis_title}/${doc_sr_no}`">Generate Degree</a>
+            <a class="dropdown-item" :href="`download_degree_certifcate/${myInput}/${hindiName}/${thesis_title}/${doc_sr_no}/${convocation_date || 'NA'}`">Generate Degree</a>
         </button>
         <button class="btn btn-outline-danger me-2 mt-3" @click="reset" type="reset">
             <i class="bi bi-eraser"></i>
@@ -49,6 +55,7 @@ export default {
       hindiName: "",
       thesis_title: "",
       doc_sr_no: "",
+      convocation_date: "",
       length: 0
       };
       },

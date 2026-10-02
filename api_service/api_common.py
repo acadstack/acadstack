@@ -15,7 +15,9 @@ import settings as ST
 import policy as P
 import transcript as TR
 from typing import Any, Dict, Type
+from functools import lru_cache
 from pathlib import Path
+from html import escape
 from io import BytesIO
 from quart import current_app as APP
 from quart import (has_request_context, jsonify, request, session)
@@ -75,18 +77,38 @@ def logged_in_user():
         return M.User.get(M.User.login_id == u["login_id"])
 
 
+def institute_info():
+    """What the web app shows of the institute's identity settings."""
+    return {"help_email": ST.get("help_email")}
+
+
 def get_current_user_and_nav():
     if "user" in session:
         u = session['user']
         actor = P.current_actor()
         nav = init_navbar_items(actor, u.get("degree_level"))
-        return ok_json({"user": {**u, "perms": sorted(actor.perms)}, "nav": nav})
+        return ok_json({"user": {**u, "perms": sorted(actor.perms)}, "nav": nav,
+                        "institute": institute_info()})
     else:
         return error_json("User not logged in.")
 
 
+@lru_cache(maxsize=1)
+def _login_page():
+    return Path(APP.static_folder, "default.html").read_text(encoding="utf-8")
+
+
 async def index():
-    return await APP.send_static_file('default.html')
+    """The login page, with the institute's name and help address filled in
+    where the page has placeholders; a blank setting leaves its part out."""
+    page = _login_page()
+    name, help_email = ST.get("institute_name"), ST.get("help_email")
+    page = page.replace("<!--INSTITUTE_META-->", f'<meta name="author" content="{escape(name)}">'
+                        if name else "")
+    page = page.replace("<!--HELP_LINE-->", '<span class="text-dark font-weight-bold">Contact us at:</span> '
+                        f'<a href="mailto:{escape(help_email)}">{escape(help_email)}</a>'
+                        if help_email else "")
+    return page, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 # Lists that differ between universities. They are stored in the VocabItem
@@ -117,11 +139,26 @@ VOCAB_ATTRS = {
 }
 
 
-def degree_level(code):
-    """The level (UG, PG or PHD) of the program with this code, or None."""
+def degree_attrs(code):
+    """The attrs (level, printed_name, specialisation) of the program with this
+    code; empty if it has none."""
     row = M.VocabItem.get_or_none((M.VocabItem.vocab == "Degrees") &
                                   (M.VocabItem.code == code))
-    return row.attrs.get("level") if row else None
+    return row.attrs if row else {}
+
+
+def degree_print_fields(code, label):
+    """The level, printed name and specialisation that reports show for the
+    program with this code; the printed name defaults to its label."""
+    attrs = degree_attrs(code)
+    return {"degree_level": attrs.get("level"),
+            "printed_name": attrs.get("printed_name") or label,
+            "specialisation": attrs.get("specialisation", "")}
+
+
+def degree_level(code):
+    """The level (UG, PG or PHD) of the program with this code, or None."""
+    return degree_attrs(code).get("level")
 
 
 def _workflow_lists():
