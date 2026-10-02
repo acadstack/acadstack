@@ -52,22 +52,7 @@ A **role** is a kind of user, such as Student, Faculty or Academic Section. A **
 
 A new installation comes with ten roles: Student, Academic Section, Faculty, Head of Dept., Dean of Academics, Superuser, Guest, Placement Cell, Advisor and Research Section. You can change their permissions, rename them, and add your own.
 
-### Give the Superuser role what it needs for setup
-
-The Superuser role starts without six permissions that the later setup screens need. Until you tick them, the menu hides **Course Slot Timings**, **Bulk Create Courses** and **Manage Batch Advisors**, and **Academic Events** can be viewed but not changed.
-
-1. Click **Superuser** in the list on the left.
-2. Tick these permissions:
-   - `calendar.edit`
-   - `sessions.close`
-   - `slots.manage`
-   - `courses.bulk_add`
-   - `courses.edit:any`
-   - `advisors.assign`
-3. Press **Save**.
-4. Log out and log in again. The menu is built when you log in.
-
-The built-in **Academic Section** role already holds these permissions. If your office staff will do the setup, you can instead give them users with that role.
+The Superuser role holds every permission the setup screens need. If your office staff will do the setup, you can instead give them users with the **Academic Section** role, which holds them too.
 
 ### Change a role or add one
 
@@ -90,7 +75,7 @@ Examples:
 - You add a role "Visiting Faculty" and want visiting faculty to be chosen as instructors. Tick `roster.instructor` on it.
 - Heads of departments who also teach need `roster.instructor` on the Head of Dept. role. A new installation does not give it to them.
 
-A student also has to be marked **Registered** before the student lookup finds them; see [Add Users](#8-add-users).
+The student lookup and bulk enrolment find only students marked **Registered**; see [Add Users](#8-add-users).
 
 ## 3. Lists
 
@@ -321,14 +306,14 @@ S2601,s2601,Meera,Nair,STU,PHY,BSC,2026,meera.nair@riverside.example
 1. Press **Choose file** and select the file. The screen shows a preview. The preview reads the columns by their position, so keep them in the order above for it to look right; the upload itself goes by the column names.
 2. Press **Upload** and confirm.
 
-AcadStack answers with a count, for example: "Created 5 new users. Updated 0 users: []. Failed 0 records due to integrity check: []".
+AcadStack answers with a count, for example: "Created 5 new users. Updated 0 users: []. Failed 0 records: []".
 
 ### What to know
 
-- **The whole file is accepted or refused.** If any row is wrong, nothing is saved, and the message is only "Error when handling bulk user creation." Check the points below, fix the file and upload it again. A missing column, an unknown or empty role, and an email address already used by someone else are refused this way.
-- **Department, degree and year are not checked.** A typo, such as `ZZZ` for a department, creates the user with that wrong value. Look through the file before you upload it.
+- **Wrong rows are skipped; the others are saved.** The message lists each skipped row by its line number in the file, with the reason: an unknown role, department or degree code, a year that is not four digits, or an `org_id`, `login_id` or email address already used by someone else. Fix those rows and upload the file again; the rows already saved are then updated, not duplicated.
+- **A missing column refuses the whole file.** The message names the column.
 - **A second upload updates.** A row whose `org_id` or `login_id` already exists updates that person's details and does not change their password. The message lists them under "Updated".
-- **Students must be marked Registered.** A student who has just been uploaded is not yet found by the student lookup or by bulk enrolment. Open each student under **Manage Users → Find User**, set **Student Current Status** to **Registered** and save.
+- **New students are marked Registered.** A new user whose role holds `roster.student` gets the status **Registered**, so the student lookup and bulk enrolment find them. An upload that updates an existing person leaves their status as it is.
 - **Passwords.** Users start without a usable password; see [First login](#1-first-login) for how they set one.
 
 ## 9. Bulk Create Courses
@@ -390,13 +375,13 @@ Because the department you choose is the advisor's own, pick the same department
 
 A workable order for a new university:
 
-1. First login and **Roles & Permissions**: give Superuser the six permissions; add any roles of your own, with their roster permissions.
+1. First login and **Roles & Permissions**: add any roles of your own, with their roster permissions.
 2. **Lists**: departments, programs (with their level and printed name), course types, slots, and the other lists. Add `A` to course frequencies.
 3. **Settings**: institute name and place, web address, help email.
 4. **Academic Events**: the current session, and the next one.
 5. **Grading Scheme**: check the grades, and adjust them.
 6. **Course Slot Timings**: the times of every slot.
-7. **Add Users**: staff first, then students. Mark the students **Registered**.
+7. **Add Users**: staff first, then students.
 8. **Bulk Create Courses**.
 9. **Manage Batch Advisors**.
 

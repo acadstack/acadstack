@@ -188,14 +188,16 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
             raise AcadStackException("User not found for student. UserId="
                                 f"{se.student_id}")
 
-        # Fetch course categorization info applicable to the student
+        # Fetch course categorization info applicable to the student; it is
+        # chosen by entry year, so a student without one has none.
         cat_info = DB.CourseCategory.select(). \
             join(DB.CourseOffering).\
             where(
             (DB.CourseCategory.offering == se.course_offering.id) &
             (DB.CourseCategory.degree == st_degree)&
             (DB.CourseCategory.dept << (st_dept_name, 'ALL')) &
-            (DB.CourseCategory.for_entry_years.contains(st_year_of_entry)))
+            (DB.CourseCategory.for_entry_years.contains(st_year_of_entry))) \
+            if st_year_of_entry else []
 
         if cat_info:
            for cat in cat_info:

@@ -120,3 +120,14 @@ async def test_course_csv_rejects_a_missing_or_unknown_level(app, client, auth, 
     assert M.Course.select().count() == 0
     # The rejected upload is not left on disk
     assert not any(Path(app.config["upload_folder"]).rglob("*.csv"))
+
+
+async def test_academics_of_a_student_without_entry_year(client, auth, grading_schemes):
+    program("BSC", "UG")
+    stu = make_user("stu", role="STU", degree="BSC")
+    enrol(stu, make_offering("CS101", ltp="3-0-2-7-4", acad_session="2023-I", status="F"),
+          grade="A")
+    await auth.login("stu")
+    body = await (await client.get(f"/acadstack/get_student_academics/{stu.id}")).get_json()
+    assert body["status"] == "OK"
+    assert body["body"]["enrollments"]["C"]["enrollments"]["2023-I"]["ec"] == 4

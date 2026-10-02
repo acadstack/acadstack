@@ -26,9 +26,9 @@ def _but(*excl):
 # Who could call each route through the role checks this replaced: the
 # @rbac(roles=...) list, or LOGIN for a bare @rbac.
 ROLE_CHECKS = {
-    "assign_advisor": ['ACA', 'DEA'],
+    "assign_advisor": ['ACA', 'DEA', 'SUP'],
     "attendance_find": LOGIN,
-    "bulk_add_courses": ['ACA', 'DEA'],
+    "bulk_add_courses": ['ACA', 'DEA', 'SUP'],
     "bulk_add_users": ['ACA', 'SUP'],
     "bulk_download_sem_grade": ['ACA', 'DEA', 'SUP'],
     "bulk_enrol_in_course": ['ACA', 'DEA'],
@@ -42,13 +42,13 @@ ROLE_CHECKS = {
     "course_offering_find": LOGIN,
     "course_offering_lookup": LOGIN,
     "course_offering_lookup_all": LOGIN,
-    "course_offering_save": ['ACA', 'DEA', 'FAC', 'HOD'],
+    "course_offering_save": ['ACA', 'DEA', 'FAC', 'HOD', 'SUP'],
     "course_offering_view": LOGIN,
-    "course_save": ['ACA', 'DEA', 'FAC', 'HOD', 'RES'],
+    "course_save": ['ACA', 'DEA', 'FAC', 'HOD', 'RES', 'SUP'],
     "course_view": LOGIN,
     "course_wise_faculty_score": ['ACA', 'DEA'],
     "credits_earned_report": LOGIN,
-    "dates_save": ['ACA', 'DEA'],
+    "dates_save": ['ACA', 'DEA', 'SUP'],
     "dates_search": LOGIN,
     "dc_details": LOGIN,
     "dc_save": ['ACA', 'DEA', 'FAC', 'HOD'],
@@ -125,7 +125,7 @@ ROLE_CHECKS = {
     "is_dc_chair": LOGIN,
     "kface_add": LOGIN,
     "kface_bulk_add": ['ACA'],
-    "load_course_slot_timings": ['ACA', 'DEA'],
+    "load_course_slot_timings": ['ACA', 'DEA', 'SUP'],
     "load_feedback_form": LOGIN,
     "login": PUBLIC,
     "logout": PUBLIC,
@@ -136,7 +136,7 @@ ROLE_CHECKS = {
     "que_wise_facfeedbkp_score": ['ACA', 'DEA'],
     "reset_password": PUBLIC,
     "save_course_instructor_feedback": LOGIN,
-    "save_course_slot_timings": ['ACA', 'DEA'],
+    "save_course_slot_timings": ['ACA', 'DEA', 'SUP'],
     "save_feedback_form": ['ACA', 'DEA'],
     "save_progress_report": LOGIN,
     "save_registration_fees_txn_info": LOGIN,
@@ -182,7 +182,7 @@ NARROWED = {
 }
 
 NEW_ROUTES = {"get_permissions": ["SUP"], "save_role_permissions": ["SUP"],
-              "close_session": ["ACA"],
+              "close_session": ["ACA", "SUP"],
               # users.edit at any scope passes the gate; the body then needs users.edit:any
               "admin_gen_prk": LOGIN,
               # no permission: the body requires a logged-in user
@@ -206,11 +206,11 @@ SCOPES = {
     # get_instructor_academics: FAC only own
     "instructors.view": {"own": ["FAC"], "any": ["ACA", "DEA", "HOD"]},
     # course_save: author, or HOD/ACA/DEA/RES; RES only PG courses
-    "courses.edit": {"own": ["FAC"], "pg": ["RES"], "any": ["ACA", "DEA", "HOD"]},
+    "courses.edit": {"own": ["FAC"], "pg": ["RES"], "any": ["ACA", "DEA", "HOD", "SUP"]},
     # get_running_courses: not ACA/DEA/SUP: own only
     "offerings.view_running": {"own": _but("ACA", "DEA", "SUP"), "any": ["ACA", "DEA", "SUP"]},
     # co_save: HOD of the dept; coordinator unless ACA/DEA/HOD
-    "offerings.edit": {"own": ["FAC"], "dept": ["HOD"], "any": ["ACA", "DEA"]},
+    "offerings.edit": {"own": ["FAC"], "dept": ["HOD"], "any": ["ACA", "DEA", "SUP"]},
     # get_student_academics etc.: STU only own
     "students.academics": {"own": ["STU"], "any": _but("STU")},
     # enroll_in_courses: STU only own

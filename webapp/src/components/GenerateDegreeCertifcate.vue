@@ -35,7 +35,7 @@
        <div class="col-md-3">
         <button class="btn btn-outline-success me-2 mt-4"  aria-haspopup="true" 
                     aria-expanded="false">
-            <a class="dropdown-item" :href="`download_degree_certifcate/${myInput}/${hindiName}/${thesis_title}/${doc_sr_no}/${convocation_date || 'NA'}`">Generate Degree</a>
+            <a class="dropdown-item" :href="certificateUrl">Generate Degree</a>
         </button>
         <button class="btn btn-outline-danger me-2 mt-3" @click="reset" type="reset">
             <i class="bi bi-eraser"></i>
@@ -59,6 +59,13 @@ export default {
       length: 0
       };
       },
+computed: {
+    certificateUrl() {
+        const q = new URLSearchParams({hi_name: this.hindiName, thesis_title: this.thesis_title,
+            doc_sr_no: this.doc_sr_no, convocation_date: this.convocation_date});
+        return `download_degree_certifcate/${encodeURIComponent(this.myInput)}?${q}`;
+    }
+},
 methods: {
     search: function () {
         this.length = this.myInput.length;
