@@ -9,7 +9,7 @@ scheme and set both ends of its range to that session.
     <div class="card">
       <div class="card-header">
         Grading schemes
-        <button type="button" class="btn btn-outline-success float-end" @click="save">
+        <button type="button" class="btn btn-outline-success float-end" :disabled="!loaded" @click="save">
           Save <i class="bi bi-save"></i>
         </button>
       </div>
@@ -42,7 +42,7 @@ scheme and set both ends of its range to that session.
             <div class="col-md-2">
               <label for="schLevel" class="form-label">Program level</label>
               <select id="schLevel" class="form-select" v-model="scheme.level">
-                <option v-for="l in LEVELS" :key="l" :value="l">{{ l }}</option>
+                <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
               </select>
             </div>
             <div class="col-md-3">
@@ -58,6 +58,7 @@ scheme and set both ends of its range to that session.
             <datalist id="sessionList">
               <option v-for="a in SD.AcademicSessions" :key="a.id" :value="a.id">{{ a.value }}</option>
             </datalist>
+            <div class="form-text">Only the current and next two sessions are suggested; type the code of an earlier one.</div>
           </div>
 
           <div class="row hdr-row mb-2 border-info border-bottom">
@@ -95,11 +96,10 @@ scheme and set both ends of its range to that session.
 </template>
 
 <script>
-const LEVELS = ["UG", "PG", "PHD"];
 const FLAGS = [
   { key: "earns_credit", label: "Earns credit", hint: "The student earns the course credits" },
   { key: "in_cgpa", label: "In CGPA", hint: "Counted in SGPA and CGPA" },
-  { key: "credit_without_gpa", label: "Credit, no GPA", hint: "Earns credit but is not counted in the GPA" },
+  { key: "credit_without_gpa", label: "Credit, no GPA", hint: "Credits are left out of the SGPA; whether credit is earned is set by Earns credit" },
   { key: "excluded_from_gpa", label: "Left out of GPA", hint: "Credits are left out of the GPA" },
   { key: "allowed_for_audit", label: "Audit allowed", hint: "Can be given to a student auditing the course" },
 ];
@@ -107,7 +107,7 @@ const FLAGS = [
 export default {
   name: "GradingScheme",
   data: function () {
-    return { LEVELS, FLAGS, schemes: [], cur: 0 };
+    return { FLAGS, levels: [], schemes: [], cur: 0, loaded: false };
   },
   computed: {
     scheme() {
@@ -115,6 +115,7 @@ export default {
     },
   },
   mounted: function () {
+    this.doHttp(true, "vocab", null, (body) => { this.levels = body.attrs.Degrees.level; }, this.setStatusMessage);
     this.doHttp(true, "settings", null, this.apply, this.setStatusMessage);
   },
   methods: {
@@ -122,6 +123,7 @@ export default {
       const value = body.find(s => s.key == "grading_schemes").value;
       this.schemes = JSON.parse(JSON.stringify(value));
       if (this.cur >= this.schemes.length) this.cur = 0;
+      this.loaded = true;
     },
     copyScheme() {
       const c = JSON.parse(JSON.stringify(this.scheme));
@@ -130,14 +132,39 @@ export default {
       this.cur = this.schemes.length - 1;
     },
     removeScheme() {
+      if (!confirm(`Delete the scheme "${this.scheme.name}" and all its grades?`)) return;
       this.schemes.splice(this.cur, 1);
-      this.cur = 0;
+      this.cur = Math.max(0, Math.min(this.cur, this.schemes.length - 1));
     },
     addGrade() {
       this.scheme.grades.push({
         grade: "", points: "", earns_credit: false, in_cgpa: false,
         credit_without_gpa: false, excluded_from_gpa: false, allowed_for_audit: false,
       });
+    },
+    // The first problem the backend would reject (settings._grading_schemes_valid),
+    // or one that would leave a level without a scheme; "" if none.
+    problem(value) {
+      for (const l of this.levels) {
+        if (!value.some(s => s.level == l)) return `No grading scheme is left for ${l}.`;
+      }
+      for (const s of value) {
+        const name = s.name.trim() || "(unnamed)";
+        if (!s.name.trim()) return "Every scheme needs a name.";
+        if (!s.grades.length) return `Scheme ${name} has no grades.`;
+        const seen = new Set();
+        for (const g of s.grades) {
+          const at = `Scheme ${name}, grade ${g.grade || "(blank)"}`;
+          if (!g.grade || g.grade.length > 2) return `${at}: a grade is 1 or 2 characters.`;
+          if (g.grade == "NA") return `${at}: NA is built in.`;
+          if (seen.has(g.grade)) return `${at}: listed twice.`;
+          seen.add(g.grade);
+          if (g.points !== null && !(Number.isFinite(g.points) && g.points >= 0)) return `${at}: points must be 0 or more.`;
+          if (g.in_cgpa && (g.points === null || !g.earns_credit)) return `${at}: a grade in the CGPA needs points and must earn credit.`;
+          if (g.points !== null && (g.credit_without_gpa || g.excluded_from_gpa)) return `${at}: a grade kept out of the GPA has no points.`;
+        }
+      }
+      return "";
     },
     async save() {
       const value = this.schemes.map(s => ({
@@ -150,8 +177,12 @@ export default {
           points: g.points === "" || g.points === null ? null : Number(g.points),
         })),
       }));
-      await this.doHttp(false, "setting_save", { key: "grading_schemes", value }, (body) => {
+      const problem = this.problem(value);
+      if (problem) return this.setStatusMessage(problem);
+      await this.doHttp(false, "setting_save", { key: "grading_schemes", value }, async (body) => {
         this.apply(body);
+        // The grades offered elsewhere (SD.CourseGrades) come from this setting.
+        await this.doHttp(true, "get_static_data", null, this.setStaticData, this.setStatusMessage);
         this.setStatusMessage("Saved the grading schemes.");
       }, this.setStatusMessage);
     },

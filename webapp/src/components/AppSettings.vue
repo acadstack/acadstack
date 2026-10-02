@@ -1,6 +1,7 @@
 <!--
 Application settings: one field per scalar setting. Settings whose value is a
-list or object are edited on the Lists screen.
+list or object are edited on the Lists screen, and grading_schemes on the
+Grading Scheme screen.
 -->
 <template>
   <div class="container-fluid">
