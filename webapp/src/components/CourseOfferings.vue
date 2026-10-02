@@ -19,7 +19,7 @@ Component for listing the course offerings.
         <div class="col">
           <a :href="'#/co.detail/'+c.co_id">{{c.acad_session}}</a>
         </div>
-        <div class="col">{{c.coordinator}}</div>
+        <div class="col">{{c.coordinator.join(", ")}}</div>
         <div class="col">{{c.class_size}}</div>
       </div>
     </div>

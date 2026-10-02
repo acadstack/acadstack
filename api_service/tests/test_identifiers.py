@@ -81,3 +81,17 @@ def test_credit_hours_spent_reads_multi_digit_ltp(db):
     rows = C.db.execute_sql(C.sql_by_id("credit_hours_spent"),
                             [co.acad_session, P.roles_with("roster.instructor")]).fetchall()
     assert [float(r[4]) for r in rows] == [231.0]
+
+
+async def test_slot_times_must_be_hhmm(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    for start, end in [(975, 1030), (900, 2575), (-100, 1000), ("9am", 1000)]:
+        res = await client.post("/acadstack/save_slot", json={
+            "slot": "A", "week_day": 1, "start_time": start, "end_time": end})
+        body = await res.get_json()
+        assert body["status"] == "ERROR" and "HHMM" in body["body"], (start, end, body)
+    assert M.CourseSlotTiming.select().count() == 0
+    res = await client.post("/acadstack/save_slot", json={
+        "slot": "A", "week_day": 1, "start_time": 0, "end_time": 2359})
+    assert (await res.get_json())["status"] == "OK"

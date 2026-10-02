@@ -115,16 +115,13 @@ export default {
       vm.courses.file_name = files[0].name;
       const reader = new FileReader();
       reader.onload = function(evt) {
-        let data = [];
-        let rr = evt.target.result.split("\n");
-        rr.forEach(row => {
+        // Columns by header name, as the server reads them; blank lines skipped.
+        let rows = evt.target.result.split(/\r?\n/).filter(row => row.trim());
+        let hdr = (rows.shift() || "").split(",");
+        vm.result = rows.map(row => {
           let cols = row.split(",");
-          data.push({ code: cols[0], title: cols[1]
-          , ltp: cols[2], level: cols[3]});
+          return Object.fromEntries(hdr.map((h, i) => [h, cols[i]]));
         });
-        /** Remove the header row */
-        data.splice(0, 1);
-        vm.result = data;
       };
       reader.readAsText(files[0]);
     }

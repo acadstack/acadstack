@@ -20,6 +20,7 @@ import Navbar from "./components/Navbar.vue";
   </div>
 </template>
 <script>
+import { START_LOCATION } from 'vue-router'
 export default {
   setup() {
     
@@ -43,8 +44,9 @@ export default {
   async mounted() {
     const vm = this
     vm.setupHttpInterceptors()
-    vm.attachRouteGuardsForAuth()
-    await vm.initSession();
+    const sessionLoaded = vm.initSession();
+    vm.attachRouteGuardsForAuth(sessionLoaded)
+    await sessionLoaded;
     vm.initDone = true;
   },
   methods: {
@@ -72,14 +74,20 @@ export default {
       });
       console.log("Setup the HTTP request interceptors.")
     },
-    attachRouteGuardsForAuth() {
+    attachRouteGuardsForAuth(sessionLoaded) {
       const vm = this
       // Attach auth checking navigation guard
-      vm.$router.beforeEach((to, from, next) => {
+      vm.$router.beforeEach(async (to, from, next) => {
           try {
+              // The first navigation (e.g. a page reload) starts before the
+              // logged-in user is loaded, so wait for it.
+              await sessionLoaded;
               const rootComp = vm.$root
               console.log("Path=" + to.path + ". authenticated=" + rootComp.authenticated);
-              if (to.path === "/login" || to.path === "/help"
+              if (to.path === "/login" && rootComp.authenticated && from === START_LOCATION) {
+                  // Reloading the login page when logged in goes home, as onLogin does.
+                  next("/")
+              } else if (to.path === "/login" || to.path === "/help"
                   || to.path === "/pass.reset") {
                   next()
               } else if (!rootComp.authenticated) {

@@ -94,7 +94,6 @@
 
 <script>
 import AcadSession from "./AcadSession.vue";
-import _ from "lodash";
 export default {
   name: "bulkSemesterGrade",
   components: {

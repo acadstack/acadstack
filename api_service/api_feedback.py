@@ -252,10 +252,6 @@ def _compute_fbq_score(pct_votes, fbs):
 async def get_instructor_feedback(co_id, user_id, fb_type):
     try:
         check_own_or_any("feedback.view_instructor", "user_id", user_id, "Instructor attempted to access other's feedback.")
-        # if VC.is_user_in_role("HOD") and not is_hod_for_course_offering(
-        #     co_id, VC.logged_in_user().id):
-        #     logging.error("HOD {0} attempted to access other's feedback. CO_ID={1}".format(VC.current_login_id(), co_id))
-        #     return VC.error_json("You cannot access feedback of faculty from other department! This attempt has been reported.")
 
         co = DB.CourseOffering.get_or_none(int(co_id))
         if not co:

@@ -60,14 +60,11 @@ Component for Online Fees Submission.
 </template>
 
 <script>
-import VueBootstrapTypeahead from "./VueBootstrapTypeahead.vue";
 import AcadSession from "./AcadSession.vue";
-import _ from "lodash";
 
 export default {
   name: "OnlineFeesSubmission",
   components: {
-    "VueBootstrapTypeahead": VueBootstrapTypeahead,
     "AcadSession": AcadSession
   },
   data: function() {

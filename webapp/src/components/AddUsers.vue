@@ -84,19 +84,13 @@ export default {
       }
       const reader = new FileReader();
       reader.onload = function(evt) {
-        let data = [];
-        let rr = evt.target.result.split("\n");
-        rr.forEach(row => {
+        // Columns by header name, as the server reads them; blank lines skipped.
+        let rows = evt.target.result.split(/\r?\n/).filter(row => row.trim());
+        let hdr = (rows.shift() || "").split(",");
+        vm.result = rows.map(row => {
           let cols = row.split(",");
-          data.push({ org_id: cols[0], login_id: cols[1],
-          first_name: cols[2], last_name: cols[3],
-          role: cols[4], department: cols[5], 
-          degree: cols[6], year_of_entry: cols[7], 
-          email: cols[8] });
+          return Object.fromEntries(hdr.map((h, i) => [h, cols[i]]));
         });
-        /** Remove the header row */
-        data.splice(0, 1);
-        vm.result = data;
       };
       reader.readAsText(file);
     }

@@ -241,12 +241,25 @@ async def bulk_add_courses():
             os.remove(file_path)  # Cleanup
 
 
+def _is_hhmm(t):
+    """Whether t is a time of day written as the number HHMM."""
+    try:
+        t = int(t)
+    except (TypeError, ValueError):
+        return False
+    return t >= 0 and t // 100 <= 23 and t % 100 <= 59
+
+
 @P.require("slots.manage")
 async def save_course_slot_timings():
     try:
         fd = await request.get_json(force=True)
         cst = DB.CourseSlotTiming()
         C.update_model_skip_unknown(cst, fd)
+        if not cst.is_deleted and not all(
+                _is_hhmm(t) for t in (cst.start_time, cst.end_time)):
+            return apiVC.error_json("Start and end times must be HHMM, "
+                                    "e.g. 0930 for 9:30.")
         if cst.id and cst.id > 0:
             apiVC.update_entity(DB.CourseSlotTiming, cst)
         else:
