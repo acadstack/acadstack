@@ -357,6 +357,7 @@ WITH category_credits AS (
     JOIN public.person p ON p.id = u.person_id
     JOIN public.courseoffering co ON co.id = ce.course_offering_id
     JOIN public.course c ON c.id = co.course_id
+    LEFT JOIN public.vocabitem lv ON lv.vocab = 'Degrees' AND lv.code = p.degree
     LEFT JOIN public.coursecategory cc 
         ON cc.offering_id = ce.course_offering_id
         AND cc.degree = p.degree
@@ -368,7 +369,8 @@ WITH category_credits AS (
       AND (p.degree = %s OR %s = '')
       AND (p.dept_name = %s OR %s = '')
       AND (co.acad_session = %s OR %s = '')
-      AND ce.grade IN ('A', 'A-', 'B', 'B-', 'C', 'C-', 'D', 'S', 'NP')
+      AND (COALESCE(lv.attrs->>'level', 'PG'), co.acad_session, ce.grade) IN
+          (SELECT * FROM unnest(%s::text[], %s::text[], %s::text[]))
     GROUP BY 
         cc.category, u.email, u.id, u.first_name, 
         u.last_name, u.login_id, co.acad_session
@@ -876,7 +878,7 @@ grades_status_submitted = """
                 JOIN public.courseinstructor ci ON ci.offering_id=co.id
                 JOIN public.user ins ON ins.id=ci.instructor_id
                 WHERE co.acad_session= %s and co.status ='R' and 
-                ce.grade NOT in ('NA')
+                ce.grade = ANY(%s::text[])
                 and ce.enrol_status='ENRO' and ci.is_coordinator=TRUE) as ss
                 GROUP BY ss.code,ss.acad_session, ss.title, 
                 ss.first_name, ss.last_name, ss.dept_name;
@@ -894,7 +896,7 @@ grades_status_pending = """
                 JOIN public.courseinstructor ci ON ci.offering_id=co.id
                 JOIN public.user ins ON ins.id=ci.instructor_id
                 WHERE co.acad_session= %s and co.status ='R' and 
-                ce.grade NOT in ('A', 'A-','B','B-','C', 'C-', 'D','E','F', 'NP','NF','I','W')
+                ce.grade <> ALL(%s::text[])
                 and ce.enrol_status='ENRO' and ci.is_coordinator=TRUE) as ss
                 GROUP BY ss.code,ss.acad_session, ss.title, 
                 ss.first_name, ss.last_name, ss.dept_name;
@@ -928,6 +930,7 @@ WITH base_credits AS (
     JOIN public.person p ON p.id = u.person_id
     JOIN public.courseoffering co ON co.id = ce.course_offering_id
     JOIN public.course c ON c.id = co.course_id
+    LEFT JOIN public.vocabitem lv ON lv.vocab = 'Degrees' AND lv.code = p.degree
     LEFT JOIN public.coursecategory cc 
       ON cc.offering_id = ce.course_offering_id
       AND cc.degree = p.degree
@@ -939,7 +942,8 @@ WITH base_credits AS (
       AND (p.degree = %s OR %s = '')
       AND (p.dept_name = %s OR %s = '')
       AND (co.acad_session = %s OR %s = '')
-      AND ce.grade IN ('A','A-','B','B-','C','C-','D','S','NP')
+      AND (COALESCE(lv.attrs->>'level', 'PG'), co.acad_session, ce.grade) IN
+          (SELECT * FROM unnest(%s::text[], %s::text[], %s::text[]))
     GROUP BY 
         cc.category, u.email, u.id, u.first_name, 
         u.last_name, u.login_id, co.acad_session, p.dept_name

@@ -42,8 +42,9 @@ _password_hasher = PasswordHasher()
 TS_FORMAT = "%Y%m%d_%H%M%S"
 WEEK_DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 
-VALID_GRADES = ['A','A-','B','B-','C','C-','D','E','F','I','W','NP', 'NF','S','NA', 'U']
-VALID_AUDIT_GRADES = ["NP", "NF", "NA", "I", "W"]
+# The grade of an enrolment that has not been graded yet. The grades themselves
+# come from the grading_schemes setting.
+NO_GRADE = "NA"
 
 
 class AcadStackException(Exception):

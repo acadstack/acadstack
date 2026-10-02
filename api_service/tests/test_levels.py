@@ -46,7 +46,7 @@ async def test_phd_menu_follows_the_program_level(client, auth, level, sees):
 
 
 @pytest.mark.parametrize("level, ec", [("UG", 6), ("PG", 4)])
-async def test_gpa_rules_follow_the_program_level(client, auth, level, ec):
+async def test_gpa_rules_follow_the_program_level(client, auth, level, ec, grading_schemes):
     # NP earns credit under the UG rules only
     program("BSC", level)
     stu = make_user("stu", role="STU", degree="BSC", year_of_entry="2023")

@@ -153,5 +153,21 @@ def set_event_window(acad_session, event, open_=True):
                                   event_value=dt.isoformat())
 
 
+def ten_point_scheme(level, from_session=None, until_session=None, name=None):
+    """The 10-point grading scheme of a level (UG, PG or PHD), as one entry of
+    the grading_schemes setting."""
+    return dict(settings.ten_point_scheme(level), from_session=from_session,
+                until_session=until_session, name=name or f"10-point {level}")
+
+
+@pytest.fixture
+def grading_schemes(db):
+    """The 10-point scheme for UG, PG and PHD in every session, and the program
+    BTE at level UG."""
+    settings.save("grading_schemes", [ten_point_scheme(l) for l in ("UG", "PG", "PHD")])
+    M.VocabItem.get_or_create(vocab="Degrees", code="BTE",
+                              defaults={"label": "BTE", "attrs": {"level": "UG"}})
+
+
 async def json_of(res):
     return await res.get_json()

@@ -20,6 +20,7 @@ from datetime import timedelta
 import common as C
 import migrate
 import models as M
+import settings as ST
 import api_reports as R
 
 static_data = C.static_data_json()
@@ -28,7 +29,6 @@ static_data = C.static_data_json()
 ENROL_TYPES = [entry.get('id') for entry in static_data.get('EnrolTypes', []) if entry.get('id')][1:]
 ENROL_STATUSES = [entry.get('id') for entry in static_data.get('EnrolStatuses', []) if entry.get('id')][1:]
 CO_STATUSES = [entry.get('id') for entry in static_data.get('OfferingStatuses', []) if entry.get('id')][1:]
-GRADES = [entry.get('id') for entry in static_data.get('CourseGrades', []) if entry.get('id')][2:]
 
 # Filled from the VocabItem table once the schema exists.
 DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT = [], [], [], [], [], []
@@ -187,6 +187,9 @@ def recreate_db(config):
 
     migrate.migrate()
     print("Created DB tables.")
+
+
+GRADES = [g["grade"] for g in ST.ten_point_scheme("UG")["grades"]]
 
 
 def _seed_vocab():

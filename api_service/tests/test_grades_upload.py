@@ -11,10 +11,13 @@ import pytest
 from quart.datastructures import FileStorage
 
 import models as M
-from conftest import enrol, make_offering, make_user, set_event_window
+import settings
+from conftest import enrol, make_offering, make_user, set_event_window, ten_point_scheme
 
 SESSION = "2026-I"
 HEADER = "first_name,last_name,roll_no,grade"
+
+pytestmark = pytest.mark.usefixtures("grading_schemes")
 
 
 @pytest.fixture
@@ -129,6 +132,34 @@ async def test_invalid_grade(client, auth, app, setup):
     body = await upload(client, app, "ins", setup["co"].id,
                         f"{HEADER}\nA,B,2024CSB1001,A+\nC,D,2024CSB1002,B\n")
     assert "Found invalid grades" in body["body"]
+    assert grades(setup["ce1"], setup["ce2"]) == ["NA", "NA"]
+
+
+async def test_grades_come_from_the_grading_schemes(client, auth, app, setup):
+    # The students' programs have no level, so they are graded as PG.
+    s = ten_point_scheme("PG", name="Pass/fail")
+    s["grades"] = [dict(s["grades"][0], grade="P", points=4), s["grades"][8]]
+    settings.save("grading_schemes", [s])
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id,
+                        f"{HEADER}\nA,B,2024CSB1001,A\nC,D,2024CSB1002,P\n")
+    assert "Found invalid grades" in body["body"]
+    body = await upload(client, app, "ins", setup["co"].id,
+                        f"{HEADER}\nA,B,2024CSB1001,P\nC,D,2024CSB1002,F\n")
+    assert body["status"] == "OK"
+    assert grades(setup["ce1"], setup["ce2"]) == ["P", "F"]
+
+
+async def test_grade_must_be_in_the_scheme_of_the_students_level(client, auth, app, setup):
+    # The students' programs have no level, so they are graded as PG.
+    pg = ten_point_scheme("PG", name="Pass/fail")
+    pg["grades"] = [dict(pg["grades"][0], grade="P", points=4), pg["grades"][8]]
+    settings.save("grading_schemes", [ten_point_scheme("UG"), pg])
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id,
+                        f"{HEADER}\nA,B,2024CSB1001,P\nC,D,2024CSB1002,A\n")
+    assert body["status"] == "ERROR"
+    assert "Invalid grade A assigned to 2024CSB1002 (PG student)" in body["body"]
     assert grades(setup["ce1"], setup["ce2"]) == ["NA", "NA"]
 
 

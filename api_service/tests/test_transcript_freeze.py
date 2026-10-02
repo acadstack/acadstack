@@ -10,6 +10,8 @@ from conftest import enrol, make_offering, make_user, set_event_window
 
 SESSION = "2025-I"
 
+pytestmark = pytest.mark.usefixtures("grading_schemes")
+
 
 @pytest.fixture
 def setup(db):

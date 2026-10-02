@@ -290,6 +290,47 @@ async def test_stale_txn_no_is_rejected(client, auth, setup):
     assert status_of(setup["ce"]) == "IPEN"
 
 
+def grade_of(ce):
+    return M.CourseEnrollment.get_by_id(ce.id).grade
+
+
+@pytest.mark.parametrize("enrol_type,grade,ok", [
+    ("C", "A", True), ("C", "ZZ", False), ("A", "W", True), ("A", "A", False),
+])
+async def test_grade_must_suit_the_enrolment(client, auth, setup, enrol_type, grade, ok):
+    M.CourseEnrollment.update(enrol_type=enrol_type).where(
+        M.CourseEnrollment.id == setup["ce"].id).execute()
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await coe_save(client, {"id": setup["ce"].id, "enrol_status": "ENRO",
+                                   "grade": grade})
+    assert body["status"] == ("OK" if ok else "ERROR")
+    assert grade_of(setup["ce"]) == (grade if ok else "NA")
+
+
+async def test_changing_to_audit_keeps_the_grade_valid(client, auth, setup):
+    M.CourseEnrollment.update(grade="A").where(
+        M.CourseEnrollment.id == setup["ce"].id).execute()
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await coe_save(client, {"id": setup["ce"].id, "enrol_status": "ENRO",
+                                   "enrol_type": "A"})
+    assert body["status"] == "ERROR"
+    assert "Grade A is not allowed for an audit enrolment" in body["body"]
+    assert M.CourseEnrollment.get_by_id(setup["ce"].id).enrol_type == "C"
+
+
+async def test_inserted_enrolment_grade_is_checked(client, auth, setup):
+    co = make_offering("CS200", acad_session=SESSION)
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await coe_save(client, {"course_offering": co.id, "student": setup["stu"].id,
+                                   "enrol_type": "A", "enrol_status": "ENRO", "grade": "A"})
+    assert body["status"] == "ERROR"
+    assert not M.CourseEnrollment.select().where(
+        M.CourseEnrollment.course_offering == co.id).exists()
+
+
 # ---- enroll_in_courses ----
 
 import api_course_enrolment as apiCE
@@ -464,7 +505,7 @@ async def test_re_requesting_a_pending_enrolment_does_not_clash_with_itself(clie
     assert (await enroll(client, setup["stu"], [co]))["status"] == "OK"
 
 
-async def test_passed_courses_match_whole_grades(client, auth, setup):
+async def test_passed_courses_match_whole_grades(client, auth, setup, grading_schemes):
     enrol(setup["stu"], make_offering("CS301"), grade="B")
     enrol(setup["stu"], make_offering("CS302"), grade="")
     await auth.login("stu")

@@ -129,8 +129,9 @@ export default {
   },
   methods: {
     is_valid_grade(gr) {
-      let vg = ['A','A-','B','B-','C','C-','D','E','F','I','W','NP','NF','S','NA', 'U'];
-      return !_.isEmpty(gr) && vg.includes(gr.toUpperCase().trim());
+      // The grades of the configured grading schemes (the first entry is "-Select-")
+      return !_.isEmpty(gr) &&
+        this.SD.CourseGrades.some(g => g.id && g.id === gr.toUpperCase().trim());
     },
     fileUploaded(resBody) {
       this.setStatusMessage(resBody);

@@ -79,8 +79,9 @@ async def download_grade_status(grades_st, acad_session):
         else:
             sql_id = 'grades_status_pending'
 
+        # Submitted: a grade of the grading schemes; pending: any other
         cursor = DB.db.execute_sql(C.sql_by_id(sql_id),
-                                [str(acad_session)])
+                                   [str(acad_session), apiVC.scheme_grades()])
 
         fp = apiVC.db_result_to_excel(cursor)
         return await send_file(fp,
@@ -482,6 +483,7 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
                             str(degree), str(degree),
                             str(dept_name), str(dept_name),
                             str(acad_session), str(acad_session),
+                            *apiVC.graded_rows("earns_credit"),
                             str(course_type), str(course_type),
                             int(min_credits), int(max_credits)])
 
@@ -535,13 +537,14 @@ async def grades_upload():
                 return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
 
             invalid_rows = []
+            valid_grades = apiVC.valid_grades()
             for ll in lines[1:]:
-                if ll.split(',')[3].strip() not in C.VALID_GRADES:
+                if ll.split(',')[3].strip() not in valid_grades:
                     invalid_rows.append(ll)
 
             if invalid_rows:
                 return apiVC.error_json(f"Found invalid grades in rows: {invalid_rows}. "
-                                     f"Allowed grades values are: {C.VALID_GRADES}")
+                                     f"Allowed grades values are: {valid_grades}")
 
 
         with open(file_path, 'w') as out:
@@ -571,23 +574,30 @@ async def grades_upload():
 
         # If all is OK, then update the grades in DB
         upd_count = 0
+        # The grade rules of each program level in the offering's session
+        level_rules = {}
         with DB.db.atomic() as txn:
             with open(file_path, newline='') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     roll_no = row["ROLL_NO"].upper().strip()
                     grade = row["GRADE"].upper().strip()
-                    stu = DB.User.select(DB.User.id).join(DB.Person)\
+                    stu = DB.User.select(DB.User, DB.Person).join(DB.Person)\
                         .where(DB.Person.org_id == roll_no)[0]
                     coe = DB.CourseEnrollment.select().where(
                         (DB.CourseEnrollment.course_offering == co_id) &
                         (DB.CourseEnrollment.student == stu.id)
                     )[0]
 
-                    if coe.enrol_type == "A" and grade not in C.VALID_AUDIT_GRADES:
+                    level = apiVC.degree_level(stu.person.degree) or "PG"
+                    if level not in level_rules:
+                        level_rules[level] = apiVC.grading_rules(
+                            level, [co_obj.acad_session])[co_obj.acad_session]
+                    allowed = apiVC.allowed_grades(level_rules[level], coe.enrol_type)
+                    if grade not in allowed:
+                        kind = "audited course" if coe.enrol_type == "A" else f"{level} student"
                         raise C.AcadStackException(f"Invalid grade {grade} assigned "
-                                f"to {roll_no} for audited course. "
-                                f"Allowed audit grades are: {C.VALID_AUDIT_GRADES}")
+                                f"to {roll_no} ({kind}). Allowed grades are: {allowed}")
 
                     if coe.grade == grade:
                         logging.debug("Grade unchanged, skipping the update.")
@@ -639,7 +649,7 @@ async def close_session():
                 (DB.CourseOffering.acad_session == acad_session) &
                 (DB.CourseOffering.status.not_in(["C", "D"])) &
                 (DB.CourseEnrollment.enrol_status == "ENRO") &
-                (DB.CourseEnrollment.grade == "NA"))
+                (DB.CourseEnrollment.grade.not_in(apiVC.scheme_grades())))
         pending = sorted({ce.course_offering.course.code for ce in pending})
         if pending:
             return apiVC.error_json("Grades are pending in these courses: "
