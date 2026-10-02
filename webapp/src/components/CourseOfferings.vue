@@ -8,7 +8,7 @@ Component for listing the course offerings.
     <div class="card-header">
       <div class="row hdr-row border-bottom border-info">
         <div class="col-md-1">S#</div>
-        <div class="col">Session (W=Winter, S=Summer, M=Monsoon)</div>
+        <div class="col">Session</div>
         <div class="col">Coordinator</div>
         <div class="col">Class Size</div>
       </div>

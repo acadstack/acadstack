@@ -202,3 +202,15 @@ async def test_student_cannot_upload(client, auth, app, setup):
     body = await upload(client, app, "s1", setup["co"].id, GOOD_CSV)
     assert body["status"] == "ERROR"
     assert grades(setup["ce1"], setup["ce2"]) == ["NA", "NA"]
+
+
+async def test_roll_numbers_in_lower_case_are_matched(client, auth, app, db):
+    ins = make_user("ins", role="FAC")
+    ce = enrol(make_user("s1", role="STU", org_id="fa27-0001"),
+               make_offering(acad_session=SESSION, status="R", instructor=ins))
+    set_event_window(SESSION, "GRADE_SUB")
+    await auth.login("ins")
+    body = await upload(client, app, "ins", ce.course_offering.id,
+                        f"{HEADER}\nA,B,fa27-0001,A\n")
+    assert body["status"] == "OK", body
+    assert grades(ce) == ["A"]

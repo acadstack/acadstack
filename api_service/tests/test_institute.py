@@ -8,7 +8,7 @@ import common as C
 import create_email
 import models as M
 import settings
-from conftest import make_user
+from conftest import enrol, make_offering, make_user
 
 
 @pytest.mark.parametrize("key, value", [
@@ -200,3 +200,27 @@ async def test_degree_certificate_uses_the_template_in_the_upload_folder(
     settings.save("institute_name", "Open University")
     await _degree_certificate(client, auth, tmp_path, "2022-12-05")
     assert html_of == ["Open University awards Stu User on 5 December 2022"]
+
+
+async def test_semester_grade_sheet_prints_the_session_and_program_as_named(
+        client, auth, html_of, grading_schemes):
+    M.VocabItem.create(vocab="Degrees", code="BA", label="B.A.", attrs={
+        "level": "UG", "printed_name": "Bachelor of Arts"})
+    stu = make_user("stu", role="STU", org_id="x1", degree="BA", year_of_entry="2027")
+    enrol(stu, make_offering(acad_session="Fall 2027", status="F"), grade="A")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    await client.get("/acadstack/download_sem_grade/Fall 2027/x1/C")
+    assert "Fall 2027" in html_of[0] and "BACHELOR OF ARTS IN" in html_of[0]
+    assert "SEMESTER OF ACADEMIC YEAR" not in html_of[0]
+
+
+def test_grade_sheet_prints_session_codes_as_named():
+    data = {"enrollments": {"Fall 2027": {"courses": [], "ec": 0, "cec": 0, "sgpa": 0,
+                                          "cgpa": 0}},
+            "name": "Asha Rao", "entry_no": "x1", "degree": "BA", "degree_level": "UG",
+            "printed_name": "Bachelor of Arts", "specialisation": "", "dept_name": "",
+            "deg_type": "", "static_file_path": "", "institute_name": "", "date_issue": ""}
+    html = C.fill_template("report_templates", "consolidatedGradeSheetnew.html", data)
+    assert html.count("Fall 2027") == 2  # the row and the graduation note
+    assert "Sem-" not in html and "ACADEMIC YEAR" not in html

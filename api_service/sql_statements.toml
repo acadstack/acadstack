@@ -594,9 +594,8 @@ move_enrolling_co_to_running = """
     WHERE id IN (select id from enrolling_courses);"""
 
 get_open_events = """
-    SELECT UPPER(ac1.acad_session) AS acad_session,
-        UPPER(SUBSTRING(ac1.event_code FROM 1 FOR LENGTH(ac1.event_code) - 2))
-            AS open_event
+    SELECT ac1.acad_session,
+        SUBSTRING(ac1.event_code FROM 1 FOR LENGTH(ac1.event_code) - 2) AS open_event
     FROM public.academiccalendar ac1
     JOIN public.academiccalendar ac2 ON ac1.acad_session = ac2.acad_session
     WHERE

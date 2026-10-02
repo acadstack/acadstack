@@ -189,7 +189,7 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
 
 
 def _get_semester_grade_data(entry_no, acad_session, enrol_type):
-    acad_session = acad_session.strip().upper()
+    acad_session = acad_session.strip()
     report_data = {}
     if acad_session and not apiVC.academic_session_valid(acad_session):
         raise C.AcadStackException("Unknown academic session.")
@@ -206,7 +206,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     degree = apiVC.label_for_static_data_item(degree, degreetypes).upper()
 
     report_data["degree"] = degree
-    report_data["degree_level"] = apiVC.degree_level(stu.person.degree)
+    report_data.update(apiVC.degree_print_fields(stu.person.degree, degree))
 
     dept_name = stu.person.dept_name
     depttypes = apiVC.static_data_item("Departments")
@@ -602,7 +602,7 @@ async def grades_upload():
                     roll_no = row["ROLL_NO"].upper().strip()
                     grade = row["GRADE"].upper().strip()
                     stu = DB.User.select(DB.User, DB.Person).join(DB.Person)\
-                        .where(DB.Person.org_id == roll_no)[0]
+                        .where(DB.ORM.fn.UPPER(DB.Person.org_id) == roll_no)[0]
                     coe = DB.CourseEnrollment.select().where(
                         (DB.CourseEnrollment.course_offering == co_id) &
                         (DB.CourseEnrollment.student == stu.id)

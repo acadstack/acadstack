@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import api_common as apiVC
 import models as M
 import transcript as TR
-from conftest import enrol, make_offering, make_user
+from conftest import enrol, make_offering, make_user, set_event_window
 
 
 def _days(n):
@@ -136,3 +136,23 @@ async def test_upcoming_sessions_are_listed_during_a_break(client, auth):
     await _save_session(client, "Spring 29", _days(300), _days(400))
     assert [s["id"] for s in apiVC.static_data_dict()["AcademicSessions"]] \
         == ["Spring 28", "Fall 2028"]
+
+
+async def test_offering_is_saved_in_a_session_named_in_mixed_case(client, auth):
+    co = make_offering(acad_session="Fall 2027")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    res = await client.post("/acadstack/co_save", json={
+        "id": co.id, "acad_session": "Fall 2027", "course": {"id": co.course.id},
+        "txn_no": 1, "instructors": [], "course_categories": [
+            {"degree": "BA", "dept": "ALL", "category": "CORE", "for_entry_years": "2027"}]})
+    assert (await res.get_json())["status"] == "OK"
+    assert M.CourseOffering.get_by_id(co.id).acad_session == "Fall 2027"
+
+
+async def test_open_events_name_the_session_as_it_is_spelt(client, auth):
+    set_event_window("Fall 2027", "COURSE_REG")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await (await client.get("/acadstack/open_events")).get_json()
+    assert body["body"] == ["Fall 2027:COURSE_REG"]

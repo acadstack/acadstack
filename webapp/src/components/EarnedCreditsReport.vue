@@ -58,7 +58,7 @@
       <div class="col">
         <div>
           <label for="exclCourse">Exclude Course(s)</label>
-          <input id="exclCourse" class="form-control" type="text" v-model.trim="search_crit.exclude_course" maxlength="6" placeholder="E.g. II302"/>
+          <input id="exclCourse" class="form-control" type="text" v-model.trim="search_crit.exclude_course" maxlength="20" placeholder="Course code"/>
         </div>
       </div>
       <div class="col">
@@ -140,7 +140,7 @@ export default {
         max_credits: 30,
         marked_items: [],
         mark_type: "exclude",
-        exclude_course: "II301"
+        exclude_course: ""
       },
       credits: [],
     };
@@ -208,7 +208,7 @@ export default {
         max_credits: 30,
         marked_items: [],
         mark_type: "exclude",
-        exclude_course: "II301"
+        exclude_course: ""
         };
       this.credits = [];
     },
