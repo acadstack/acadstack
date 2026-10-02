@@ -616,8 +616,8 @@ def current_acad_session_list(sem_only=True):
 
 def current_acad_session():
     casd = __current_acad_sessions_with_dates()
-    # Return the earliest starting acad session
-    return casd[0][0]
+    # Return the earliest starting acad session; None between sessions
+    return casd[0][0] if casd else None
 
 
 def __acad_sessions_nearby():

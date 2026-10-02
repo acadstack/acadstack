@@ -1,3 +1,8 @@
+from io import BytesIO
+
+import pytest
+from quart.datastructures import FileStorage
+
 import common as C
 import models as M
 from conftest import make_user
@@ -88,3 +93,55 @@ def test_verify_password():
     assert C.verify_password("s3cret", h) and not C.verify_password("s3cre", h)
     assert not C.verify_password("x", "not-a-hash")
     assert C.password_needs_rehash(LEGACY_HASH) and not C.password_needs_rehash(h)
+
+
+USERS_HEADER = "org_id,login_id,first_name,last_name,role,department,degree,year_of_entry,email"
+
+
+async def bulk_add_users(client, csv_text):
+    fs = FileStorage(BytesIO(csv_text.encode()), filename="users.csv", content_type="text/csv")
+    res = await client.post("/acadstack/add_users", files={"users_file": fs})
+    return await res.get_json()
+
+
+@pytest.fixture
+def lists(db):
+    M.VocabItem.create(vocab="Departments", code="PHY", label="Physics")
+    M.VocabItem.create(vocab="Degrees", code="BSC", label="B.Sc.")
+
+
+async def test_bulk_add_users_skips_bad_rows_and_saves_the_rest(client, auth, lists):
+    make_user("acad", role="ACA", dept_name="PHY")
+    make_user("taken", role="FAC", dept_name="PHY")
+    await auth.login("acad")
+    body = await bulk_add_users(client, f"{USERS_HEADER}\n"
+        "E1,dup,A,B,FAC,PHY,,,taken@example.com\n"      # email already used
+        "S1,s1,C,D,STU,ZZZ,BSC,2026,s1@example.com\n"    # unknown department
+        "S2,s2,E,F,STU,PHY,BSC,26,s2@example.com\n"      # bad year
+        "S3,s3,G,H,STU,PHY,BSC,2026,s3@example.com\n"
+        "E2,e2,I,J,FAC,PHY,,,e2@example.com\n")
+    assert body["status"] == "OK"
+    assert "Created 2 new users" in body["body"] and "Failed 3 records" in body["body"]
+    for frag in ("line 2:", "line 3: unknown department 'ZZZ'", "line 4: year_of_entry"):
+        assert frag in body["body"]
+    s3 = M.User.get(M.User.login_id == "s3").person
+    assert (s3.current_status, s3.degree, s3.year_of_entry) == ("REG", "BSC", "2026")
+    e2 = M.User.get(M.User.login_id == "e2").person
+    assert (e2.current_status, e2.degree, e2.year_of_entry) == (None, None, None)
+    assert not M.User.select().where(M.User.login_id << ["dup", "s1", "s2"]).exists()
+
+
+async def test_bulk_add_users_refuses_a_file_with_a_missing_column(client, auth, lists):
+    make_user("acad", role="ACA", dept_name="PHY")
+    await auth.login("acad")
+    body = await bulk_add_users(client, "org_id,login_id\nS1,s1\n")
+    assert body["status"] == "ERROR" and "first_name" in body["body"]
+
+
+async def test_bulk_add_users_keeps_the_status_of_an_existing_student(client, auth, lists):
+    make_user("acad", role="ACA", dept_name="PHY")
+    make_user("s1", role="STU", org_id="S1", dept_name="PHY", current_status="WTH")
+    await auth.login("acad")
+    body = await bulk_add_users(client, f"{USERS_HEADER}\nS1,s1,A,B,STU,PHY,BSC,2026,s1@example.com\n")
+    assert "Updated 1 users" in body["body"]
+    assert M.User.get(M.User.login_id == "s1").person.current_status == "WTH"

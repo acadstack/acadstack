@@ -28,5 +28,6 @@ INSERT INTO public.permission (code, description, is_deleted, txn_no, ins_ts, up
     ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts, upd_ts) VALUES
-    ('ACA', 'sessions.close', false, 1, now(), now())
+    ('ACA', 'sessions.close', false, 1, now(), now()),
+    ('SUP', 'sessions.close', false, 1, now(), now())
     ON CONFLICT (role, permission) DO NOTHING;

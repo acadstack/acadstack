@@ -514,6 +514,26 @@ def __format_row(row):
     return "{0}, {1}, {2}".format(row["org_id"], row["login_id"], row["email"])
 
 
+USER_CSV_COLUMNS = ("org_id", "login_id", "first_name", "last_name", "role",
+                    "department", "degree", "year_of_entry", "email")
+
+
+def __user_row_error(row, codes):
+    """Why the user CSV row can't be saved, or None. ``codes`` holds the
+    valid codes of each list the row refers to."""
+    if not row["org_id"] or not row["login_id"]:
+        return "org_id and login_id are required"
+    for col, lst in (("role", "UserRoles"), ("department", "Departments")):
+        if row[col] not in codes[lst]:
+            return f"unknown {col} '{row[col]}'"
+    if row["degree"] and row["degree"] not in codes["Degrees"]:
+        return f"unknown degree '{row['degree']}'"
+    if row["year_of_entry"] and not (len(row["year_of_entry"]) == 4
+                                     and row["year_of_entry"].isdigit()):
+        return f"year_of_entry '{row['year_of_entry']}' is not a 4-digit year"
+    return None
+
+
 @P.require("users.bulk_add")
 async def bulk_add_users():
     try:
@@ -523,56 +543,72 @@ async def bulk_add_users():
         local_file_nm = C.get_rand_str(4) + "_" + secure_filename(users_file.filename)
         file_path = os.path.join(apiVC.get_upload_folder_for_user(), local_file_nm)
         await users_file.save(file_path)
+        sd = apiVC.static_data_dict()
+        codes = {lst: {x["id"] for x in sd[lst] if x["id"]}
+                 for lst in ("UserRoles", "Departments", "Degrees")}
+        student_roles = set(P.roles_with("roster.student"))
         updated = []
-        dups = []
+        failed = []
         created = 0
-        with open(file_path, newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            with DB.db.atomic() as txn:
-                for row in reader:
+        try:
+            with open(file_path, newline='') as csvfile:
+                reader = csv.DictReader(csvfile)
+                missing = [c for c in USER_CSV_COLUMNS if c not in (reader.fieldnames or [])]
+                if missing:
+                    return apiVC.error_json(f"The file has no column {', '.join(missing)}.")
+                # Line 1 is the header
+                for line_no, row in enumerate(reader, start=2):
+                    row = {c: (row[c] or "").strip() for c in USER_CSV_COLUMNS}
+                    err = __user_row_error(row, codes)
+                    if err:
+                        failed.append(f"line {line_no}: {err}")
+                        continue
                     try:
-                        p = DB.Person()
-                        u = DB.User()
-                        creating = False
-                        person_qry = DB.Person.select().where(
-                            DB.Person.org_id == row["org_id"])
-                        if person_qry.exists():
-                            p = person_qry.execute()[0]
-                            updated.append(__format_row(row))
+                        # A savepoint, so that a failed row leaves the others saved
+                        with DB.db.atomic():
+                            p = DB.Person.get_or_none(DB.Person.org_id == row["org_id"])
+                            existing = p is not None
+                            if not p:
+                                p = DB.Person()
+                                # Student lookup and bulk enrolment find registered students only
+                                if row["role"] in student_roles:
+                                    p.current_status = "REG"
 
-                        user_qry = DB.User.select().where(
-                            DB.User.login_id == row["login_id"])
-                        if user_qry.exists():
-                            u = user_qry.execute()[0]
-                        else:
-                            # Generate random password, user will reset it later
-                            u.password_hashed = C.hash_password(C.get_rand_str(8))
-                            creating = True
+                            u = DB.User.get_or_none(DB.User.login_id == row["login_id"])
+                            creating = u is None
+                            if creating:
+                                # Generate random password, user will reset it later
+                                u = DB.User(password_hashed=C.hash_password(C.get_rand_str(8)))
 
-                        p.org_id = row["org_id"]
-                        p.dept_name = row["department"]
-                        p.year_of_entry = row["year_of_entry"]
-                        p.degree = row["degree"]
-                        p.save()
+                            p.org_id = row["org_id"]
+                            p.dept_name = row["department"]
+                            p.year_of_entry = row["year_of_entry"] or None
+                            p.degree = row["degree"] or None
+                            p.save()
 
-                        u.login_id = row["login_id"]
-                        u.first_name = row["first_name"]
-                        u.last_name = row["last_name"]
-                        u.email = row["email"]
-                        u.role = row["role"]
-                        u.person = p.id
-                        u.save()
+                            u.login_id = row["login_id"]
+                            u.first_name = row["first_name"]
+                            u.last_name = row["last_name"]
+                            u.email = row["email"]
+                            u.role = row["role"]
+                            u.person = p.id
+                            u.save()
                         if creating:
                             created += 1
-                    except DB.IntegrityError as ierr:
+                        if existing:
+                            updated.append(__format_row(row))
+                    except DB.ORM.IntegrityError as ierr:
                         logging.error(f"Skipping to next. {ierr}")
-                        dups.append(__format_row(row))
+                        failed.append(f"line {line_no}: org_id, login_id or email "
+                                      f"already used by another user ({__format_row(row)})")
+                    except DB.ORM.DataError as derr:
+                        logging.error(f"Skipping to next. {derr}")
+                        failed.append(f"line {line_no}: a value is too long")
+        finally:
+            os.remove(file_path)  # Cleanup
 
-                txn.commit()
-
-        os.remove(file_path)  # Cleanup
-        return apiVC.ok_json("Created {0} new users. Updated {1} users: {2}. Failed {3} records due to integrity check: {4}"
-                       .format(created, len(updated), str(updated), len(dups), str(dups)))
+        return apiVC.ok_json("Created {0} new users. Updated {1} users: {2}. Failed {3} records: {4}"
+                       .format(created, len(updated), str(updated), len(failed), str(failed)))
 
     except Exception as ex:
         msg = "Error when handling bulk user creation."

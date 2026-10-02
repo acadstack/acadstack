@@ -73,8 +73,7 @@ def init_routes(bp: Blueprint):
                        methods=['POST'])
     bp.add_url_rule('/get_gradesheets/<string:job_key>', 
                        view_func=get_bulk_gradesheets, methods=['GET'])
-    bp.add_url_rule(('/download_degree_certifcate/<string:entry_no>/<string:hi_name>'
-                        '/<string:thesis_title>/<string:doc_sr_no>/<string:convocation_date>'),
+    bp.add_url_rule('/download_degree_certifcate/<string:entry_no>',
                        view_func=download_degree_certifcate, methods=['GET'])
     bp.add_url_rule('/download_consolidated_grade_sheet/<string:entry_no>/<string:enrol_type>',
                        view_func=download_consolidated_grade_sheet, methods=['GET'])
@@ -408,11 +407,14 @@ async def download_cgpa_sgpa(acad_session):
 
 
 @P.require("grades.reports")
-async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no,
-                                     convocation_date):
+async def download_degree_certifcate(entry_no):
         try:
+            # Free text, printed as typed; a blank field prints blank
+            hi_name, thesis_title, doc_sr_no, convocation_date = (
+                (request.args.get(k) or "").strip() for k in
+                ("hi_name", "thesis_title", "doc_sr_no", "convocation_date"))
             report_data = {}
-            if convocation_date == "NA":
+            if not convocation_date:
                 report_data["convocation_date"] = ""
             else:
                 try:
@@ -421,16 +423,12 @@ async def download_degree_certifcate(entry_no, hi_name, thesis_title, doc_sr_no,
                 except ValueError:
                     raise C.AcadStackException("The convocation date is not a valid date.")
             stu = get_user_by_org_id(entry_no)
-            doc_sr_no = doc_sr_no.replace("-", "/")
             if not stu:
                 raise C.AcadStackException(f"Student {entry_no} not found!")
             # Fill the sudents personal info
             report_data["name"] = f"{stu.first_name} {stu.last_name}"
             report_data["entry_no"] = stu.person.org_id
             report_data["hi_name"] = hi_name
-            if thesis_title == "NA":
-                thesis_title = ""
-
             report_data["thesis_title"] = thesis_title
 
             degree = stu.person.degree

@@ -3,7 +3,11 @@ ordered and chosen as current by their dates, whatever they are named."""
 
 from datetime import date, timedelta
 
+import pytest
+
 import api_common as apiVC
+import common as C
+import validation_checks as VAL
 import models as M
 import transcript as TR
 from conftest import enrol, make_offering, make_user, set_event_window
@@ -156,3 +160,15 @@ async def test_open_events_name_the_session_as_it_is_spelt(client, auth):
     await auth.login("aca")
     body = await (await client.get("/acadstack/open_events")).get_json()
     assert body["body"] == ["Fall 2027:COURSE_REG"]
+
+
+async def test_no_current_session_between_sessions(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    await _save_session(client, "Fall 2027", _days(-90), _days(-10))
+    await _save_session(client, "Spring 28", _days(10), _days(90))
+
+    assert apiVC.current_acad_session() is None
+    assert not VAL.is_today_between_events("COURSE_REG_S", "COURSE_REG_E")
+    with pytest.raises(C.AcadStackException, match="not configured"):
+        VAL.get_event_date("COURSE_REG_S")

@@ -168,8 +168,8 @@ async def _degree_certificate(client, auth, tmp_path, convocation_date):
     make_user("stu", role="STU", org_id="2022EEM1001", degree="MTE", dept_name="EE")
     make_user("aca", role="ACA")
     await auth.login("aca")
-    return await client.get(
-        f"/acadstack/download_degree_certifcate/2022EEM1001/hn/NA/1-2/{convocation_date}")
+    return await client.get("/acadstack/download_degree_certifcate/2022EEM1001", query_string={
+        "hi_name": "hn", "doc_sr_no": "1-2", "convocation_date": convocation_date})
 
 
 async def test_degree_certificate_takes_the_convocation_date(client, auth, tmp_path, html_of):
@@ -181,8 +181,15 @@ async def test_degree_certificate_takes_the_convocation_date(client, auth, tmp_p
                  "Master of Technology", "(Specialization in Power)"):
         assert text in html_of[0]
     html_of.clear()
-    await client.get("/acadstack/download_degree_certifcate/2022EEM1001/hn/NA/1-2/NA")
+    await client.get("/acadstack/download_degree_certifcate/2022EEM1001")
     assert "December" not in html_of[0]
+
+
+async def test_degree_certificate_prints_the_serial_number_as_typed(client, auth, tmp_path, html_of):
+    # No thesis title: the certificate of every non-PhD student
+    res = await _degree_certificate(client, auth, tmp_path, "")
+    assert (await res.get_data()).startswith(b"%PDF")
+    assert "Sr. No. 1-2" in html_of[0]
 
 
 async def test_degree_certificate_refuses_a_bad_convocation_date(client, auth, tmp_path, html_of):
