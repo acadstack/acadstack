@@ -31,6 +31,7 @@ import AddUsers from "../components/AddUsers.vue";
 import ManageStaticData from "../components/ManageStaticData.vue";
 import RolePermissions from "../components/RolePermissions.vue";
 import AppSettings from "../components/AppSettings.vue";
+import GradingScheme from "../components/GradingScheme.vue";
 import AddCourses from "../components/AddCourses.vue";
 import BulkEnrolCourse from "../components/BulkEnrolCourse.vue";
 import CreateFeedbackForm from "../components/CreateFeedbackForm.vue";
@@ -302,6 +303,11 @@ const appRoutes = [{
   name: 'settings',
   path: '/settings',
   component: AppSettings
+},
+{
+  name: 'grading',
+  path: '/grading',
+  component: GradingScheme
 },
 {
   name: 'mba',
