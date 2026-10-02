@@ -820,6 +820,11 @@ async def assign_advisor():
                                         fd.get("for_entry_year"), \
                                         fd.get("dept_name")
         user_id = fd.get("user_id")
+        # An advisor sees the pending enrolments of the batch's students of
+        # their own department only
+        adv = DB.User.get_by_id(user_id)
+        if not adv.person or adv.person.dept_name != dept_name:
+            raise C.AcadStackException(f"The batch advisor must be from the {dept_name} department.")
 
         obj = __get_advisor(for_degree, fey, dept_name)
         if obj:

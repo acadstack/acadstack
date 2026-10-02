@@ -295,9 +295,9 @@ def _get_student_entry_no_data(degree,dept_name,year_of_entry):
             DB.User.last_name).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER)
     query = query.where(DB.User.is_deleted != True)
     query = query.where(DB.User.role.in_(P.roles_with("roster.student")) & 
-                (DB.Person.degree.startswith(degree)) & 
-                (DB.Person.dept_name.startswith(dept_name)) & 
-                (DB.Person.year_of_entry.startswith(year_of_entry)))
+                (DB.Person.degree == degree) &
+                (DB.Person.dept_name == dept_name) &
+                (DB.Person.year_of_entry == year_of_entry))
     users = query.order_by(DB.Person.org_id)
     serialized = [r.person.org_id for r in users]
     return serialized

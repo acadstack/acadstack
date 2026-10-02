@@ -93,6 +93,38 @@ async def test_course_save_rejects_an_unknown_level(client, auth):
     assert M.Course.select().count() == 0
 
 
+@pytest.mark.parametrize("level, ok", [("PG", True), ("ALL", True), ("UG", False)])
+async def test_pg_scope_creates_only_pg_or_all_level_courses(client, auth, level, ok):
+    make_user("res", role="RES")
+    await auth.login("res")
+    body = await _post(client, "cour_save", {"code": "AB1", "title": "T", "ltp": "3-0-0-6-3",
+                                             "level": level})
+    assert (body["status"] == "OK") == ok, body
+    assert M.Course.select().count() == (1 if ok else 0)
+
+
+async def test_pg_scope_cannot_move_a_course_to_ug(client, auth):
+    crs = M.Course.create(code="AB1", title="T", ltp="3-0-0-6-3", level="PG", status="DRA",
+                          author=make_user("fac", role="FAC"))
+    make_user("res", role="RES")
+    await auth.login("res")
+    body = await _post(client, "cour_save", {"id": crs.id, "level": "UG", "txn_no": 1})
+    assert body["status"] == "ERROR"
+    assert M.Course.get_by_id(crs.id).level == "PG"
+    body = await _post(client, "cour_save", {"id": crs.id, "title": "New", "txn_no": 1})
+    assert body["status"] == "OK", body
+
+
+@pytest.mark.parametrize("ltp", ["3-0-2", "3-0-2-6-x", "", None])
+async def test_course_save_needs_the_full_ltpsc(client, auth, ltp):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await _post(client, "cour_save", {"code": "AB1", "title": "T", "ltp": ltp,
+                                             "level": "UG"})
+    assert body["status"] == "ERROR" and "L-T-P-S-C" in body["body"]
+    assert M.Course.select().count() == 0
+
+
 async def _upload_courses(client, csv_text):
     fs = FileStorage(BytesIO(csv_text.encode()), filename="courses.csv",
                      content_type="text/csv")

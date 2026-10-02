@@ -443,11 +443,9 @@ async def dc_search():
         if status:
             dc_qry = dc_qry.where(DB.DcForStudent.status == status)
         if mem_id:
-            if mem_role == "S":
-                dc_qry = dc_qry.where(DB.DcForStudent.supervisor == mem_id)
-            else:
-                dc_qry = dc_qry.where((DB.DcMember.member == mem_id) &
-                (DB.DcMember.role == mem_role))
+            # The supervisor is a member too, with role SU
+            dc_qry = dc_qry.where((DB.DcMember.member == mem_id) &
+                                  (DB.DcMember.role == mem_role))
         if dept_name:
             dc_qry = dc_qry.where(DB.DcForStudent.student.person.
                                   dept_name == dept_name)

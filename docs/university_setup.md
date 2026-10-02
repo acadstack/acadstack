@@ -364,12 +364,12 @@ A **batch** is the students who joined a program in one year. Its **batch adviso
 The faculty member must belong to a role that holds `roster.instructor` (see section 2). For a new installation, that is the Faculty role.
 
 1. Enter the **Entry Year**, for example `2026`.
-2. Choose the **Dept.** This is the department of the faculty member who will be the advisor.
+2. Choose the **Dept.** This is the department of the batch's students, and the advisor must belong to it too: an advisor approves the enrolments of their own department's students only.
 3. Choose the **Degree**, which is the program.
 4. Press **Find**. The screen shows the current advisor, or "No advisor found for BSC PHY 2026".
 5. To assign or replace the advisor, start typing the faculty member's name (at least three letters) in the box, pick them from the list that appears, and press **Assign**. Confirm.
 
-Because the department you choose is the advisor's own, pick the same department that the advisor is recorded under; otherwise a later **Find** will not show them.
+An advisor from another department is refused with "The batch advisor must be from the … department." A department whose students need an advisor from elsewhere needs that faculty member recorded under it.
 
 ## 11. A suggested order, and a final check
 

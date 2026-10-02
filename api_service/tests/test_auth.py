@@ -145,3 +145,22 @@ async def test_bulk_add_users_keeps_the_status_of_an_existing_student(client, au
     body = await bulk_add_users(client, f"{USERS_HEADER}\nS1,s1,A,B,STU,PHY,BSC,2026,s1@example.com\n")
     assert "Updated 1 users" in body["body"]
     assert M.User.get(M.User.login_id == "s1").person.current_status == "WTH"
+
+
+async def assign_advisor(client, user_id, dept_name):
+    res = await client.post("/acadstack/assign_advisor", json={
+        "for_degree": "BSC", "for_entry_year": "2026", "dept_name": dept_name, "user_id": user_id})
+    return await res.get_json()
+
+
+async def test_batch_advisor_must_be_from_the_batch_department(client, auth, db):
+    make_user("acad", role="ACA")
+    adv = make_user("adv", role="FAC", dept_name="PHY")
+    await auth.login("acad")
+    body = await assign_advisor(client, adv.id, "HIST")
+    assert body["status"] == "ERROR" and "HIST" in body["body"]
+    assert not M.BatchAdvisors.select().exists()
+    assert (await assign_advisor(client, adv.id, "PHY"))["status"] == "OK"
+    found = await (await client.post("/acadstack/find_advisor", json={
+        "for_degree": "BSC", "for_entry_year": "2026", "dept_name": "PHY"})).get_json()
+    assert found["body"]["user_id"] == adv.id
