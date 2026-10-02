@@ -10,8 +10,8 @@ Component for managing batch advisors.
       <div class="col">
         <div>
           <label for="entryYr">Entry Year</label>
-          <input id="entryYr" type="number" class="form-control" min="2012"
-            max="2099" v-model="search_crit.for_entry_year"
+          <input id="entryYr" type="number" class="form-control"
+            v-model="search_crit.for_entry_year"
             required
           />
         </div>

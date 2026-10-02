@@ -210,6 +210,7 @@ async def bulk_add_courses():
         with open(file_path, newline='') as csvfile:
             reader = csv.DictReader(csvfile)
             levels = _course_levels()
+            freqs = {x["id"] for x in apiVC.static_data_dict()["CourseFreqs"] if x["id"]}
             with DB.db.atomic() as txn:
                 for row in reader:
                     level = (row.get("level") or "").strip().upper()
@@ -222,9 +223,14 @@ async def bulk_add_courses():
                         raise C.AcadStackException(
                             f"Course {row.get('code')}: ltp must be in the "
                             "L-T-P-S-C format, e.g. 3-0-2-6-4.")
+                    freq = (row.get("freq") or "").strip().upper()
+                    if freq and freq not in freqs:
+                        raise C.AcadStackException(
+                            f"Course {row.get('code')}: freq must be one of "
+                            f"{', '.join(sorted(freqs))}.")
                     cou = DB.Course(code=row["code"], title=row["title"],
-                                 ltp=ltpsc, level=level, status="APP", 
-                                 author=apiVC.logged_in_user())
+                                 ltp=ltpsc, level=level, status="APP",
+                                 author=apiVC.logged_in_user(), freq=freq or None)
                     cou.save()
                 txn.commit()
 

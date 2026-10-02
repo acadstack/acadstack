@@ -35,9 +35,9 @@ Component for login screen.
       </div>
       <div class="col-md-8">
         <p class="lead">A System For Managing Academic Information</p>
-        <p class="text-center fw-bold text-danger">
-            By proceeding with the login you agree to the 
-            <a href="http://bit.ly/AcadStack_Terms" target="_blank">terms of use</a> of this service.
+        <p class="text-center fw-bold text-danger" v-if="$root.institute && $root.institute.terms_url">
+            By proceeding with the login you agree to the
+            <a :href="$root.institute.terms_url" target="_blank">terms of use</a> of this service.
         </p>
       </div>
     </div>

@@ -102,20 +102,14 @@ Component for course offering details.
               </div>
               <div class="col">
                 <label for="crs_sect">Section</label>
-                <select
-                  class="form-select"
+                <input
+                  type="text"
+                  class="form-control"
                   id="crs_sect" required
+                  maxlength="2"
                   v-model.trim="coffer.section"
                   :disabled="viewOnly"
-                >
-                   <option value="A">A</option>
-                   <option value="B">B</option>
-                   <option value="C">C</option>
-                   <option value="D">D</option>
-                   <option value="E">E</option>
-                   <option value="F">F</option>
-                   <option value="G">G</option>
-                </select>
+                />
                 <div v-if="!v$.coffer.section.required && v$.coffer.section.$dirty" class="text-danger">Select section</div>
               </div>
             </div>

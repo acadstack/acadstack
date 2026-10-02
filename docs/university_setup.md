@@ -155,12 +155,14 @@ Each setting is one row with its own save button. Press the button on the row yo
 | `institute_name` | Your institute's name. Printed on grade sheets and certificates. | blank |
 | `institute_place` | Your institute's place. Printed on certificates ("Given at …"). | blank |
 | `app_url` | The web address of this application, starting with `http://` or `https://`. Given to users in emails. | blank |
+| `terms_url` | The web address of your terms-of-use page, starting with `http://` or `https://`. Shown as a link on the login pages. A blank value hides the link. | blank |
+| `guide_url` | The web address of your user guide, starting with `http://` or `https://`. Shown as a link on the login pages, the Home page and the Help page. A blank value hides the link. | blank |
 | `help_email` | The address for help requests. It is also shown to users on the Help page and the login page, and receives access-violation alerts. | blank |
 | `broadcast_emails` | Addresses that receive the academic calendar alerts. Enter one address per line. | none |
 
 Something printed or sent with a blank value leaves that part out. Set the institute name and place before you print any certificate.
 
-A newly saved `help_email` appears on the Help page the next time a user logs in.
+A newly saved `help_email`, `terms_url` or `guide_url` appears on the Help and login pages the next time a user logs in.
 
 ## 5. Academic Events
 
@@ -204,6 +206,8 @@ The event names can be relabelled on the **Workflow labels** tab of *Lists*. The
 | Session closed | Set only by closing the session (below). |
 
 Any events you added under *Lists → CalendarEvents* appear below these as optional rows, with the same date-range rule.
+
+**Feedback scoring.** A feedback question's answer options are free text, but the instructor feedback score is computed only from the English Likert wording: "strongly agree", "agree", "neither agree nor disagree", "disagree" and "strongly disagree" (case and spacing do not matter). Answer options with other wording, or in another language, score 0.
 
 ### Closing a session
 
@@ -327,11 +331,11 @@ Use this to create your catalogue of courses from a spreadsheet. For a single co
 Save as **CSV** (UTF-8), with this first row:
 
 ```
-code,title,ltp,level
-PHY101,Mechanics,3-1-0-4-4,UG
-PHY102,Optics Lab,0-0-3-3-1.5,UG
-MTH501,Real Analysis,3-0-0-6-3,PG
-GEN100,Writing Skills,2-0-0-2-2,ALL
+code,title,ltp,level,freq
+PHY101,Mechanics,3-1-0-4-4,UG,A
+PHY102,Optics Lab,0-0-3-3-1.5,UG,
+MTH501,Real Analysis,3-0-0-6-3,PG,O
+GEN100,Writing Skills,2-0-0-2-2,ALL,E
 ```
 
 | Column | What to enter |
@@ -340,6 +344,7 @@ GEN100,Writing Skills,2-0-0-2-2,ALL
 | `title` | The course title, up to 200 characters. |
 | `ltp` | The credit structure as five numbers joined by dashes: **L-T-P-S-C**. Lecture, tutorial and practical hours, then self-study hours, then credits. For example `3-0-2-6-4`. A number may have decimals, such as `1.5`. All five parts are required. |
 | `level` | Who may take the course: `UG`, `PG` or `ALL` (open to all levels). Capitals or lower case both work. |
+| `freq` | Optional. The semester frequency, one of the codes in *Lists → CourseFreqs*. Leave it blank (or omit the column) to leave it unset. |
 
 AcadStack does not work out S or C for you; it stores what you give.
 
@@ -352,7 +357,7 @@ AcadStack does not work out S or C for you; it stores what you give.
 
 - **The whole file is accepted or refused.** If one row is wrong, no course is created, and the message names the first problem, such as "Course PHY104: ltp must be in the L-T-P-S-C format, e.g. 3-0-2-6-4." or "Course PHY103: level must be one of UG, PG, ALL."
 - **A course code that already exists refuses the file.** The message lists the codes. Remove those rows and upload again. To change an existing course, edit it under **Courses**.
-- **New courses are created as Approved**, with the frequency `A` ("any semester"; see *Lists → CourseFreqs*).
+- **New courses are created as Approved.** A blank `freq` column leaves the frequency unset; a value not in *Lists → CourseFreqs* refuses the file.
 - The level also decides who may edit the course: a user with `courses.edit:pg` edits `PG` and `ALL` courses.
 
 ## 10. Manage Batch Advisors

@@ -35,7 +35,12 @@ This application acadstack to efficiently manage information about various **cou
    To run the backend tests, see the setup notes at the top of `api_service/tests/conftest.py`, then run `cd api_service && pytest`.
 
     > **NOTE:** Some modules may fail to install due to unavailability of certain native libraries or headers on your OS. You can Google the error text to find a solution.
-    
+
+    > **NOTE:** On macOS, WeasyPrint (used to render PDFs) needs its native libraries on
+    > `DYLD_FALLBACK_LIBRARY_PATH`. If PDF generation fails or `tests/test_reports_pdf.py` is
+    > skipped, install them with `brew install pango` and run the server and tests with
+    > `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` set.
+
 8. Install necessary dependencies for VueJS app:
     1. `cd webapp` 
     1. `npm install`

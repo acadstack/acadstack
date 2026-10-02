@@ -137,7 +137,7 @@ export default {
         entry_year: "",
         acad_session: "",
         min_credits: 0,
-        max_credits: 30,
+        max_credits: "",
         marked_items: [],
         mark_type: "exclude",
         exclude_course: ""
@@ -205,7 +205,7 @@ export default {
         entry_year: "",
         acad_session: "",
         min_credits: 0,
-        max_credits: 30,
+        max_credits: "",
         marked_items: [],
         mark_type: "exclude",
         exclude_course: ""

@@ -14,6 +14,8 @@ from conftest import enrol, make_offering, make_user
 @pytest.mark.parametrize("key, value", [
     ("institute_name", " IIT"), ("institute_place", 1),
     ("app_url", "www.example.org"), ("app_url", "https://a b"),
+    ("terms_url", "www.example.org"), ("terms_url", "https://a b"),
+    ("guide_url", "www.example.org"), ("guide_url", "https://a b"),
     ("help_email", "nobody"), ("help_email", "a@b, c@d"),
     ("broadcast_emails", "a@b.org"), ("broadcast_emails", ["a@b.org", "x"]),
 ])
@@ -24,7 +26,7 @@ def test_identity_settings_reject_invalid_values(db, key, value):
 
 def test_identity_settings_are_blank_by_default(db):
     assert [settings.get(k) for k in ("institute_name", "institute_place", "app_url",
-                                      "help_email")] == ["", "", "", ""]
+                                      "terms_url", "guide_url", "help_email")] == [""] * 6
     assert settings.get("broadcast_emails") == []
 
 
@@ -63,24 +65,30 @@ async def test_access_violation_alert_goes_to_help_email(app, sent):
 
 async def test_login_page_shows_institute_and_help(client, app, tmp_path):
     (tmp_path / "default.html").write_text(
-        "<head><!--INSTITUTE_META--></head><body><!--HELP_LINE--></body>")
+        "<head><!--INSTITUTE_META--></head><body><!--TERMS_LINE--><!--GUIDE_LINE-->"
+        "<!--HELP_LINE--></body>")
     app.static_folder = str(tmp_path)
     page = await (await client.get("/acadstack/")).get_data(as_text=True)
     assert page == "<head></head><body></body>"
     settings.save("institute_name", "Uni <One>")
     settings.save("help_email", "help@example.org")
+    settings.save("terms_url", "https://uni.example.org/terms")
+    settings.save("guide_url", "https://uni.example.org/guide")
     page = await (await client.get("/acadstack/")).get_data(as_text=True)
     assert '<meta name="author" content="Uni &lt;One&gt;">' in page
     assert 'href="mailto:help@example.org"' in page
+    assert 'href="https://uni.example.org/terms" target="_blank">terms of use</a>' in page
+    assert 'href="https://uni.example.org/guide" target="_blank">User Guide</a>' in page
 
 
 async def test_current_user_carries_help_email(client, auth):
     make_user("aca", role="ACA")
     settings.save("help_email", "help@example.org")
+    expected = {"help_email": "help@example.org", "terms_url": "", "guide_url": ""}
     res = await auth.login("aca")
-    assert (await res.get_json())["body"]["institute"] == {"help_email": "help@example.org"}
+    assert (await res.get_json())["body"]["institute"] == expected
     res = await client.get("/acadstack/current_user")
-    assert (await res.get_json())["body"]["institute"] == {"help_email": "help@example.org"}
+    assert (await res.get_json())["body"]["institute"] == expected
 
 
 def test_template_in_override_folder_is_used(tmp_path):

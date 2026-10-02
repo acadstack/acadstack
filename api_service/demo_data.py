@@ -171,9 +171,9 @@ def recreate_db(config):
     
     print(f"Dropping the schema: {db_name}")
     sql1 = """SELECT pg_terminate_backend(pg_stat_activity.pid)
-              FROM pg_stat_activity WHERE datname = 'acadstack_db'
+              FROM pg_stat_activity WHERE datname = %s
               AND pid <> pg_backend_pid();"""
-    cur.execute(sql.SQL(sql1))
+    cur.execute(sql1, (db_name,))
     cur.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name)))
     
     print(f"Creating the schema: {db_name}")
@@ -256,6 +256,20 @@ def _create_users():
     for idx, item in enumerate(all_users):
         dept = secrets.choice(DEPTS)
         num = str(idx + 1).zfill(4)
+        if idx < 2:         # Two deans
+            role = "DEA"
+        elif idx < 4:       # Next 2 are academic staff
+            role = "ACA"
+        elif idx < 10:      # Next 6 are HODs
+            role = "HOD"
+        elif idx < 50:      # Next 40 are faculty
+            role = "FAC"
+        else:               # Rest are students
+            role = "STU"
+
+        if ".".join(item).lower() == "acad.user":
+            role = "ACA"
+
         p = M.Person(org_id="{0}{1}".format(dept, num), dept_name=dept)
         p.year_of_entry = random.choice(ENTRY_YEARS)
         p.category = random.choice(PERSON_CAT)
@@ -263,6 +277,9 @@ def _create_users():
         p.degree = random.choice(DEGREES)
         p.deg_type = random.choice(DEG_TYPES)
         p.deg_type_spec = random.choice(DEG_SPL)
+        if role == "STU":
+            # Student lookup and bulk enrolment find only Registered students.
+            p.current_status = "REG"
         p.save()
         u = M.User()
         u.login_id = ".".join(item).lower()
@@ -270,20 +287,7 @@ def _create_users():
         u.first_name, u.last_name = item
         u.email = "{0}@{1}.com".format(item[0], item[1])
         u.person = p
-        if idx < 2:         # Two deans
-            u.role = "DEA"
-        elif idx < 4:       # Next 2 are academic staff
-            u.role = "ACA"
-        elif idx < 10:      # Next 6 are HODs
-            u.role = "HOD"
-        elif idx < 50:      # Next 40 are faculty
-            u.role = "FAC"
-        else:               # Rest are students
-            u.role = "STU"
-
-        if u.login_id == "acad.user":
-            u.role = "ACA"
-
+        u.role = role
         u.save()
 
     print(f"Added {len(all_users)} users. Password for each user is: abcd1234")
@@ -359,7 +363,7 @@ def _create_acad_sessions():
                     ('11-17', '11-27'), ('11-18', '12-15'), ('12-20', '12-20'),
                     ('12-22', '12-22')]
     DATES_MMDD_II = [('01-24','06-25'), ('01-25', '02-01'), ('01-25', '05-20'),
-                    ('02-16', '02-30'), ('03-01', '03-06'), ('03-24', '03-30'),
+                    ('02-16', '02-28'), ('03-01', '03-06'), ('03-24', '03-30'),
                     ('04-01', '04-10'), ('04-12', '04-12'), ('05-11', '05-16'),
                     ('05-17', '05-27'), ('05-18', '06-15'), ('06-20', '06-20'),
                     ('06-22', '06-22')]

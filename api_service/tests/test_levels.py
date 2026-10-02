@@ -154,6 +154,26 @@ async def test_course_csv_rejects_a_missing_or_unknown_level(app, client, auth, 
     assert not any(Path(app.config["upload_folder"]).rglob("*.csv"))
 
 
+async def test_course_csv_sets_the_freq_and_blank_leaves_it_unset(client, auth):
+    M.VocabItem.create(vocab="CourseFreqs", code="E", label="Even")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await _upload_courses(client, "code,title,ltp,level,freq\n"
+                                         "AB1,One,3-0-0-6-3,UG,e\nAB2,Two,3-0-0-6-3,UG,\n")
+    assert body["status"] == "OK", body
+    assert {c.code: c.freq for c in M.Course.select()} == {"AB1": "E", "AB2": None}
+
+
+async def test_course_csv_rejects_an_unknown_freq(client, auth):
+    M.VocabItem.create(vocab="CourseFreqs", code="E", label="Even")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await _upload_courses(client, "code,title,ltp,level,freq\nAB1,One,3-0-0-6-3,UG,X\n")
+    assert body["status"] == "ERROR"
+    assert "freq must be one of E" in body["body"], body
+    assert M.Course.select().count() == 0
+
+
 async def test_academics_of_a_student_without_entry_year(client, auth, grading_schemes):
     program("BSC", "UG")
     stu = make_user("stu", role="STU", degree="BSC")
