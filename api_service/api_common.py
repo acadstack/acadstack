@@ -264,6 +264,11 @@ def scheme_grades():
     return grades
 
 
+# Columns of the grades CSV; an evaluation component code can't be one of them.
+# CODE (the course code) is in the downloaded grades and ignored on upload.
+GRADE_CSV_COLUMNS = ("FIRST_NAME", "LAST_NAME", "ROLL_NO", "GRADE", "CODE")
+
+
 def valid_grades():
     """The grades an enrolment may be given: no grade yet, or a scheme's grade."""
     return [C.NO_GRADE] + scheme_grades()

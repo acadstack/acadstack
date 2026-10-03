@@ -260,6 +260,7 @@ Component for course offering details.
             </div>
           </div>
         </div>
+        <EvalComponents v-if="coffer.id" v-bind:co_id="coffer.id"/>
       </div>
       <div v-if="loaded">
         <EnrolledStudents v-if="tab=='enrollments'" 
@@ -301,6 +302,7 @@ import WorkflowNotes from "./WorkflowNotes.vue";
 import AcadSession from "./AcadSession.vue";
 import _ from "lodash";
 import IChart from './IChart.vue';
+import EvalComponents from "./EvalComponents.vue";
 
 export default {
   setup () {
@@ -312,7 +314,8 @@ export default {
     EnrolledStudents: EnrolledStudents,
     WorkflowNotes :WorkflowNotes,
     AcadSession: AcadSession,
-    IChart: IChart
+    IChart: IChart,
+    EvalComponents: EvalComponents
   },
   data: function() {
     return {

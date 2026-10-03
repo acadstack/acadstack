@@ -482,6 +482,22 @@ async def download_course_enrollments(co_id, is_grades=False):
             else:
                 sql_id = "enrolled_students_for_grades"
 
+        # Columns for the scores of the requested evaluation components, with
+        # the stored scores in the downloaded grades
+        comps = []
+        scores = {}
+        if is_grades:
+            codes = [c.strip().upper() for c in request.args.get("components", "").split(",")
+                     if c.strip()]
+            comps = [ec for ec in co.eval_components.order_by(DB.EvalComponent.id)
+                     if ec.code in codes]
+            if comps and sql_id == "get_course_grades":
+                rows = DB.EvalScore.select(DB.EvalScore, DB.CourseEnrollment, DB.User, DB.Person)\
+                    .join(DB.CourseEnrollment).join(DB.User).join(DB.Person)\
+                    .where(DB.EvalScore.component.in_(comps))
+                scores = {(es.enrolment.student.person.org_id.upper(), es.component_id):
+                          f"{float(es.score):g}" for es in rows}
+
         qry = sql_by_id(sql_id)
         cursor = DB.db.execute_sql(qry, [int(co_id)])
         ncols = len(cursor.description)
@@ -492,13 +508,14 @@ async def download_course_enrollments(co_id, is_grades=False):
         hdr_row = []
         for col_name in colnames:
             hdr_row.append(col_name)
-        result.append(','.join(hdr_row))
+        result.append(','.join(hdr_row + [ec.code for ec in comps]))
 
         # Add the data rows
         for row in cursor.fetchall():
             row_data = []
             for i in range(ncols):
                 row_data.append(row[i])
+            row_data += [scores.get((row[2], ec.id), "") for ec in comps]
             result.append(','.join(row_data))
         fp = BytesIO()
         fp.write('\n'.join(result).encode('utf-8'))

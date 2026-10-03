@@ -20,6 +20,8 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/offerings_of_course/<int:my_id>', view_func=offerings_of_course, methods=['GET'])
     bp.add_url_rule('/fetch_stats/<int:my_id>', view_func=fetch_stats, methods=['GET'])
     bp.add_url_rule('/running_courses', view_func=get_running_courses, methods=['GET'])
+    bp.add_url_rule('/eval_components/<int:co_id>', view_func=eval_components, methods=['GET'])
+    bp.add_url_rule('/eval_components_save', view_func=eval_components_save, methods=['POST'])
 
 def _save_co_instructors(instructors, co_id):
     for ins in instructors:
@@ -71,6 +73,103 @@ def _save_co_categorization(cats, co_id):
                 raise IntegrityError("Could not update DB. Please try reloading.")
         else:
             apiVC.save_entity(cc_obj)
+
+
+def _eval_components_json(co):
+    """The offering's evaluation components; until some are saved (saved is
+    false), the weighted items of its course's evaluation plan."""
+    saved = [{"code": ec.code, "label": ec.label,
+              "weight": float(ec.weight) if ec.weight is not None else None}
+             for ec in co.eval_components.order_by(DB.EvalComponent.id)]
+    if saved:
+        return {"components": saved, "saved": True}
+    labels = {i["id"]: i["value"] for i in apiVC.static_data_item("EvalItems")}
+    plan = co.course.evaluation if co.course else {}
+    return {"components": [{"code": code.upper(), "label": labels.get(code, code),
+                            "weight": float(w)}
+                           for code, w in (plan or {}).items()
+                           if str(w).replace(".", "", 1).isdigit() and float(w) > 0],
+            "saved": False}
+
+
+@P.require("offerings.view")
+async def eval_components(co_id):
+    try:
+        co = DB.CourseOffering.get_or_none(co_id)
+        if not co:
+            return apiVC.error_json(f"Course offering not found for ID {co_id}")
+        return apiVC.ok_json(_eval_components_json(co))
+    except Exception:
+        msg = "Error when fetching the evaluation components."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@P.require("grades.upload")
+async def eval_components_save():
+    """Replaces the offering's evaluation components with the supplied list
+    of {code, label, weight}."""
+    try:
+        fd = await request.get_json(force=True)
+        co_id = fd.get("course_offering")
+        co = DB.CourseOffering.get_or_none(co_id) if type(co_id) is int else None
+        if not co:
+            return apiVC.error_json("Please select a course offering.")
+        if not P.current_actor().allowed("grades.upload",
+                                         own=lambda: VAL.validate_course_instructor(co.id)):
+            return apiVC.error_json("Only the course coordinator can change the "
+                                    "evaluation components!")
+        VAL.validate_coff_status(co)
+
+        comps = {}
+        for c in fd.get("components") or []:
+            code = str(c.get("code") or "").strip().upper()
+            label = str(c.get("label") or "").strip()
+            if not (code and len(code) <= 10 and code.replace("_", "").isalnum()
+                    and code.isascii()):
+                return apiVC.error_json(f"Invalid component code '{code}': use up to 10 "
+                                        "letters, digits or _.")
+            if code in apiVC.GRADE_CSV_COLUMNS:
+                return apiVC.error_json(f"Component code {code} is a column of the grades CSV.")
+            if code in comps:
+                return apiVC.error_json(f"Component code {code} is repeated.")
+            if not label:
+                return apiVC.error_json(f"Please give a name for component {code}.")
+            weight = c.get("weight")
+            if weight in ("", None):
+                weight = None
+            else:
+                try:
+                    weight = float(weight)
+                except (TypeError, ValueError):
+                    weight = -1
+                if not 0 <= weight <= 100:
+                    return apiVC.error_json(f"Weight of {code} must be between 0 and 100.")
+            comps[code] = (label[:100], weight)
+
+        with DB.db.atomic():
+            existing = {ec.code: ec for ec in co.eval_components}
+            for code, ec in existing.items():
+                if code not in comps:
+                    if ec.scores.exists():
+                        raise C.AcadStackException(f"Component {code} has scores and "
+                                                   "cannot be removed.")
+                    ec.delete_instance()
+            for code, (label, weight) in comps.items():
+                ec = existing.get(code)
+                if ec:
+                    ec.label, ec.weight = label, weight
+                    apiVC.update_entity(DB.EvalComponent, ec)
+                else:
+                    apiVC.save_entity(DB.EvalComponent(offering=co, code=code,
+                                                       label=label, weight=weight))
+        return apiVC.ok_json(_eval_components_json(co))
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception:
+        msg = "Error when saving the evaluation components."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
 
 
 @P.require("offerings.view")

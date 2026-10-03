@@ -319,6 +319,35 @@ class GradeChange(BaseModel):
     reason = ORM.TextField(null=True)
 
 
+class EvalComponent(BaseModel):
+    """An evaluation component of an offering (e.g. mid-sem exam); its code
+    is the column name of its scores in the grades CSV."""
+    offering = ORM.ForeignKeyField(CourseOffering, backref='eval_components',
+                                   on_delete='CASCADE')
+    code = ORM.CharField(max_length=10)
+    label = ORM.CharField(max_length=100)
+    weight = ORM.DecimalField(max_digits=5, decimal_places=2, null=True)
+
+    class Meta:
+        indexes = (
+            (('offering', 'code'), True),
+        )
+
+
+class EvalScore(BaseModel):
+    """A student's score, scaled to 0-100, in an evaluation component."""
+    enrolment = ORM.ForeignKeyField(CourseEnrollment, backref='eval_scores',
+                                    on_delete='CASCADE')
+    component = ORM.ForeignKeyField(EvalComponent, backref='scores',
+                                    on_delete='CASCADE')
+    score = ORM.DecimalField(max_digits=5, decimal_places=2)
+
+    class Meta:
+        indexes = (
+            (('enrolment', 'component'), True),
+        )
+
+
 class StudentAttendance(BaseModel):
     ATT_STATUS = [
         ("A", 'Absent'),

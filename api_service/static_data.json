@@ -92,5 +92,17 @@
         {"id": "REG", "value": "Registered"},
         {"id": "WTH", "value": "Withdrawan"},
         {"id": "MDL", "value": "Medical/Semster Break"}
+    ],
+    "EvalItems": [
+        {"id": "hwa", "value": "Homework/Assignments"},
+        {"id": "qui", "value": "Quizzes"},
+        {"id": "mle", "value": "Mid-sem Lab Exam/Report/Viva"},
+        {"id": "mse", "value": "Mid-Sem Written Exam"},
+        {"id": "ele", "value": "End-sem Lab Exam/Report/Viva"},
+        {"id": "ese", "value": "End-Sem Written Exam"},
+        {"id": "hop", "value": "Hands-on Project"},
+        {"id": "rsp", "value": "Research Project"},
+        {"id": "pre", "value": "Presentation"},
+        {"id": "oth", "value": "Others"}
     ]
 }

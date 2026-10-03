@@ -30,7 +30,7 @@ def setup(db):
     return {"ins": ins, "co": co, "ce1": enrol(s1, co), "ce2": enrol(s2, co)}
 
 
-async def upload(client, app, login_id, co_id, csv_text, seed_file=True):
+async def upload(client, app, login_id, co_id, csv_text, seed_file=True, components=None):
     if seed_file:
         folder = os.path.join(app.config["upload_folder"], login_id)
         os.makedirs(folder, exist_ok=True)
@@ -39,7 +39,8 @@ async def upload(client, app, login_id, co_id, csv_text, seed_file=True):
     fs = FileStorage(BytesIO(csv_text.encode()), filename="grades.csv",
                      content_type="text/csv")
     res = await client.post("/acadstack/grades_upload",
-                            form={"course_offering": str(co_id)},
+                            form={"course_offering": str(co_id),
+                                  **({"components": components} if components else {})},
                             files={"grades_file": fs})
     return await res.get_json()
 
@@ -214,3 +215,78 @@ async def test_roll_numbers_in_lower_case_are_matched(client, auth, app, db):
                         f"{HEADER}\nA,B,fa27-0001,A\n")
     assert body["status"] == "OK", body
     assert grades(ce) == ["A"]
+
+
+@pytest.fixture
+def comps(setup):
+    return {code: M.EvalComponent.create(offering=setup["co"], code=code, label=code)
+            for code in ("MSE", "LAB1")}
+
+
+def scores(ce):
+    return {es.component.code: float(es.score)
+            for es in M.EvalScore.select().where(M.EvalScore.enrolment == ce.id)}
+
+
+SCORES_CSV = f"{HEADER},mse,lab1\nA,B,2024CSB1001,A,72.5,90\nC,D,2024CSB1002,B,40,\n"
+
+
+async def test_component_scores_are_saved_with_grades(client, auth, app, setup, comps):
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id, SCORES_CSV, components="MSE,LAB1")
+    assert body["status"] == "OK"
+    assert grades(setup["ce1"], setup["ce2"]) == ["A", "B"]
+    assert scores(setup["ce1"]) == {"MSE": 72.5, "LAB1": 90}
+    assert scores(setup["ce2"]) == {"MSE": 40}
+
+
+async def test_reupload_updates_scores_and_blank_keeps_them(client, auth, app, setup, comps):
+    await auth.login("ins")
+    await upload(client, app, "ins", setup["co"].id, SCORES_CSV, components="MSE,LAB1")
+    body = await upload(client, app, "ins", setup["co"].id,
+                        f"{HEADER},mse,lab1\nA,B,2024CSB1001,A,80,\nC,D,2024CSB1002,B,40,\n",
+                        components="MSE,LAB1")
+    assert "updated 1 records" in body["body"]
+    assert scores(setup["ce1"]) == {"MSE": 80, "LAB1": 90}
+    assert scores(setup["ce2"]) == {"MSE": 40}
+
+
+async def test_only_selected_components_are_read(client, auth, app, setup, comps):
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id, SCORES_CSV, components="LAB1")
+    assert body["status"] == "OK"
+    assert scores(setup["ce1"]) == {"LAB1": 90}
+
+
+@pytest.mark.parametrize("bad", ["101", "-1", "abc", "nan"])
+async def test_invalid_score_rejects_the_upload(client, auth, app, setup, comps, bad):
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id,
+                        f"{HEADER},mse\nA,B,2024CSB1001,A,50\nC,D,2024CSB1002,B,{bad}\n",
+                        components="MSE")
+    assert "Found invalid scores" in body["body"]
+    assert grades(setup["ce1"], setup["ce2"]) == ["NA", "NA"]
+    assert scores(setup["ce1"]) == {}
+
+
+async def test_unknown_component_rejected(client, auth, app, setup, comps):
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id, SCORES_CSV, components="MSE,ESE")
+    assert "Not evaluation components" in body["body"]
+
+
+async def test_selected_component_missing_from_header(client, auth, app, setup, comps):
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id, GOOD_CSV, components="MSE")
+    assert "no columns for the selected evaluation components" in body["body"]
+    assert grades(setup["ce1"], setup["ce2"]) == ["NA", "NA"]
+
+
+async def test_scores_of_audit_rejection_are_rolled_back(client, auth, app, setup, comps):
+    M.CourseEnrollment.update(enrol_type="A").where(
+        M.CourseEnrollment.id == setup["ce2"].id).execute()
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id, SCORES_CSV, components="MSE,LAB1")
+    assert body["status"] == "ERROR"
+    assert scores(setup["ce1"]) == {}
+

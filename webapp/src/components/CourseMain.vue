@@ -148,19 +148,6 @@ export default {
   props: ["course","error","ltpsc"],
   data: function() {
         return {
-      // TODO: Put these as static data
-      eval_items :[
-        {id:"hwa", label: "Homework/Assignments"},
-        {id:"qui", label: "Quizzes"},
-        {id:"mle", label: "Mid-sem Lab Exam/Report/Viva"},
-        {id:"mse", label: "Mid-Sem Written Exam"},
-        {id:"ele", label: "End-sem Lab Exam/Report/Viva"},
-        {id:"ese", label: "End-Sem Written Exam"},
-        {id:"hop", label: "Hands-on Project"},
-        {id:"rsp", label: "Research Project"},
-        {id:"pre", label: "Presentation"},
-        {id:"oth", label: "Others"}
-      ],
       learning_items : [
         {id:"bla", label: "Black Board"},
         {id:"pro", label: "Project-based Learning"},
@@ -172,6 +159,11 @@ export default {
         {id:"gue", label: "Guest Lectures"}
       ]
     };
+  },
+  computed: {
+    eval_items() {
+      return (this.SD.EvalItems || []).map(e => ({id: e.id, label: e.value}));
+    }
   },
   created: function() {
     let vm = this;
