@@ -4,14 +4,14 @@
     "db_name": "acadstack_db",
     "db_args": {
         "user": "app_user",
-        "password": "passw0rd.",
+        "password": "PASSWORD_HERE",
         "host": "db",
         "port": 5432
     },
     "email": {
         "dryrun": true,
         "user": "****@gmail.com",
-        "password": "****",
+        "password": "PASSWORD_HERE",
         "host": "smtp.gmail.com",
         "port": 587
     },

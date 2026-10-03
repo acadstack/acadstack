@@ -62,7 +62,8 @@ Run the following command in your terminal to verify that it is working:
 `docker buildx inspect --bootstrap` Rerun this command if you see "context deadline exceeded" error.
 The `docker buildx inspect` command will confirm that the builder is ready and supports `linux/amd64`
 1. Run the following to build the acadstack-backend image:
-`docker buildx build --platform linux/amd64 -t sodhix/acadstack-backend:v.01 --file api_service/Dockerfile --load .`
+`docker buildx build --platform linux/amd64 --build-arg OAUTH_CLIENT_ID=<your-id>.apps.googleusercontent.com --build-arg APP_PORT=5300 -t sodhix/acadstack-backend:v.01 --file api_service/Dockerfile --load .`
+    - `--build-arg OAUTH_CLIENT_ID`: Required. The Google client ID is baked into the web app at build time.
     - `--load`: Loads the resulting image into your local image cache.
     - `--platform linux/amd64`: Tells Docker to build the image for the linux/amd64 architecture.
     - `-t`: Use the tag that you want for your image.
@@ -129,44 +130,45 @@ root@2f1cd5e70109:/app#
 1. In the above container shell, run the following to create the demo data:
 `python demo_data.py config.json` You should see something like the following:
 ```bash
-$ docker exec -it acadstack_backend /bin/bash
-root@2f1cd5e70109:/app# python demo_data.py config.json 
+root@1c546ef6c0d5:/app# python demo_data.py config.json
 ========== Setting up DEMO database ==========
 Dropping the schema: acadstack_db
 Creating the schema: acadstack_db
 Database 'acadstack_db' initialized.
+============================================================
+Created the superuser.  Login: admin  Password: tMhzk8KxfZUMZRGt
+Log in, change this password and set the email address.
+============================================================
 Created DB tables.
 Created academic sessions
 Creating users...
 Added 290 users. Password for each user is: abcd1234
 Creating courses...
-Added 28 courses.
+Added 30 courses.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 46 students.
+Added 60 offerings, each with 25 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 46 students.
+Added 60 offerings, each with 30 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 46 students.
+Added 60 offerings, each with 40 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 46 students.
+Added 60 offerings, each with 40 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 60 students.
+Added 60 offerings, each with 25 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 25 students.
+Added 60 offerings, each with 25 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 25 students.
+Added 60 offerings, each with 25 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 60 students.
+Added 60 offerings, each with 30 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 25 students.
+Added 60 offerings, each with 40 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 60 students.
+Added 60 offerings, each with 40 students.
 Creating course offerings and enrolling students...
-Added 100 offerings, each with 25 students.
-Creating course offerings and enrolling students...
-Added 100 offerings, each with 60 students.
+Added 60 offerings, each with 30 students.
 Done adding demo data.
-root@2f1cd5e70109:/app#
+root@1c546ef6c0d5:/app#
 ```
 1. Open the browser at `http://localhost:5300/acadstack/` and login 
 using ID `acad.user` and password `abcd1234`. 
