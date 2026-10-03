@@ -260,14 +260,8 @@ export default {
         vm.results = { courses: [], has_next: false };
       }
       sessionStorage.coCourse = JSON.stringify(vm.course);
-      if(this.isCOSearch)
+      if(!this.isCOSearch)
       {
-        vm.v$.$touch()
-        if (vm.v$.$invalid) {
-          return;
-        }
-      }
-      else{
         var user = this.currentUser;
         vm.course.instructor_id = user.id;
       }

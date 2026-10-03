@@ -166,13 +166,7 @@ export default {
       let vm = this;
       if (!is_paging) vm.course.pg_no = 1;
       sessionStorage.couCourse = JSON.stringify(vm.course);
-      if(this.$route.name=='cour.find'){
-        vm.v$.$touch()
-        if (vm.v$.$invalid) {
-          return;
-        }
-      }
-      else{
+      if(this.$route.name!='cour.find'){
         var user = vm.currentUser;
         vm.course.author = user.id;
         vm.results.courses = [];
