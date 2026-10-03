@@ -21,12 +21,17 @@ import face_recognition as fr
 import numpy as np
 
 
+class FaceCountError(Exception):
+    """A photo that must hold one face holds none or several."""
+
+
 def get_face_encoding(image_bytes):
     f = io.BytesIO(image_bytes)
     image = fr.load_image_file(f)
     fenc = fr.face_encodings(image, num_jitters=15, model="large")
     if len(fenc) != 1:
-        raise Exception("Expected 1 face, found {0}".format(len(fenc)))
+        raise FaceCountError("The photo must show exactly one face, but {0} "
+                             "were found.".format(len(fenc)))
     return fenc[0]
 
 

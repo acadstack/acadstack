@@ -115,6 +115,8 @@ async def kface_add():
                                     "contact the academic section to change it.")
         __encode_and_save_face(photo, cu.id)
         return apiVC.ok_json("Photos processed.")
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when processing face photo."
         logging.exception(msg)
