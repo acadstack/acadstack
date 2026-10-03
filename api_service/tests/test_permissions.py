@@ -74,6 +74,8 @@ ROLE_CHECKS = {
     "drop_withdraw_course": LOGIN,
     "earned_credit_check": LOGIN,
     "enroll_in_courses": ['ACA', 'STU'],
+    "eval_components": LOGIN,
+    "eval_components_save": ['ACA', 'DEA', 'FAC'],
     "fetch_stats": LOGIN,
     "find_advisor": LOGIN,
     "find_students": LOGIN,

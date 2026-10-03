@@ -513,6 +513,18 @@ async def download_catwise_earned_credits(acad_session,degree,dept_name,course_t
         logging.exception(msg)
         return apiVC.error_json(msg)
 
+def _score(text):
+    """The evaluation component score in a grades CSV cell: None when blank.
+    Raises ValueError unless it is a number from 0 to 100."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    score = float(text)
+    if not 0 <= score <= 100:
+        raise ValueError(text)
+    return round(score, 2)
+
+
 @P.require("grades.upload")
 async def grades_upload():
     try:
@@ -536,6 +548,16 @@ async def grades_upload():
         # Raises exception when change not allowed
         VAL.validate_coff_status(co_id)
 
+        # The evaluation components whose scores are in the CSV, as its columns
+        codes = [c.strip().upper() for c in (form.get('components') or '').split(',')
+                 if c.strip()]
+        comps = {ec.code: ec for ec in co_obj.eval_components}
+        unknown = [c for c in codes if c not in comps]
+        if unknown:
+            return apiVC.error_json(f"Not evaluation components of this course: {unknown}")
+        if len(set(codes)) != len(codes):
+            return apiVC.error_json("An evaluation component is selected more than once.")
+
         grades_file = (await request.files)['grades_file']
         if grades_file.filename == '':
             return apiVC.error_json("No grades .csv file supplied!")
@@ -552,6 +574,11 @@ async def grades_upload():
 
             if not lines[0].replace(' ', '').startswith("FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"):
                 return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
+            header = [h.strip() for h in lines[0].split(',')]
+            absent = [c for c in codes if c not in header]
+            if absent:
+                return apiVC.error_json("The header row in CSV has no columns for the "
+                                        f"selected evaluation components: {absent}")
 
             invalid_rows = []
             valid_grades = apiVC.valid_grades()
@@ -568,9 +595,21 @@ async def grades_upload():
             out.write(y)
 
         # Check the uploaded roll numbers against what we have in the DB
+        rolls = []
+        bad_scores = []
         with open(file_path, newline='') as csvfile:
             reader = csv.DictReader(csvfile)
-            rolls = [row["ROLL_NO"].upper().strip() for row in reader]
+            for row in reader:
+                rolls.append(row["ROLL_NO"].upper().strip())
+                vals = {(k or "").strip(): v for k, v in row.items()}
+                for c in codes:
+                    try:
+                        _score(vals.get(c))
+                    except ValueError:
+                        bad_scores.append(f"{rolls[-1]} {c}: {vals.get(c)}")
+        if bad_scores:
+            return apiVC.error_json(f"Found invalid scores: {bad_scores}. Scores must "
+                                    "be numbers from 0 to 100, or blank.")
 
         coe = DB.CourseEnrollment.select().where(
             (DB.CourseEnrollment.course_offering == co_id) &
@@ -616,15 +655,30 @@ async def grades_upload():
                         raise C.AcadStackException(f"Invalid grade {grade} assigned "
                                 f"to {roll_no} ({kind}). Allowed grades are: {allowed}")
 
-                    if coe.grade == grade:
-                        logging.debug("Grade unchanged, skipping the update.")
-                        continue
+                    changed = coe.grade != grade
+                    if changed:
+                        old_grade = coe.grade
+                        coe.grade = grade
+                        record_grade_change(coe, old_grade, P.current_actor())
+                        apiVC.update_entity(DB.CourseEnrollment, coe)
 
-                    old_grade = coe.grade
-                    coe.grade = grade
-                    record_grade_change(coe, old_grade, P.current_actor())
-                    apiVC.update_entity(DB.CourseEnrollment, coe)
-                    upd_count += 1
+                    # A blank score leaves the stored one as is
+                    vals = {(k or "").strip(): v for k, v in row.items()}
+                    stored = {es.component_id: es for es in coe.eval_scores}
+                    for c in codes:
+                        score = _score(vals.get(c))
+                        es = stored.get(comps[c].id)
+                        if score is None or (es and float(es.score) == score):
+                            continue
+                        if es:
+                            es.score = score
+                            apiVC.update_entity(DB.EvalScore, es)
+                        else:
+                            apiVC.save_entity(DB.EvalScore(enrolment=coe, component=comps[c],
+                                                           score=score))
+                        changed = True
+                    if changed:
+                        upd_count += 1
 
             txn.commit()
         if not P.current_actor().has("roster.acad_section"):

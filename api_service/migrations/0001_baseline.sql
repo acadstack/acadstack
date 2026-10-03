@@ -1,6 +1,7 @@
 -- Baseline schema for a new AcadStack database.
 -- Later schema changes go in new numbered files next to this one; do not edit
--- this file once an installation has applied it.
+-- this file once an installation has applied it. (None has yet: until the
+-- first deployment, schema changes are folded in here.)
 
 CREATE TABLE public.academiccalendar (
     id bigint NOT NULL,
@@ -183,7 +184,10 @@ CREATE TABLE public.courseenrollment (
     enrol_status character varying(10) NOT NULL,
     grade character varying(2) NOT NULL,
     current_score real,
-    remarks text
+    remarks text,
+    -- The course's credits, copied when the session is closed (NULL while
+    -- it is open), so later course changes don't change transcripts
+    credits numeric(6,2)
 );
 
 CREATE SEQUENCE public.courseenrollment_id_seq
@@ -1205,6 +1209,66 @@ ALTER TABLE ONLY public.rolepermission
 ALTER TABLE ONLY public."user"
     ADD CONSTRAINT user_role_fkey FOREIGN KEY (role) REFERENCES public.role(code);
 
+-- Every grade change is logged, for reproducible transcripts.
+
+CREATE TABLE public.gradechange (
+    id bigserial PRIMARY KEY,
+    is_deleted boolean NOT NULL,
+    txn_no integer NOT NULL,
+    ins_ts timestamp without time zone NOT NULL,
+    upd_ts timestamp without time zone NOT NULL,
+    txn_login_id character varying(40),
+    enrolment_id bigint NOT NULL
+        REFERENCES public.courseenrollment(id) ON DELETE CASCADE,
+    old_grade character varying(2) NOT NULL,
+    new_grade character varying(2) NOT NULL,
+    changed_by character varying(40) NOT NULL,
+    reason text
+);
+
+CREATE INDEX gradechange_enrolment_id ON public.gradechange USING btree (enrolment_id);
+
+CREATE INDEX gradechange_txn_no ON public.gradechange USING btree (txn_no);
+
+-- Evaluation components of a course offering (mid-sem, end-sem, lab, ...)
+-- and each enrolled student's score (0-100) in them, uploaded with grades.
+
+CREATE TABLE public.evalcomponent (
+    id bigserial PRIMARY KEY,
+    is_deleted boolean NOT NULL,
+    txn_no integer NOT NULL,
+    ins_ts timestamp without time zone NOT NULL,
+    upd_ts timestamp without time zone NOT NULL,
+    txn_login_id character varying(40),
+    offering_id bigint NOT NULL
+        REFERENCES public.courseoffering(id) ON DELETE CASCADE,
+    code character varying(10) NOT NULL,
+    label character varying(100) NOT NULL,
+    weight numeric(5,2),
+    UNIQUE (offering_id, code)
+);
+
+CREATE INDEX evalcomponent_txn_no ON public.evalcomponent USING btree (txn_no);
+
+CREATE TABLE public.evalscore (
+    id bigserial PRIMARY KEY,
+    is_deleted boolean NOT NULL,
+    txn_no integer NOT NULL,
+    ins_ts timestamp without time zone NOT NULL,
+    upd_ts timestamp without time zone NOT NULL,
+    txn_login_id character varying(40),
+    enrolment_id bigint NOT NULL
+        REFERENCES public.courseenrollment(id) ON DELETE CASCADE,
+    component_id bigint NOT NULL
+        REFERENCES public.evalcomponent(id) ON DELETE CASCADE,
+    score numeric(5,2) NOT NULL CHECK (score >= 0 AND score <= 100),
+    UNIQUE (enrolment_id, component_id)
+);
+
+CREATE INDEX evalscore_component_id ON public.evalscore USING btree (component_id);
+
+CREATE INDEX evalscore_txn_no ON public.evalscore USING btree (txn_no);
+
 -- Roles and their permissions. The code checks permissions only; see
 -- policy.py. Users holding permissions.manage edit these.
 
@@ -1289,6 +1353,7 @@ INSERT INTO public.permission (code, description, is_deleted, txn_no, ins_ts, up
     ('grades.reports', 'Grade sheets, degree certificates and grade submission status', false, 1, now(), now()),
     ('grades.distribution', 'Course-wise grade distribution report', false, 1, now(), now()),
     ('grades.cgpa_report', 'CGPA and SGPA report', false, 1, now(), now()),
+    ('sessions.close', 'Close an academic session, freezing its credits and grades', false, 1, now(), now()),
     ('credits.reports', 'Earned credits reports', false, 1, now(), now()),
     ('credits.generate', 'Generate students'' credits data', false, 1, now(), now()),
     ('credits.notify_violation', 'Email students about credit requirement violations', false, 1, now(), now()),
@@ -1396,6 +1461,7 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('ACA', 'reports.course_enrolments', false, 1, now(), now()),
     ('ACA', 'reports.student_strength', false, 1, now(), now()),
     ('ACA', 'reports.student_strength_download', false, 1, now(), now()),
+    ('ACA', 'sessions.close', false, 1, now(), now()),
     ('ACA', 'slots.manage', false, 1, now(), now()),
     ('ACA', 'student_docs.access:any', false, 1, now(), now()),
     ('ACA', 'student_docs.upload', false, 1, now(), now()),
@@ -1574,6 +1640,7 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('SUP', 'permissions.manage', false, 1, now(), now()),
     ('SUP', 'ppr.edit:any', false, 1, now(), now()),
     ('SUP', 'ppr.view:any', false, 1, now(), now()),
+    ('SUP', 'sessions.close', false, 1, now(), now()),
     ('SUP', 'settings.manage', false, 1, now(), now()),
     ('SUP', 'student_docs.access:own', false, 1, now(), now()),
     ('SUP', 'student_docs.upload', false, 1, now(), now()),
