@@ -413,7 +413,10 @@ export default {
     if (from.path.startsWith(to.path)) {
       this.reset();
     } else if (to.params.id) {
-      await this.load();
+      // this.$route still points at the old offering here; the loaders read coffer.id
+      this.coffer.id = to.params.id;
+      this.coffer.enrollments = [];
+      await Promise.all([this.load(), this.loadStats(), this.loadEnrollments()]);
     }
     next();
   },
@@ -441,6 +444,7 @@ export default {
       vm.user = this.currentUser;
       await vm.doHttp(true, `get_course_enrollments/${cid}`, null,
         (b)=>{vm.coffer.enrollments = b}, vm.setStatusMessage)
+      vm.loaded = true;
     },
     setAcadSession(acd) {
       this.coffer.acad_session=acd;
@@ -549,7 +553,8 @@ export default {
       try {
         let res = await vm.$http.get("co_view/" + cid);
         if (res.data.status == "OK") {
-          vm.coffer = res.data.body;
+          // co_view has no enrollments; keep any that loadEnrollments() already fetched
+          vm.coffer = {...res.data.body, enrollments: vm.coffer.enrollments};
           vm.oldStatus = vm.coffer.status;
         } else {
           vm.setStatusMessage(res.data.body);
@@ -581,7 +586,7 @@ export default {
         try {
           let res = await vm.$http.post("co_save", vm.coffer);
           if (res.data.status == "OK") {
-            vm.coffer = res.data.body;
+            vm.coffer = {...res.data.body, enrollments: vm.coffer.enrollments};
             if (!vm.isEdit) {
               let v = `${vm.$route.path}/${vm.coffer.id}`;
               console.log("Loading CO view: " + v);
