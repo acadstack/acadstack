@@ -74,8 +74,8 @@ Component for showing the academics details of a student.
                         Action
                       </button>
                       <div class="dropdown-menu">
-                        <a class="dropdown-item" @click.prevent="dropWithdraw (c.id, 'DROP')" :disabled="!isCourseAddDropOpen(acs)">Drop Course</a>
-                        <a class="dropdown-item" @click.prevent="dropWithdraw(c.id, 'WDRAW')" :disabled="!isCourseWithdrawOpen(acs)">Withdraw Course</a>
+                        <a class="dropdown-item" @click.prevent="dropWithdraw (c.id, 'DROP')" :class="{disabled: !canDropWithdraw(c, acs_index, 'DROP')}">Drop Course</a>
+                        <a class="dropdown-item" @click.prevent="dropWithdraw(c.id, 'WDRAW')" :class="{disabled: !canDropWithdraw(c, acs_index, 'WDRAW')}">Withdraw Course</a>
                       </div>
                     </div>
                     <div v-else></div>
@@ -103,6 +103,12 @@ export default {
         !['WDRAW', 'DROP'].includes(c.enrol_status) && 
         ['R', 'E'].includes(c.status);
     },
+    /** Mirrors validate_enrolment_change: an audited course is dropped in the withdraw window. */
+    canDropWithdraw(c, acs, status) {
+      if (this.hasPermission('enrolments.edit:any')) return true;
+      if (status == 'WDRAW' || c.enrol_type == 'A') return this.isCourseWithdrawOpen(acs);
+      return this.isCourseAddDropOpen(acs);
+    },
     dropWithdraw(id, status) {
       let vm = this;
       let st = (status == "DROP" ? "drop" : "withdraw");
@@ -112,7 +118,7 @@ export default {
       }
       // Fetch data from an API
       vm.$http
-        .get(`drop_withdraw_course/${id}/${status}`)
+        .post(`drop_withdraw_course/${id}/${status}`)
         .then(function(res) {
           if (res.data.status == "OK") {
             vm.setStatusMessage("dropped successfully");

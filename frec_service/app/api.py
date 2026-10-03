@@ -32,7 +32,10 @@ async def health_check():
 @app.route("/get_face_encoding", methods=["POST"])
 async def get_face_encoding():
     file = (await request.files).get("image")
-    encoding = service.get_face_encoding(file.read())
+    try:
+        encoding = service.get_face_encoding(file.read())
+    except service.FaceCountError as e:  # the caller shows this message
+        return jsonify({"error": str(e)}), 422
     return jsonify({"encoding": encoding.tolist()})
 
 
@@ -40,7 +43,10 @@ async def get_face_encoding():
 async def get_face_encoding_b64():
     data = await request.get_json()
     image_b64 = data.get("image_b64")
-    encoding = service.get_face_encoding_b64(image_b64)
+    try:
+        encoding = service.get_face_encoding_b64(image_b64)
+    except service.FaceCountError as e:  # the caller shows this message
+        return jsonify({"error": str(e)}), 422
     return jsonify({"encoding": encoding.tolist()})
 
 

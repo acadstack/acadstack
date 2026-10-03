@@ -146,6 +146,20 @@ async def test_student_adds_first_photo_but_cannot_replace_it(client, auth, db, 
     assert stu.known_faces.get().photo == photo
 
 
+async def test_photo_without_one_face_shows_the_face_service_message(client, auth, db, monkeypatch):
+    class NoFace:
+        status_code = 422
+        def json(self):
+            return {"error": "The photo must show exactly one face, but 0 were found."}
+    monkeypatch.setattr(fapi.requests, "post", lambda *a, **kw: NoFace())
+    stu = make_user("stu", role="STU")
+    await auth.login("stu")
+    res = await upload_face(client)
+    assert res == {"status": "ERROR",
+                   "body": "The photo must show exactly one face, but 0 were found."}
+    assert not stu.known_faces.exists()
+
+
 async def test_student_can_fetch_only_own_photo(client, auth, app, db):
     stu = make_user("stu", role="STU")
     other = make_user("other", role="STU")

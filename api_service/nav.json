@@ -122,7 +122,7 @@
     {
         "label": "Academic Events",
         "href": "#/add.dates",
-        "perm": "calendar.view",
+        "perm": "calendar.edit",
         "menu": "University Setup"
     },
     {

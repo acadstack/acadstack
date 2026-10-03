@@ -6,6 +6,8 @@ import json
 import os
 import logging
 
+import common as C
+
 API_URL = "http://frec_service:5060"  # See service name in docker-compose.yml
 
 # (connect, read) timeouts in seconds. Matching faces in a group photo is slow.
@@ -21,6 +23,8 @@ def get_face_encoding(image_bytes):
     files = {'image': ('image.jpg', image_bytes, 'image/jpeg')}
     response = requests.post(f"{API_URL}/get_face_encoding", files=files,
                              timeout=TIMEOUT)
+    if response.status_code == 422:  # not exactly one face in the photo
+        raise C.AcadStackException(response.json()["error"])
     response.raise_for_status()
     return response.json()["encoding"]
 
@@ -29,6 +33,8 @@ def get_face_encoding_b64(image_b64):
     data = {"image_b64": image_b64}
     response = requests.post(f"{API_URL}/get_face_encoding_b64", json=data,
                              timeout=TIMEOUT)
+    if response.status_code == 422:  # not exactly one face in the photo
+        raise C.AcadStackException(response.json()["error"])
     response.raise_for_status()
     return response.json()["encoding"]
 
