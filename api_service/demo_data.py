@@ -31,7 +31,7 @@ ENROL_STATUSES = [entry.get('id') for entry in static_data.get('EnrolStatuses', 
 CO_STATUSES = [entry.get('id') for entry in static_data.get('OfferingStatuses', []) if entry.get('id')][1:]
 
 # Filled from the VocabItem table once the schema exists.
-DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT = [], [], [], [], [], []
+DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT, SLOTS = [], [], [], [], [], [], []
 
 # The university's lists, as (code, label) or (code, label, attrs) in display
 # order.
@@ -211,13 +211,15 @@ def setup_db_with_demo_data(config):
     _seed_vocab()
     ST.save("institute_name", "Indian Institute of Technology Ropar")
     ST.save("institute_place", "Rupnagar")
-    global DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT
-    DEPTS = _vocab_codes("Departments")
+    global DEPTS, DEGREES, DEG_SPL, COURSE_CAT, DEG_TYPES, PERSON_CAT, SLOTS
+    # ALL (from the baseline migration) is for course categories, not people.
+    DEPTS = [d for d in _vocab_codes("Departments") if d != "ALL"]
     DEGREES = _vocab_codes("Degrees")
     DEG_SPL = _vocab_codes("MinorConcSpecialization")
     COURSE_CAT = _vocab_codes("CourseTypes")
     DEG_TYPES = _vocab_codes("DegreeType")
     PERSON_CAT = _vocab_codes("PersonCategories")
+    SLOTS = _vocab_codes("CourseSlots")
     _create_acad_sessions()
     _create_users()
     _create_courses()
@@ -381,11 +383,15 @@ def _create_offerings(acs, open_sess):
     print("Creating course offerings and enrolling students...")
     facs = list(M.User.select().where(M.User.role == "FAC"))
     stu = list(M.User.select().where(M.User.role == "STU"))
+    stu_degrees = sorted({s.person.degree for s in stu})
     total = 60
     for idx, c in enumerate(M.Course.select().where(M.Course.status == "APP").limit(total)):
+        coord = facs[idx]
         co = M.CourseOffering()
         co.course = c
         co.acad_session = acs
+        co.dept_name = coord.person.dept_name  # offered by the coordinator's dept
+        co.slot = random.choice(SLOTS)
         co.status = random.choice(CO_STATUSES)
         if acs != open_sess:
             co.status = "F" # Mark past courses as completed
@@ -394,7 +400,7 @@ def _create_offerings(acs, open_sess):
         ci = M.CourseInstructor()
         ci.is_coordinator = True
         ci.offering = co
-        ci.instructor = facs[idx]
+        ci.instructor = coord
         ci.save()
 
         # Enroll students
@@ -403,24 +409,21 @@ def _create_offerings(acs, open_sess):
             continue
         sc = random.choice([25, 30, 40])
         lc = random.choice([5, 10])
-        students_in_course = random.sample(stu, sc)
 
-        # Seed a CourseCategory row for every dept/degree/entry-year
-        # combination actually enrolled below, so the lookup in
-        # api_course_enrolment.py finds a match instead of warning
-        # "Course categorization not found" for most enrollments.
-        combos = {}
-        for s in students_in_course:
-            combos.setdefault((s.person.degree, s.person.dept_name), set()) \
-                  .add(s.person.year_of_entry)
-        for (degree, dept), years in combos.items():
+        # Choose 4-5 course categorizations first, each covering all students
+        # of one degree, and enrol only students they cover, so the lookup in
+        # api_course_enrolment.py finds a category for every enrollment.
+        degrees = random.sample(stu_degrees, random.choice([4, 5]))
+        for degree in degrees:
             cc = M.CourseCategory()
             cc.category = random.choice(COURSE_CAT)
             cc.degree = degree
-            cc.dept = dept
-            cc.for_entry_years = ",".join(sorted(years))
+            cc.dept = "ALL"
+            cc.for_entry_years = ",".join(ENTRY_YEARS)
             cc.offering = co
             cc.save()
+        pool = [s for s in stu if s.person.degree in degrees]
+        students_in_course = random.sample(pool, min(sc, len(pool)))
 
         for idx2, s in enumerate(students_in_course):
             ce = M.CourseEnrollment()
