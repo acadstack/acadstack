@@ -79,7 +79,8 @@ def logged_in_user():
 
 def institute_info():
     """What the web app shows of the institute's identity settings."""
-    return {"help_email": ST.get("help_email")}
+    return {"help_email": ST.get("help_email"), "terms_url": ST.get("terms_url"),
+            "guide_url": ST.get("guide_url")}
 
 
 def get_current_user_and_nav():
@@ -103,8 +104,17 @@ async def index():
     where the page has placeholders; a blank setting leaves its part out."""
     page = _login_page()
     name, help_email = ST.get("institute_name"), ST.get("help_email")
+    terms_url, guide_url = ST.get("terms_url"), ST.get("guide_url")
     page = page.replace("<!--INSTITUTE_META-->", f'<meta name="author" content="{escape(name)}">'
                         if name else "")
+    page = page.replace("<!--TERMS_LINE-->",
+                        '<p class="text-center font-weight-bold text-danger">By proceeding with '
+                        f'the login you agree to the <a href="{escape(terms_url)}" '
+                        'target="_blank">terms of use</a> of this service.</p>'
+                        if terms_url else "")
+    page = page.replace("<!--GUIDE_LINE-->",
+                        f'<p><a href="{escape(guide_url)}" target="_blank">User Guide</a></p>'
+                        if guide_url else "")
     page = page.replace("<!--HELP_LINE-->", '<span class="text-dark font-weight-bold">Contact us at:</span> '
                         f'<a href="mailto:{escape(help_email)}">{escape(help_email)}</a>'
                         if help_email else "")

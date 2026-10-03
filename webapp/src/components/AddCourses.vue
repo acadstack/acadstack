@@ -7,8 +7,10 @@ Component for uploading courses.
   <div class="container-fluid">
     <p class="h6">Add Courses</p>
     <p>Please upload new courses information in CSV format only, with the columns
-      <code>code,title,ltp,level</code>. The <code>ltp</code> is the full L-T-P-S-C, e.g. <code>3-0-2-6-4</code>. The level is one of
-      <span v-for="(cl, i) in SD.CourseLevels" :key="cl.id">{{ i ? ", " : "" }}<code>{{ cl.id }}</code> ({{ cl.value }})</span>.</p>
+      <code>code,title,ltp,level</code> and an optional <code>freq</code>. The <code>ltp</code> is the full L-T-P-S-C, e.g. <code>3-0-2-6-4</code>. The level is one of
+      <span v-for="(cl, i) in SD.CourseLevels" :key="cl.id">{{ i ? ", " : "" }}<code>{{ cl.id }}</code> ({{ cl.value }})</span>.
+      A blank <code>freq</code> is left unset; otherwise it is one of
+      <span v-for="(cf, i) in SD.CourseFreqs.filter(c => c.id)" :key="cf.id">{{ i ? ", " : "" }}<code>{{ cf.id }}</code> ({{ cf.value }})</span>.</p>
     <div>
       <div class="row mb-2">
         <div class="col">
@@ -45,6 +47,7 @@ Component for uploading courses.
               <div class="col">Title</div>
               <div class="col-md-3">LTPSC</div>
               <div class="col-md-1">Level</div>
+              <div class="col-md-1">Freq</div>
             </div>
             <p v-if="result.length == 0">Nothing to show yet!</p>
             <div class="row row-striped" v-for="(r, idx) in result" :key="idx">
@@ -53,6 +56,7 @@ Component for uploading courses.
               <div class="col">{{r.title}}</div>
               <div class="col-md-3">{{r.ltp}}</div>
               <div class="col-md-1">{{r.level}}</div>
+              <div class="col-md-1">{{r.freq}}</div>
             </div>
           </div>
         </div>

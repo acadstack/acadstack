@@ -59,7 +59,6 @@ import GenerateDegreeCertifcate from "../components/GenerateDegreeCertifcate.vue
 import PhdProgressReport from "../components/PhdProgressReport.vue";
 import ConsolidatedGradeSheet from "../components/ConsolidatedGradeSheet.vue";
 import MyPhdProgressReports from "../components/MyPhdProgressReports.vue";
-import OnlineFeesSubmission from "../components/OnlineFeesSubmission.vue";
 import KnownFaceUpload from "../components/KnownFaceUpload.vue";
 import CourseAttendance from "../components/CourseAttendance.vue"
 
@@ -361,11 +360,6 @@ const appRoutes = [{
   name: 'myppr',
   path: '/myppr',
   component:  MyPhdProgressReports
-},
-{
-  name: 'feessub.online',
-  path: '/feessub.online',
-  component: OnlineFeesSubmission
 },
 {
   name: 'myphoto',

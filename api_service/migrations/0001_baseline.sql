@@ -121,7 +121,7 @@ CREATE TABLE public.course (
     ltp character varying(40),
     status character varying(4) NOT NULL,
     author_id bigint,
-    freq character varying(1) NOT NULL,
+    freq character varying(1),
     level character varying(3) NOT NULL,
     has_lab boolean NOT NULL,
     prereqs character varying(200),

@@ -336,12 +336,6 @@
         "menu": "Reports"
     },
     {
-        "label": "Pay Fees Online",
-        "href": "#/feessub.online",
-        "perm": "fees.submit:own",
-        "menu": "Fees"
-    },
-    {
         "label": "Profile Photo",
         "href": "#/myphoto",
         "perm": "faces.add",

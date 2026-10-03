@@ -176,8 +176,8 @@ class Course(BaseModel):
                              backref='authored_courses',
                              on_delete='SET NULL')
 
-    # E: Even, O: Odd, S: Summer, A: Any
-    freq = ORM.CharField(max_length=1, default="A")
+    # E: Even, O: Odd, S: Summer, A: Any; null when a bulk upload leaves it unset
+    freq = ORM.CharField(max_length=1, default="A", null=True)
     # The students a course is meant for: one of CourseLevels in static_data.json
     level = ORM.CharField(max_length=3, default="UG")
     has_lab = ORM.BooleanField(default=False)

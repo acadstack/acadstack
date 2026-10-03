@@ -8,9 +8,9 @@
       Doing so may lock your account.
     </p>
     Please proceed by choosing a menu item from the top bar.
-    <p>
-    <B>Before contacting the help desk for any issues, 
-      please check the <a href="https://bit.ly/AcadStackGuide" target="_blank">User Guide</a> for solution.</B>
+    <p v-if="$root.institute && $root.institute.guide_url">
+    <B>Before contacting the help desk for any issues,
+      please check the <a :href="$root.institute.guide_url" target="_blank">User Guide</a> for solution.</B>
     </p>
     <div class="card" v-if="hasPermission('users.view_active')">
       <div class="card-header">Online Users <b>({{active_users.length}})</b></div>
