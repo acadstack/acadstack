@@ -336,6 +336,14 @@ async def test_view_attendance_menu_follows_attendance_view(client, auth, role, 
     assert ("View Attendance" in await _nav_labels(client)) == sees
 
 
+@pytest.mark.parametrize("role", ["STU", "GUE", "PLA", "FAC", "ADV", "HOD", "RES", "ACA", "DEA", "SUP"])
+async def test_university_setup_menu_only_for_setup_roles(client, auth, role):
+    make_user("u", role=role)
+    await auth.login("u")
+    body = await (await client.get("/acadstack/current_user")).get_json()
+    assert ("University Setup" in body["body"]["nav"]["menus"]) == (role in ("ACA", "DEA", "SUP"))
+
+
 @pytest.mark.parametrize("role", ["STU", "ACA", "FAC"])
 async def test_student_record_menu_needs_the_own_scope(client, auth, role):
     make_user("u", role=role)
