@@ -62,7 +62,8 @@ Run the following command in your terminal to verify that it is working:
 `docker buildx inspect --bootstrap` Rerun this command if you see "context deadline exceeded" error.
 The `docker buildx inspect` command will confirm that the builder is ready and supports `linux/amd64`
 1. Run the following to build the acadstack-backend image:
-`docker buildx build --platform linux/amd64 -t sodhix/acadstack-backend:v.01 --file api_service/Dockerfile --load .`
+`docker buildx build --platform linux/amd64 --build-arg OAUTH_CLIENT_ID=<your-id>.apps.googleusercontent.com --build-arg APP_PORT=5300 -t sodhix/acadstack-backend:v.01 --file api_service/Dockerfile --load .`
+    - `--build-arg OAUTH_CLIENT_ID`: Required. The Google client ID is baked into the web app at build time.
     - `--load`: Loads the resulting image into your local image cache.
     - `--platform linux/amd64`: Tells Docker to build the image for the linux/amd64 architecture.
     - `-t`: Use the tag that you want for your image.

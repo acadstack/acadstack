@@ -1,0 +1,10 @@
+.git
+docs
+pgdata
+**/.DS_Store
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+webapp/dist
+api_service/app
+api_service/*.log

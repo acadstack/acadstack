@@ -10,14 +10,14 @@ ENV OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
 
 WORKDIR /frontend
 COPY webapp/package*.json ./
-RUN npm install --frozen-lockfile
+RUN npm ci
 
 COPY webapp/ .
 RUN npm run build  # outputs to /frontend/dist
 
 # Stage 2: Final runtime image
 FROM python:3.13-slim-bookworm
-ARG APP_PORT
+ARG APP_PORT=5300
 # Environment setup
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
