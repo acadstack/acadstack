@@ -202,6 +202,7 @@ export default {
             } else {
               vm.setStatusMessage("Saved successfully!");
             }
+            return true;
           } else {
             vm.setStatusMessage(res.data.body);
           }
@@ -230,8 +231,10 @@ export default {
           //TODO: Delete
         }
       } else {
+        // Put the old status back if nothing was saved.
+        const prev = vm.course.status;
         vm.course.status = act.status;
-        await vm.save();
+        if (!(await vm.save())) vm.course.status = prev;
       }
     }
   },

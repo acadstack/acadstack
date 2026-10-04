@@ -95,7 +95,7 @@ Use *Courses → Bulk Enrol in Course* to enrol a whole class at once, for examp
 
 AcadStack enrols every **registered** student whose roll number starts with those characters, for **credit**, and marks them **Enrolled** at once. There is no instructor or advisor approval and none of the checks that a student's own request goes through (fee record, dates, slot clash, credit limit).
 
-If any of those students is already enrolled in the offering (or has an earlier enrolment record in it), nothing is saved and AcadStack says "Error when bulk enrolling students." Use a narrower roll-number prefix, or enrol the others one by one, and run it once per class.
+Students who already have an enrolment record in the offering, including a dropped or rejected one, are left as they are. The message says how many were skipped, for example "Enrolled 23 students in SOLID MECHANICS course. 2 already had an enrolment in it and were skipped." So you can run it again for the same class to add students who were registered later.
 
 ### Grades
 

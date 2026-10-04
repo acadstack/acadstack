@@ -35,6 +35,21 @@ async def test_bulk_enrol_takes_any_prefix(client, auth):
     assert [e.student_id for e in M.CourseEnrollment.select()] == [s1.id]
 
 
+async def test_bulk_enrol_skips_students_already_in_the_offering(client, auth):
+    make_user("aca", role="ACA")
+    s1 = make_user("s1", role="STU", org_id="B-77-1", current_status="REG")
+    s2 = make_user("s2", role="STU", org_id="B-77-2", current_status="REG")
+    co = make_offering()
+    M.CourseEnrollment.create(course_offering=co, student=s1, enrol_type="C",
+                              enrol_status="DROP")
+    await auth.login("aca")
+    res = await (await client.get(f"/acadstack/co_bulkenrol/B-77/{co.id}")).get_json()
+    assert res["status"] == "OK", res
+    assert "Enrolled 1 students" in res["body"] and "1 already" in res["body"], res
+    rows = {e.student_id: e.enrol_status for e in M.CourseEnrollment.select()}
+    assert rows == {s1.id: "DROP", s2.id: "ENRO"}
+
+
 async def test_prefix_may_contain_a_slash(client, auth):
     make_user("aca", role="ACA")
     s1 = make_user("s1", role="STU", org_id="B/77/1", current_status="REG")
