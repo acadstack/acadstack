@@ -301,7 +301,7 @@
         "group": "Grades"
     },
     {
-        "label": "Generate Degree Certifcate",
+        "label": "Generate Degree Certificate",
         "href": "#/degree.cert",
         "perm": "grades.reports",
         "menu": "Reports",
@@ -335,14 +335,14 @@
         "menu": "Fees"
     },
     {
-        "label": "Doctoral Committe Formulation",
+        "label": "Doctoral Committee Formulation",
         "href": "#/dc.form",
         "perm": "dc.edit",
         "menu": "PhD",
         "group": "Committee"
     },
     {
-        "label": "Search Doctoral Committe",
+        "label": "Search Doctoral Committee",
         "href": "#/dc.find",
         "perm": "dc.view",
         "menu": "PhD",
