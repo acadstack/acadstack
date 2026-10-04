@@ -90,7 +90,7 @@ script for more details and options. To start with an empty database instead, sk
 application starts it creates the schema (see `api_service/migrations/`) and, if there are no users yet,
 a superuser `admin` whose password it prints once.
 Everything that differs between universities (departments, programs, roles, academic sessions, grading
-scheme, institute name and so on) is set up on the application's *University Setup* menu, not with SQL or
+scheme, institute name and so on) is set up on the application's *University* menu, not with SQL or
 by editing files. See [docs/university_setup.md](docs/university_setup.md) for the steps.
 1. Run `python main.py` to start the web application.
 1. Open `http://localhost:5300/acadstack/app/index.html` Change the port as per your config.json setting.
