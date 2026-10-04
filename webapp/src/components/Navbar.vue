@@ -31,7 +31,8 @@ Component for the application's navigation bar.
               data-bs-toggle="dropdown" aria-expanded="false"
             >{{m}}</a>
             <div class="dropdown-menu">
-              <div v-for="mi in items" :key="mi.label">
+              <div v-for="(mi, i) in items" :key="mi.label">
+                <hr class="dropdown-divider" v-if="i > 0 && mi.group !== items[i - 1].group">
                 <a class="dropdown-item" :href="mi.href">{{ mi.label }}</a>
               </div>
             </div>

@@ -82,7 +82,7 @@ Component for Doctoral committee
       <div class="card-body">
         <div class="row hdr-row">
           <div class="col-md-1">S#</div>
-          <div class="col-md-5">Committe</div>
+          <div class="col-md-5">Committee</div>
           <div class="col-md-2">Period</div>
           <div class="col-md-2">Status</div>
           <div class="col-md-2">Remarks</div>

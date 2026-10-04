@@ -1,6 +1,6 @@
 # Setting up AcadStack for your university
 
-This guide is for the academic office staff who set AcadStack up for a university. You do everything on screen, from the **University Setup** menu. You do not need to edit files, run SQL or change code.
+This guide is for the academic office staff who set AcadStack up for a university. You do everything on screen, from the **University** menu. You do not need to edit files, run SQL or change code.
 
 Setting up means telling AcadStack about your university:
 
@@ -36,17 +36,17 @@ A new installation has one user: `admin`, with the role **Superuser**. The perso
 
 1. Open the application's address and log in as `admin`.
 2. Click the key icon at the top right and change the password.
-3. Open **Manage Users → Find User**, open `admin`, and replace the email address `admin@localhost` with a real one. Save. Password reset emails go to this address.
+3. Open **Users → Find User**, open `admin`, and replace the email address `admin@localhost` with a real one. Save. Password reset emails go to this address.
 4. Do **Roles & Permissions** (section 2) before anything else.
 
 Other people log in with the login id you give them. A user created from a file has a random password nobody knows, and AcadStack sends no email. Each person sets their own password in one of two ways:
 
 - On the login page they click **Password Reset**, enter their login id and the email address you registered for them, and follow the emailed key. This needs the server's email settings to be working.
-- Or you open the user (**Manage Users → Find User**), press **Generate Password Reset Key**, and give the key to the person. It is valid for 30 minutes. They click **Password Reset** on the login page, enter their login id and email, press **Request Reset**, then enter a new password and the key.
+- Or you open the user (**Users → Find User**), press **Generate Password Reset Key**, and give the key to the person. It is valid for 30 minutes. They click **Password Reset** on the login page, enter their login id and email, press **Request Reset**, then enter a new password and the key.
 
 ## 2. Roles & Permissions
 
-*University Setup → Roles & Permissions*
+*University → Roles & Permissions*
 
 A **role** is a kind of user, such as Student, Faculty or Academic Section. A **permission** is one thing a role may do. Everything a user can see or do comes from the permissions of their role. Each user has one role.
 
@@ -79,7 +79,7 @@ The student lookup and bulk enrolment find only students marked **Registered**; 
 
 ## 3. Lists
 
-*University Setup → Lists*
+*University → Lists*
 
 The drop-down lists on the screens differ between universities, so you define them here. A new installation has almost none. Fill them in before you add users or courses, because those use them.
 
@@ -141,7 +141,7 @@ Under **EnrolTypes** you can also tick **Hidden** for an enrolment type your uni
 
 ## 4. Settings
 
-*University Setup → Settings*
+*University → Settings*
 
 Each setting is one row with its own save button. Press the button on the row you changed. A value that is not acceptable is refused with a message such as "Invalid value for help_email".
 
@@ -166,7 +166,7 @@ A newly saved `help_email`, `terms_url` or `guide_url` appears on the Help and l
 
 ## 5. Academic Events
 
-*University Setup → Academic Events*
+*University → Academic Events*
 
 An **academic session** is a term, such as "Fall2026", with its calendar. Sessions are created here, by entering their dates. There is no separate "add session" screen.
 
@@ -217,7 +217,7 @@ A session cannot be closed while an offering is still enrolling or running, or w
 
 ## 6. Grading Scheme
 
-*University Setup → Grading Scheme*
+*University → Grading Scheme*
 
 A grading scheme says which grades exist and how each one counts. A new installation has one 10-point scheme for each program level (UG, PG, PHD): A is 10 points, A- 9, B 8, B- 7, C 6, C- 5, D 4, E 2, F 0, plus NP, NF, I, W, S and U, which carry no points. Change these to match your university.
 
@@ -256,7 +256,7 @@ A save is refused if it would change the grading rules that apply to a session t
 
 ## 7. Course Slot Timings
 
-*University Setup → Course Slot Timings*
+*University → Course Slot Timings*
 
 A **slot** is a named block of the weekly timetable. When you offer a course you choose a slot, and AcadStack uses the slot's times to warn a student whose courses clash. **A course offered in a slot that has no timings cannot be enrolled in**, so enter the timings of every slot you use.
 
@@ -278,9 +278,9 @@ The times are not checked as clock times, so `975` would be accepted. Check what
 
 ## 8. Add Users
 
-*University Setup → Add Users*
+*Users → Add Users*
 
-Use this to create many users, students and staff, from a spreadsheet. For one user, use **Manage Users → New User** instead.
+Use this to create many users, students and staff, from a spreadsheet. For one user, use **Users → New User** instead.
 
 Before you start, set up the lists the file refers to: departments and programs (section 3), and the roles (section 2).
 
@@ -322,7 +322,7 @@ AcadStack answers with a count, for example: "Created 5 new users. Updated 0 use
 
 ## 9. Bulk Create Courses
 
-*University Setup → Bulk Create Courses*
+*University → Bulk Create Courses*
 
 Use this to create your catalogue of courses from a spreadsheet. For a single course, use **Courses → Create New Course**.
 
@@ -362,7 +362,7 @@ AcadStack does not work out S or C for you; it stores what you give.
 
 ## 10. Manage Batch Advisors
 
-*University Setup → Manage Batch Advisors*
+*Users → Manage Batch Advisors*
 
 A **batch** is the students who joined a program in one year. Its **batch advisor** is the faculty member who approves those students' course enrolments. You assign one advisor per entry year, program and department.
 
