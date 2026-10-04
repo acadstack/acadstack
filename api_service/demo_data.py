@@ -220,6 +220,7 @@ def setup_db_with_demo_data(config):
     DEG_TYPES = _vocab_codes("DegreeType")
     PERSON_CAT = _vocab_codes("PersonCategories")
     SLOTS = _vocab_codes("CourseSlots")
+    _create_slot_timings()
     _create_acad_sessions()
     _create_users()
     _create_courses()
@@ -228,6 +229,13 @@ def setup_db_with_demo_data(config):
         (M.AcademicCalendar.event_code == "SESSION_S")
         & (M.AcademicCalendar.event_value <= C.DT.now().date().isoformat())) \
         .order_by(M.AcademicCalendar.event_value.desc()).first().acad_session
+    # Keep course registration open around today, so demo students can enrol.
+    today = C.DT.now().date()
+    for evt, day in (("COURSE_REG_S", today - timedelta(days=7)),
+                     ("COURSE_REG_E", today + timedelta(days=14))):
+        M.AcademicCalendar.update(event_value=day.isoformat()).where(
+            (M.AcademicCalendar.acad_session == open_sess)
+            & (M.AcademicCalendar.event_code == evt)).execute()
     for acs in ACAD_SESS[:ACAD_SESS.index(open_sess) + 1]:
         _create_offerings(acs, open_sess)
         # Generate grades data
@@ -353,6 +361,14 @@ def _save_acad_cal(sem, evt, yr, mmdd):
     # The second semester of an academic year runs in the next calendar year.
     acs.event_value = f"{int(yr) + 1 if sem == 'II' else yr}-{mmdd}"
     acs.save()
+
+def _create_slot_timings():
+    # One weekday hour per slot, no two slots at the same time.
+    for i, slot in enumerate(SLOTS):
+        start = (8 + i // 5) * 100
+        M.CourseSlotTiming.create(slot=slot, week_day=i % 5,
+                                  start_time=start, end_time=start + 50)
+    print(f"Added timings for {len(SLOTS)} course slots.")
 
 def _create_acad_sessions():
     print("Created academic sessions")

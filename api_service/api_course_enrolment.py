@@ -445,6 +445,12 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
         query = query.where(DB.User.role.in_(P.roles_with("roster.student")) & (DB.User.is_deleted != True) &
                             (DB.Person.current_status == 'REG') &
                             DB.Person.org_id.startswith(entry_no_pattern))
+        matched = query.count()
+        # A student with any record in the offering (even a dropped one) is
+        # left as is; enrolling them again would break the unique index.
+        query = query.where(DB.User.id.not_in(
+            DB.CourseEnrollment.select(DB.CourseEnrollment.student)
+            .where(DB.CourseEnrollment.course_offering == co_id)))
 
         co = DB.CourseOffering.get_by_id(co_id)
         num = 0
@@ -459,7 +465,11 @@ async def bulk_enrol_in_course(entry_no_pattern, co_id):
                 num += 1
             txn.commit()
 
-        return apiVC.ok_json(f"Enrolled {num} students in {co.course.title} course.")
+        msg = f"Enrolled {num} students in {co.course.title} course."
+        if matched > num:
+            msg += (f" {matched - num} already had an enrolment in it "
+                    "and were skipped.")
+        return apiVC.ok_json(msg)
 
     except AcadStackException as ae:
         logging.exception(ae)

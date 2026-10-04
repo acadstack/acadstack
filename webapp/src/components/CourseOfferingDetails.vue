@@ -594,6 +594,7 @@ export default {
             } else {
               vm.setStatusMessage("Saved successfully!");
             }
+            return true;
           } else {
             vm.setStatusMessage(res.data.body);
           }
@@ -616,8 +617,10 @@ export default {
     async onAction(act) {
         let vm = this;
         console.log("Changing course offering status to: "+act.status);
+        // Put the old status back if nothing was saved.
+        const prev = vm.coffer.status;
         vm.coffer.status = act.status;
-        await vm.save();
+        if (!(await vm.save())) vm.coffer.status = prev;
     },
     addCourseCat() {
       let vm = this;

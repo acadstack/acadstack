@@ -64,7 +64,7 @@ A Draft may be incomplete. To send the course for approval it must be complete:
 | TKP | At least two items ticked. |
 | TGAP | At least two items ticked. |
 
-When you are ready press **Action → Submit**. If something is missing the tabs that need work turn red and a message under the field says what to fix, for example "Sum of Planned learning experience should be 100." Nothing is changed while there are errors, even if the Status box on the screen briefly shows the new status. Reopen the course from *My Work → Courses Created* to see its real status.
+When you are ready press **Action → Submit**. If something is missing the tabs that need work turn red and a message under the field says what to fix, for example "Sum of Planned learning experience should be 100." Nothing is changed while there are errors, and the status stays as it was.
 
 ![Red tabs show what must be completed](../images/user_guide/faculty-course-submit-errors.png)
 
