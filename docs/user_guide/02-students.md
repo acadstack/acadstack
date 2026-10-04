@@ -87,6 +87,8 @@ All the fields you fill are used together, so use fewer to see more. Each result
 
 *Courses → Courses Available For Offering* is the catalogue of courses. A course can be offered in a session only if it is in the catalogue.
 
+![Searching the course catalogue](../images/user_guide/student-available-courses.png)
+
 ## Enrolling in courses
 
 Your enrolment is a **request**. It must be approved before you are enrolled (see [Following your enrolment](#following-your-enrolment)).

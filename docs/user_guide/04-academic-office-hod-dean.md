@@ -177,6 +177,8 @@ All reports are under *Reports*. You see the ones your role may use. Most have a
 | *Student Strength Degree/Course wise* | A course code and a session | How many students each course has, by programme. |
 | *Fees Payment Report* | Degree, department, entry year | The fee payment records that students of the batch have submitted. |
 
+![A credits report](../images/user_guide/staff-credits-report.png)
+
 **Notifying students about credits.** On the two credit reports, if your role has the right, an envelope button emails the students you have marked, to tell them about a shortfall in credits.
 
 **Grades are provisional until confirmed.** Reports show the grades in the system. Records confirmed by the academic section take precedence over anything shown.

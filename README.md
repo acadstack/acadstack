@@ -92,6 +92,7 @@ a superuser `admin` whose password it prints once.
 Everything that differs between universities (departments, programs, roles, academic sessions, grading
 scheme, institute name and so on) is set up on the application's *University* menu, not with SQL or
 by editing files. See [docs/university_setup.md](docs/university_setup.md) for the steps.
+The [user guide](docs/user_guide/README.md) explains the day-to-day use of the application for students, faculty and the academic office. Once it is published, put its web address in the `guide_url` setting (*University → Settings*) to show a **User guide** button on the Help page.
 1. Run `python main.py` to start the web application.
 1. Open `http://localhost:5300/acadstack/app/index.html` Change the port as per your config.json setting.
 1. Login using ID `acad.user` and password `abcd1234`
