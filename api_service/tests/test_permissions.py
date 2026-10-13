@@ -144,6 +144,7 @@ ROLE_CHECKS = {
     "save_registration_fees_txn_info": LOGIN,
     "save_setting": ['SUP'],
     "save_vocab": ['SUP'],
+    "seed_vocab_defaults": ['SUP'],
     "student_enrolments_for_fb": LOGIN,
     "student_lookup": LOGIN,
     "upload_student_doc": LOGIN,

@@ -7,6 +7,7 @@ import pytest
 import api_common as apiVC
 import api_dc
 import common as C
+import default_data as DD
 import models as M
 import settings
 import validation_checks as VAL
@@ -221,6 +222,52 @@ async def test_only_superuser_may_edit_lists(client, auth, role):
     await auth.login("u")
     assert (await _save_vocab(client, vocab="Degrees", code="X", label="X"))["status"] == "ERROR"
     assert (await (await client.get("/acadstack/vocab")).get_json())["status"] == "ERROR"
+    assert M.VocabItem.select().count() == 1
+
+
+async def _seed_defaults(client):
+    return await (await client.post("/acadstack/vocab_seed_defaults")).get_json()
+
+
+async def test_standard_defaults_are_added_once(sup):
+    res = await _seed_defaults(sup)
+    assert res["status"] == "OK", res
+    phd = next(v for v in res["body"]["items"]["Degrees"] if v["code"] == "PHD")
+    assert phd["attrs"]["level"] == "PHD"
+
+    timings = list(M.CourseSlotTiming.select())
+    assert {t.slot for t in timings} == {c for c, _ in DD.DEFAULT_VOCAB["CourseSlots"]}
+    for a in timings:
+        assert not [b for b in timings if b.id != a.id and b.week_day == a.week_day
+                    and b.start_time < a.end_time and a.start_time < b.end_time]
+    forms = {f.form_type: f for f in M.FeedbackForm.select()}
+    assert set(forms) == {"MID_SEM_FB", "END_SEM_FB"}
+    assert all(f.form_questions.count() > 1 for f in forms.values())
+    assert res["body"]["added"] == {"items": M.VocabItem.select().count() - 1,
+                                    "slot_timings": len(timings), "feedback_forms": 2}
+
+    res = await _seed_defaults(sup)
+    assert res["body"]["added"] == {"items": 0, "slot_timings": 0, "feedback_forms": 0}
+    assert M.CourseSlotTiming.select().count() == len(timings)
+
+
+async def test_standard_defaults_leave_existing_items_alone(sup):
+    await _save_vocab(sup, vocab="Departments", code="CSE", label="Computing", is_deleted=True)
+    await _save_vocab(sup, vocab="CourseSlots", code="A", label="My A")
+    assert (await _seed_defaults(sup))["status"] == "OK"
+    cse = M.VocabItem.get((M.VocabItem.vocab == "Departments") & (M.VocabItem.code == "CSE"))
+    assert (cse.label, cse.is_deleted) == ("Computing", True)
+    assert not M.CourseSlotTiming.select().where(M.CourseSlotTiming.slot == "A").exists()
+    # The added departments go after the ones already there.
+    ee = M.VocabItem.get((M.VocabItem.vocab == "Departments") & (M.VocabItem.code == "EE"))
+    assert ee.sort_order > cse.sort_order
+
+
+@pytest.mark.parametrize("role", ["ACA", "STU"])
+async def test_only_superuser_may_add_standard_defaults(client, auth, role):
+    make_user("u", role=role)
+    await auth.login("u")
+    assert (await _seed_defaults(client))["status"] == "ERROR"
     assert M.VocabItem.select().count() == 1
 
 

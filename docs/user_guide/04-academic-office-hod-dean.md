@@ -122,7 +122,7 @@ To act on an offering open it and set its status (see above). The academic secti
 
 ## Feedback forms and statistics
 
-Students give feedback with a form that you define. There is one active form per type: **Mid-semester feedback** and **End-semester feedback**.
+Students give feedback with a form that you define. There is one active form per type: **Mid-semester feedback** and **End-semester feedback**. If the superuser added the standard defaults (*University → Lists*), a form of each type already exists; edit it or replace it with your own.
 
 ### Creating a form
 

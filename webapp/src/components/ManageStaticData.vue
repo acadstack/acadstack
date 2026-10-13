@@ -29,6 +29,10 @@ acts on.
         <small class="text-muted ms-3">
           Codes can't be changed once saved. Hide an item instead of deleting it.
         </small>
+        <button type="button" class="btn btn-sm btn-outline-secondary float-end" @click="seedDefaults"
+          title="Adds the standard IIT/NIT-style list items, slot timings and feedback forms that are missing">
+          Add standard defaults
+        </button>
       </div>
       <div class="card-body">
         <div class="row hdr-row mb-2 border-info border-bottom">
@@ -192,6 +196,19 @@ export default {
         this.applyVocab(body);
         await this.refreshStaticData();
         this.setStatusMessage("Saved.");
+      }, this.setStatusMessage);
+    },
+    async seedDefaults() {
+      if (!confirm("Add the standard departments, programs, course types, categories, slots with " +
+        "timings and feedback forms that are missing? Existing items are not changed.")) {
+        return;
+      }
+      await this.doHttp(false, "vocab_seed_defaults", {}, async (body) => {
+        this.applyVocab(body);
+        await this.refreshStaticData();
+        const a = body.added;
+        this.setStatusMessage(a.items + a.slot_timings + a.feedback_forms == 0 ? "Nothing to add." :
+          `Added ${a.items} list items, ${a.slot_timings} slot timings and ${a.feedback_forms} feedback forms.`);
       }, this.setStatusMessage);
     },
     async refreshStaticData() {

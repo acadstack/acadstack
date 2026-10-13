@@ -14,6 +14,7 @@ import models as M
 import settings as ST
 import policy as P
 import transcript as TR
+import default_data as DD
 from typing import Any, Dict, Type
 from functools import lru_cache
 from pathlib import Path
@@ -440,6 +441,56 @@ async def save_vocab():
         return ok_json(all_vocab())
     except Exception as ex:
         msg = "Error when saving the list item."
+        logging.exception(msg)
+        return error_json(msg)
+
+
+@P.require("settings.manage")
+async def seed_vocab_defaults():
+    """Adds the standard list items (default_data.py) that are missing, the
+    timings of the slots it adds, and a feedback form of each type that has no
+    active one. Existing items are left as they are."""
+    added = {"items": 0, "slot_timings": 0, "feedback_forms": 0}
+    try:
+        with M.db.atomic():
+            new_slots = set()
+            for vocab, entries in DD.DEFAULT_VOCAB.items():
+                rows = M.VocabItem.select().where(M.VocabItem.vocab == vocab)
+                codes = {r.code for r in rows}
+                order = max((r.sort_order for r in rows), default=0)
+                for code, label, *attrs in entries:
+                    if code in codes:
+                        continue
+                    order += 1
+                    row = M.VocabItem(vocab=vocab, code=code, label=label,
+                                      sort_order=order, attrs=attrs[0] if attrs else {})
+                    error = _vocab_item_error(row, {"label": label})
+                    if error:
+                        raise ValueError(f"Default {vocab} item {code}: {error}")
+                    save_entity(row)
+                    added["items"] += 1
+                    if vocab == "CourseSlots":
+                        new_slots.add(code)
+            timed = {t.slot for t in M.CourseSlotTiming.select(M.CourseSlotTiming.slot)}
+            for slot, day, start, end in DD.slot_timings():
+                if slot in new_slots and slot not in timed:
+                    save_entity(M.CourseSlotTiming(slot=slot, week_day=day,
+                                                   start_time=start, end_time=end))
+                    added["slot_timings"] += 1
+            for form_type, (name, questions) in DD.FEEDBACK_FORMS.items():
+                if M.FeedbackForm.select().where((M.FeedbackForm.form_type == form_type)
+                                                 & M.FeedbackForm.is_active).exists():
+                    continue
+                form = M.FeedbackForm(form_name=name, form_type=form_type)
+                save_entity(form)
+                for question, options, is_optional, is_text in questions:
+                    save_entity(M.FeedbackQuestion(form=form, question=question,
+                                                   ans_options=options,
+                                                   is_optional=is_optional, is_text=is_text))
+                added["feedback_forms"] += 1
+        return ok_json({**all_vocab(), "added": added})
+    except Exception as ex:
+        msg = "Error when adding the standard lists."
         logging.exception(msg)
         return error_json(msg)
 

@@ -83,6 +83,22 @@ The student lookup and bulk enrolment find only students marked **Registered**; 
 
 The drop-down lists on the screens differ between universities, so you define them here. A new installation has almost none. Fill them in before you add users or courses, because those use them.
 
+### Standard defaults
+
+To skip most of the typing, press **Add standard defaults** at the top of the *University lists* tab and confirm. It adds items common to IIT/NIT-type institutes:
+
+- **Departments**: Academic Section and eleven common departments, such as CSE, EE, ME and HSS.
+- **Degrees**: B.Tech, B.S., B.Tech-M.Tech Dual Degree, M.Tech, M.Sc, M.S. (Research), MBA, MCA and PhD, each with its `level` and `printed_name`.
+- **CourseTypes**: Basic science, engineering science, HSS and programme cores; programme, open and HSS electives; project, internship, seminar and non-credit.
+- **PersonCategories**: GEN, EWS, OBC, SC, ST, PWD.
+- **DegreeType**: Regular, Honours, Degree with Minor.
+- **CourseFreqs**: Odd, Even, Summer and Any semester.
+- **CourseSlots**: lecture slots A to H and lab slots L1 to L5, with timings (see [Course Slot Timings](#7-course-slot-timings)).
+- **CalendarEvents**: Orientation programme, Semester registration and fee payment, Mid-semester break.
+- Two **feedback forms**, mid-semester and end-semester, with Likert-scale questions and a comments box. A form is added only if no form of that type is active.
+
+It adds only what is missing. An item whose code is already in a list is left as it is, even if hidden, so pressing the button again does nothing. After adding the defaults, change the labels and order, and hide what your university does not use. Nothing is added unless you press the button.
+
 The screen has two tabs: **University lists** (this section) and **Workflow labels** (described at the end).
 
 ### Working with a list
@@ -261,6 +277,8 @@ A save is refused if it would change the grading rules that apply to a session t
 A **slot** is a named block of the weekly timetable. When you offer a course you choose a slot, and AcadStack uses the slot's times to warn a student whose courses clash. **A course offered in a slot that has no timings cannot be enrolled in**, so enter the timings of every slot you use.
 
 The slot names come from *Lists → CourseSlots*; add them there first.
+
+If you added the [standard defaults](#standard-defaults), slots A to H already have three 50-minute hours each, between 8:00 and 12:50 on Monday to Friday, with no two slots at the same time. Lab slots L1 to L5 run 14:00 to 16:50, one on each weekday. Change them to match your timetable.
 
 1. Press **Add**. A new row appears.
 2. Choose the **Slot** and the **Week day**.
