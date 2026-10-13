@@ -13,7 +13,7 @@ services:
 
   backend:
     # Update the tag as needed based on the architecture of deployment host
-    image: sodhix/acadstack-backend:v.01
+    image: sodhix/acadstack-backend:v.1.0.0
     env_file:
     # Must define APP_PORT
       - ./app_env_vars.env
@@ -26,7 +26,7 @@ services:
 
   frec_service:
     # Update the tag as needed based on the architecture of deployment host
-    image: sodhix/acadstack-frec-service:v.01
+    image: sodhix/acadstack-frec-service:v.1.0.0
     env_file:
     # Must define FREC_PORT
       - ./app_env_vars.env
