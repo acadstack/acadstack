@@ -83,6 +83,22 @@ The student lookup and bulk enrolment find only students marked **Registered**; 
 
 The drop-down lists on the screens differ between universities, so you define them here. A new installation has almost none. Fill them in before you add users or courses, because those use them.
 
+### Standard defaults
+
+To skip most of the typing, press **Add standard defaults** at the top of the *University lists* tab and confirm. It adds items common to IIT/NIT-type institutes:
+
+- **Departments**: Academic Section and eleven common departments, such as CSE, EE, ME and HSS.
+- **Degrees**: B.Tech, B.S., B.Tech-M.Tech Dual Degree, M.Tech, M.Sc, M.S. (Research), MBA, MCA and PhD, each with its `level` and `printed_name`.
+- **CourseTypes**: Basic science, engineering science, HSS and programme cores; programme, open and HSS electives; project, internship, seminar and non-credit.
+- **PersonCategories**: GEN, EWS, OBC, SC, ST, PWD.
+- **DegreeType**: Regular, Honours, Degree with Minor.
+- **CourseFreqs**: Odd, Even, Summer and Any semester.
+- **CourseSlots**: lecture slots A to H and lab slots L1 to L5, with timings (see [Course Slot Timings](#7-course-slot-timings)).
+- **CalendarEvents**: Orientation programme, Semester registration and fee payment, Mid-semester break.
+- Two **feedback forms**, mid-semester and end-semester, with Likert-scale questions and a comments box. A form is added only if no form of that type is active.
+
+It adds only what is missing. An item whose code is already in a list is left as it is, even if hidden, so pressing the button again does nothing. After adding the defaults, change the labels and order, and hide what your university does not use. Nothing is added unless you press the button.
+
 The screen has two tabs: **University lists** (this section) and **Workflow labels** (described at the end).
 
 ### Working with a list
@@ -262,6 +278,8 @@ A **slot** is a named block of the weekly timetable. When you offer a course you
 
 The slot names come from *Lists → CourseSlots*; add them there first.
 
+If you added the [standard defaults](#standard-defaults), slots A to H already have three 50-minute hours each, between 8:00 and 12:50 on Monday to Friday, with no two slots at the same time. Lab slots L1 to L5 run 14:00 to 16:50, one on each weekday. Change them to match your timetable.
+
 1. Press **Add**. A new row appears.
 2. Choose the **Slot** and the **Week day**.
 3. Enter the **Start time** and **End time** as four-digit 24-hour numbers without a colon: `900` for 9:00 and `1450` for 2:50 pm.
@@ -364,17 +382,18 @@ AcadStack does not work out S or C for you; it stores what you give.
 
 *Users → Manage Batch Advisors*
 
-A **batch** is the students who joined a program in one year. Its **batch advisor** is the faculty member who approves those students' course enrolments. You assign one advisor per entry year, program and department.
+A student's **batch advisor** is the faculty member who approves that student's course enrolments. Each student has at most one advisor. You can give the same advisor to a whole batch (one entry year, program and department), to a list of roll numbers, or to any other group of students you can find on this screen.
 
-The faculty member must belong to a role that holds `roster.instructor` (see section 2). For a new installation, that is the Faculty role.
+Any faculty member can be assigned, from any department. They must belong to a role that holds `roster.instructor` (see section 2). For a new installation, that is the Faculty role.
 
-1. Enter the **Entry Year**, for example `2026`.
-2. Choose the **Dept.** This is the department of the batch's students, and the advisor must belong to it too: an advisor approves the enrolments of their own department's students only.
-3. Choose the **Degree**, which is the program.
-4. Press **Find**. The screen shows the current advisor, or "No advisor found for BSC PHY 2026".
-5. To assign or replace the advisor, start typing the faculty member's name (at least three letters) in the box, pick them from the list that appears, and press **Assign**. Confirm.
+1. Fill in any of the search fields: **Entry Year**, **Dept.**, **Degree**, **Student name**, **Roll nos.** (separated by commas or spaces; a partial roll number such as `2026CS` matches every roll number that starts with it), **Current advisor**, or tick **Only students without an advisor**.
+2. Press **Find**. The table lists the matching students with their current advisor.
+3. Tick the students to change. The box in the table header ticks them all.
+4. To assign or replace their advisor, start typing the faculty member's name (at least three letters) in the box above the table, pick them from the list, and press **Assign to selected**. To take the advisor away, press **Remove advisor of selected**. Confirm.
 
-An advisor from another department is refused with "The batch advisor must be from the … department." A department whose students need an advisor from elsewhere needs that faculty member recorded under it.
+The table then shows each student's new advisor, and the status bar says how many students changed.
+
+Newly added students have no advisor until you assign one. Tick **Only students without an advisor** to find them.
 
 ## 11. A suggested order, and a final check
 

@@ -210,23 +210,6 @@ coordinator_for_enrolments = """
     JOIN public.courseinstructor ci on ci.offering_id=ce.course_offering_id AND ci.is_coordinator=TRUE
     WHERE ce.id in (%s);"""
 
-batch_advisor_for_enrolments = """
-    WITH enrolled_student AS
-    (SELECT p.degree, p.dept_name, p.year_of_entry, ce.id as enrolment_id
-    FROM public.courseenrollment ce
-    JOIN public.user u on u.id=ce.student_id
-    JOIN public.person p on p.id=u.person_id),
-    advisor AS
-    (SELECT p.dept_name, ba.year_of_entry, ba.user_id, ba.for_degree
-    FROM public.batchadvisors ba
-    JOIN public.user u on u.id=ba.user_id
-    JOIN public.person p on p.id=u.person_id)
-
-    select a.user_id from advisor a
-    JOIN enrolled_student e on e.year_of_entry=a.year_of_entry 
-    AND e.dept_name=a.dept_name AND e.degree=a.for_degree
-    WHERE e.enrolment_id IN (%s);"""
-
 pending_enrolments_hod = """
     SELECT 
     ce.id, (c.title||' '||c.code) as course, stu.id as user_id,
@@ -250,18 +233,15 @@ pending_enrolments_advisor = """
     ce.id, (c.title||' '||c.code) as course, stu.id as user_id,
     (stu.first_name||' '||stu.last_name) as student,
     pstu.org_id, ce.enrol_type, ce.enrol_status, pstu.dept_name,
-    ba.year_of_entry, co.acad_session, 0 as attendance
+    pstu.year_of_entry, co.acad_session, 0 as attendance
     FROM public.courseenrollment ce
     JOIN public.courseoffering co on co.id=ce.course_offering_id
     JOIN public.course c on c.id=co.course_id
     JOIN public.user stu on stu.id=ce.student_id
     JOIN public.person pstu on pstu.id=stu.person_id
-    JOIN public.batchadvisors ba 
-        on ba.year_of_entry=pstu.year_of_entry AND ba.for_degree=pstu.degree
-    JOIN public.user adv on adv.id=ba.user_id
-    JOIN public.person padv on padv.id=adv.person_id and padv.dept_name=pstu.dept_name
+    JOIN public.studentadvisor sa on sa.student_id=stu.id
     WHERE 
-    ba.user_id=%s AND co.status IN ('E', 'R')
+    sa.advisor_id=%s AND co.status IN ('E', 'R')
     and ce.enrol_status='APEN';"""
 
 enrolled_students = """
@@ -600,11 +580,8 @@ generate_student_list = """
 
 frag_pending_enrollments = """ 
     with advisors as (
-    select ba.user_id, ba.for_degree, ba.year_of_entry,
-    bap.dept_name
-    from public.batchadvisors ba
-    join public.user bau on bau.id=ba.user_id
-    join public.person bap on bap.id=bau.person_id
+    select sa.advisor_id as user_id, sa.student_id
+    from public.studentadvisor sa
     ),
 
     enrolled_students as (
@@ -623,9 +600,7 @@ frag_ba_pending_enrollments = """
     join public.courseoffering co on co.id=ce.course_offering_id
     join public.course c on c.id=co.course_id
     join enrolled_students s on s.user_id=ce.student_id
-    join advisors a on a.for_degree=s.degree 
-        and a.year_of_entry=s.year
-        and a.dept_name=s.dep
+    join advisors a on a.student_id=s.user_id
     where a.user_id=%s and ce.enrol_status='APEN';
     """
 
@@ -636,9 +611,7 @@ frag_ba_and_instructor="""
     ci.offering_id = ce.course_offering_id
     AND ci.is_coordinator = TRUE
     JOIN enrolled_students s ON s.user_id = ce.student_id
-    LEFT JOIN advisors a ON a.for_degree = s.degree
-    AND a.year_of_entry = s.year
-    AND a.dept_name = s.dep
+    LEFT JOIN advisors a ON a.student_id = s.user_id
     WHERE ce.id IN %s;
     """
 

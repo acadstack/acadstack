@@ -129,6 +129,7 @@ def create_app(is_testing=False):
     apiVC.vbp.add_url_rule('/setting_save', view_func=apiVC.save_setting, methods=['POST'])
     apiVC.vbp.add_url_rule('/vocab', view_func=apiVC.get_vocab, methods=['GET'])
     apiVC.vbp.add_url_rule('/vocab_save', view_func=apiVC.save_vocab, methods=['POST'])
+    apiVC.vbp.add_url_rule('/vocab_seed_defaults', view_func=apiVC.seed_vocab_defaults, methods=['POST'])
     apiVC.vbp.add_url_rule('/perms', view_func=apiVC.get_permissions, methods=['GET'])
     apiVC.vbp.add_url_rule('/perms_save', view_func=apiVC.save_role_permissions, methods=['POST'])
 

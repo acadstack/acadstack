@@ -147,20 +147,50 @@ async def test_bulk_add_users_keeps_the_status_of_an_existing_student(client, au
     assert M.User.get(M.User.login_id == "s1").person.current_status == "WTH"
 
 
-async def assign_advisor(client, user_id, dept_name):
-    res = await client.post("/acadstack/assign_advisor", json={
-        "for_degree": "BSC", "for_entry_year": "2026", "dept_name": dept_name, "user_id": user_id})
+async def assign_advisor(client, student_ids, user_id):
+    res = await client.post("/acadstack/assign_advisor",
+                            json={"student_ids": student_ids, "user_id": user_id})
     return await res.get_json()
 
 
-async def test_batch_advisor_must_be_from_the_batch_department(client, auth, db):
+async def find_advisor(client, **filters):
+    return (await (await client.post("/acadstack/find_advisor", json=filters)).get_json())["body"]
+
+
+async def test_any_instructor_can_be_assigned_to_a_group_of_students(client, auth, db):
     make_user("acad", role="ACA")
-    adv = make_user("adv", role="FAC", dept_name="PHY")
+    adv = make_user("adv", role="FAC", dept_name="HIST")
+    s1 = make_user("s1", role="STU", org_id="2026PHY01", dept_name="PHY")
+    s2 = make_user("s2", role="STU", org_id="2026CSE07", dept_name="CSE")
+    make_user("s3", role="STU", org_id="2025PHY01", dept_name="PHY")
     await auth.login("acad")
-    body = await assign_advisor(client, adv.id, "HIST")
-    assert body["status"] == "ERROR" and "HIST" in body["body"]
-    assert not M.BatchAdvisors.select().exists()
-    assert (await assign_advisor(client, adv.id, "PHY"))["status"] == "OK"
-    found = await (await client.post("/acadstack/find_advisor", json={
-        "for_degree": "BSC", "for_entry_year": "2026", "dept_name": "PHY"})).get_json()
-    assert found["body"]["user_id"] == adv.id
+    rows = await find_advisor(client, roll_nos="2026PHY, 2026CSE07")
+    assert [r["org_id"] for r in rows] == ["2026CSE07", "2026PHY01"]
+    body = await assign_advisor(client, [s1.id, s2.id], adv.id)
+    assert body["status"] == "OK" and "2 students" in body["body"]
+    rows = await find_advisor(client, advisor_id=adv.id)
+    assert {r["id"] for r in rows} == {s1.id, s2.id}
+    assert rows[0]["advisor_name"] == "Adv User"
+    assert [r["org_id"] for r in await find_advisor(client, unassigned=True)] == ["2025PHY01"]
+
+
+async def test_reassigning_replaces_and_no_user_removes_the_advisor(client, auth, db):
+    make_user("acad", role="ACA")
+    a1, a2 = make_user("a1", role="FAC"), make_user("a2", role="FAC")
+    stu = make_user("stu", role="STU")
+    await auth.login("acad")
+    await assign_advisor(client, [stu.id], a1.id)
+    await assign_advisor(client, [stu.id], a2.id)
+    assert [x.advisor_id for x in M.StudentAdvisor.select()] == [a2.id]
+    assert (await assign_advisor(client, [stu.id], None))["status"] == "OK"
+    assert not M.StudentAdvisor.select().exists()
+
+
+async def test_advisor_must_be_an_instructor_and_advisees_students(client, auth, db):
+    acad = make_user("acad", role="ACA")
+    fac = make_user("fac", role="FAC")
+    stu = make_user("stu", role="STU")
+    await auth.login("acad")
+    assert (await assign_advisor(client, [stu.id], acad.id))["status"] == "ERROR"
+    assert (await assign_advisor(client, [fac.id], fac.id))["status"] == "ERROR"
+    assert not M.StudentAdvisor.select().exists()

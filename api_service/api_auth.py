@@ -363,12 +363,12 @@ async def user_view(my_id):
         res = DB.User.select(DB.User, DB.Person).join(DB.Person, DB.ORM.JOIN.LEFT_OUTER).where(DB.User.id == my_id)
         if res:
             user = res[0]
-            res1 = DB.BatchAdvisors.select().where(DB.BatchAdvisors.user == my_id)
             obj = apiVC.model_to_dict(user, exclude=[DB.User.password_hashed])
-            if res1:
-                advisor = apiVC.model_to_dict(res1[0])
-                obj["batch"] = advisor["year_of_entry"]
-                obj["for_degree"] = advisor["for_degree"]
+            link = DB.StudentAdvisor.get_or_none(DB.StudentAdvisor.student == my_id)
+            if link:
+                obj["advisor_name"] = link.advisor.get_full_name()
+            obj["advisee_count"] = DB.StudentAdvisor.select().where(
+                DB.StudentAdvisor.advisor == my_id).count()
             obj["known_faces"] = [apiVC.model_to_dict(kf) for kf in user.known_faces]
             return apiVC.ok_json(obj)
         else:
@@ -769,76 +769,101 @@ async def find_students():
         return apiVC.error_json(msg)
 
 
-def __get_advisor(for_degree, fey, dept_name):
-    qry = DB.BatchAdvisors.select().join(DB.User).join(DB.Person)
-    qry = qry.where(DB.BatchAdvisors.for_degree == for_degree)
-    qry = qry.where(DB.BatchAdvisors.year_of_entry == fey)
-    qry = qry.where(DB.Person.dept_name == dept_name)
-    qry = qry.where(DB.User.is_deleted != True)
-
-    if len(qry) == 1:
-        return qry[0]
-    elif len(qry) > 1:
-        raise C.AcadStackException("More than one advisors assigned for {0} {1} {2}".format(
-            for_degree, dept_name, fey
-        ))
-    else:
-        return None
+ADVISOR_FILTERS = ("dept_name", "degree", "year_of_entry", "roll_nos", "name",
+                   "advisor_id", "unassigned")
 
 
 @P.require("advisors.view")
 async def find_advisor():
+    """The students matching the filters, each with their advisor."""
     try:
         fd = await request.get_json(force=True)
-        for_degree, fey, dept_name = fd.get("for_degree"), \
-                                fd.get("for_entry_year"), \
-                                fd.get("dept_name")
-        obj = __get_advisor(for_degree, fey, dept_name)
-        
-        if obj:
-            return apiVC.ok_json({"user_id": obj.user.id, 
-                    "first_name": obj.user.first_name,
-                    "last_name": obj.user.last_name,
-                    "dept_name": dept_name
-                    })
-        else:
-            msg = "No advisor found for {0} {1} {2}".format(
-                for_degree, dept_name, fey)
-            return apiVC.ok_json({"user_id": -1, "message": msg})
+        if not any(fd.get(k) for k in ADVISOR_FILTERS):
+            return apiVC.error_json("Please specify at least one search field!")
+
+        Adv = DB.User.alias()
+        query = (DB.User.select(DB.User.id, DB.User.first_name, DB.User.last_name,
+                                DB.Person.org_id, DB.Person.dept_name, DB.Person.degree,
+                                DB.Person.year_of_entry, Adv.id.alias("advisor_id"),
+                                Adv.first_name.alias("adv_first"),
+                                Adv.last_name.alias("adv_last"))
+                 .join(DB.Person)
+                 .switch(DB.User)
+                 .join(DB.StudentAdvisor, DB.ORM.JOIN.LEFT_OUTER,
+                       on=(DB.StudentAdvisor.student == DB.User.id))
+                 .join(Adv, DB.ORM.JOIN.LEFT_OUTER, on=(Adv.id == DB.StudentAdvisor.advisor))
+                 .where((DB.User.is_deleted != True) &
+                        DB.User.role.in_(P.roles_with("roster.student"))))
+        if fd.get("dept_name"):
+            query = query.where(DB.Person.dept_name == fd["dept_name"])
+        if fd.get("degree"):
+            query = query.where(DB.Person.degree == fd["degree"])
+        if fd.get("year_of_entry"):
+            query = query.where(DB.Person.year_of_entry == str(fd["year_of_entry"]))
+        # Roll numbers, or their prefixes, separated by commas or spaces
+        roll_nos = (fd.get("roll_nos") or "").replace(",", " ").split()
+        if roll_nos:
+            cond = DB.Person.org_id.startswith(roll_nos[0])
+            for r in roll_nos[1:]:
+                cond |= DB.Person.org_id.startswith(r)
+            query = query.where(cond)
+        if fd.get("name"):
+            query = query.where(DB.User.first_name.contains(fd["name"]) |
+                                DB.User.last_name.contains(fd["name"]))
+        if fd.get("advisor_id"):
+            query = query.where(DB.StudentAdvisor.advisor == fd["advisor_id"])
+        if fd.get("unassigned"):
+            query = query.where(DB.StudentAdvisor.id.is_null())
+
+        data = [{"id": r["id"], "org_id": r["org_id"],
+                 "first_name": r["first_name"], "last_name": r["last_name"],
+                 "dept_name": r["dept_name"], "degree": r["degree"],
+                 "year_of_entry": r["year_of_entry"], "advisor_id": r["advisor_id"],
+                 "advisor_name": f"{r['adv_first']} {r['adv_last']}" if r["advisor_id"] else None}
+                for r in query.order_by(DB.Person.org_id).dicts()]
+        return apiVC.ok_json(data)
 
     except Exception as ex:
-        msg = "Error when finding advisor."
+        msg = "Error when finding advisors."
         logging.exception(msg)
-        return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
+        return apiVC.error_json(msg)
 
 
 @P.require("advisors.assign")
 async def assign_advisor():
+    """Makes user_id the advisor of the students student_ids; no user_id
+    removes their advisor."""
     try:
         fd = await request.get_json(force=True)
-        for_degree, fey, dept_name = fd.get("for_degree"), \
-                                        fd.get("for_entry_year"), \
-                                        fd.get("dept_name")
+        student_ids = [int(x) for x in fd.get("student_ids") or []]
         user_id = fd.get("user_id")
-        # An advisor sees the pending enrolments of the batch's students of
-        # their own department only
-        adv = DB.User.get_by_id(user_id)
-        if not adv.person or adv.person.dept_name != dept_name:
-            raise C.AcadStackException(f"The batch advisor must be from the {dept_name} department.")
+        if not student_ids:
+            raise C.AcadStackException("No student selected!")
+        students = DB.User.select(DB.User.id).where(
+            DB.User.id.in_(student_ids) & (DB.User.is_deleted != True) &
+            DB.User.role.in_(P.roles_with("roster.student")))
+        if len(students) != len(set(student_ids)):
+            raise C.AcadStackException("Only students can be assigned an advisor.")
+        adv = None
+        if user_id:
+            adv = DB.User.get_or_none(DB.User.id == user_id)
+            if (not adv or adv.is_deleted
+                    or adv.role not in P.roles_with("roster.instructor")):
+                raise C.AcadStackException("The advisor must be an instructor!")
 
-        obj = __get_advisor(for_degree, fey, dept_name)
-        if obj:
-            obj.user = DB.User.get_by_id(user_id)
-            apiVC.update_entity(DB.BatchAdvisors, obj)
-        else:
-            obj = DB.BatchAdvisors()
-            obj.user = user_id
-            obj.for_degree = for_degree
-            obj.year_of_entry = fey
-            apiVC.save_entity(obj)
+        with DB.db.atomic():
+            DB.StudentAdvisor.delete().where(
+                DB.StudentAdvisor.student.in_(student_ids)).execute()
+            if adv:
+                login_id = apiVC.logged_in_user().login_id
+                DB.StudentAdvisor.insert_many(
+                    [{"student": s, "advisor": adv.id, "txn_login_id": login_id}
+                     for s in set(student_ids)]).execute()
 
-        return apiVC.ok_json("Assigned {0} as batch advisor for {1} {2} {3}".format(
-            obj.user.get_full_name(), fey, for_degree, dept_name))
+        n = len(set(student_ids))
+        if adv:
+            return apiVC.ok_json(f"Assigned {adv.get_full_name()} as the advisor of {n} students.")
+        return apiVC.ok_json(f"Removed the advisor of {n} students.")
 
     except Exception as ex:
         msg = "Error when assigning advisor."

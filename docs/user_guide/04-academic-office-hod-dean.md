@@ -71,7 +71,7 @@ Faculty take attendance from class photos, and AcadStack recognises students fro
 
 ### Batch advisors
 
-A batch advisor approves the course enrolments of one batch of students (one programme, department and entry year). *Users → Manage Batch Advisors* assigns the advisor: enter the **Entry Year**, **Dept.** and **Degree**, press **Find**, then look up a faculty member from the same department and press **Assign**. The steps are in [Manage Batch Advisors](../university_setup.md#10-manage-batch-advisors).
+A batch advisor approves the course enrolments of the students assigned to them. *Users → Manage Batch Advisors* assigns the advisor: find students by entry year, department, degree, roll numbers or current advisor, tick them, look up any faculty member and press **Assign to selected**. The steps are in [Manage Batch Advisors](../university_setup.md#10-manage-batch-advisors).
 
 Assign an advisor for every batch before students start to enrol. A request that the instructor has approved waits at the advisor step, and a batch without an advisor has nobody to approve it except staff with wider rights.
 
@@ -122,7 +122,7 @@ To act on an offering open it and set its status (see above). The academic secti
 
 ## Feedback forms and statistics
 
-Students give feedback with a form that you define. There is one active form per type: **Mid-semester feedback** and **End-semester feedback**.
+Students give feedback with a form that you define. There is one active form per type: **Mid-semester feedback** and **End-semester feedback**. If the superuser added the standard defaults (*University → Lists*), a form of each type already exists; edit it or replace it with your own.
 
 ### Creating a form
 

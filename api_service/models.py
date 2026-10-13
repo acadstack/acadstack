@@ -81,16 +81,10 @@ class User(BaseModel):
         return "{0} {1}".format(self.first_name, self.last_name)
 
 
-class BatchAdvisors(BaseModel):
-    user = ORM.ForeignKeyField(User, backref='batch_advisors')
-    year_of_entry = ORM.CharField(max_length=4)  # yyyy
-    for_degree = ORM.CharField(max_length=20)
-
-    class Meta:
-        indexes = (
-            # Unique index
-            (('user', 'year_of_entry', 'for_degree'), True),
-        )
+class StudentAdvisor(BaseModel):
+    """The advisor who approves the student's course enrolments."""
+    student = ORM.ForeignKeyField(User, backref='advisor_link', unique=True)
+    advisor = ORM.ForeignKeyField(User, backref='advisees')
 
 
 class AcademicSession(BaseModel):

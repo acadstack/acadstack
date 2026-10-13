@@ -39,7 +39,7 @@ The administrator can see and change exactly what each role may do in *Universit
 |---|---|---|
 | Student requests | Pending Instructor Approval | The student |
 | Instructor approves | Pending Advisor Approval | Instructor of the offering |
-| Batch advisor approves | Enrolled | Batch advisor of the student's batch |
+| Batch advisor approves | Enrolled | The student's batch advisor |
 
 Possible outcomes: **Instructor Rejected**, **Advisor Rejected**, **Academic section Rejected**, **Dropped by Student**, **Withdrawn by Student**. The academic section can set any status directly.
 
@@ -84,7 +84,7 @@ All of these are set per session in *University → Academic Events*.
 | Crediting categorisation | The rule that says in which category an offering counts for a given programme, department and entry year. |
 | Enrolment type | **Credit**, **Audit**, **Credit for Minor** or **Credit for Concent.** |
 | Coordinator | The instructor of an offering who may upload its grades and attendance. |
-| Batch, batch advisor | Students of one programme and department who joined in one year, and the faculty member who approves their enrolments. |
+| Batch, batch advisor | Students of one programme and department who joined in one year. A batch advisor is the faculty member who approves a student's enrolments, assigned per student. |
 | SGPA, CGPA | Grade point average of a session, and cumulative. |
 | Earned credits | Credits of courses passed. |
 | DC | Doctoral committee. |

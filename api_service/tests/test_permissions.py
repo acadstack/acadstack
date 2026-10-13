@@ -77,7 +77,7 @@ ROLE_CHECKS = {
     "eval_components": LOGIN,
     "eval_components_save": ['ACA', 'DEA', 'FAC'],
     "fetch_stats": LOGIN,
-    "find_advisor": LOGIN,
+    "find_advisor": ['ACA', 'DEA', 'SUP'],
     "find_students": LOGIN,
     "gen_prk": PUBLIC,
     "generate_course_enrolments": ['ACA', 'DEA'],
@@ -144,6 +144,7 @@ ROLE_CHECKS = {
     "save_registration_fees_txn_info": LOGIN,
     "save_setting": ['SUP'],
     "save_vocab": ['SUP'],
+    "seed_vocab_defaults": ['SUP'],
     "student_enrolments_for_fb": LOGIN,
     "student_lookup": LOGIN,
     "upload_student_doc": LOGIN,
@@ -310,7 +311,7 @@ def restore_grants(db):
     grants = [(g.role, g.permission) for g in M.RolePermission.select()]
     yield
     M.RolePermission.delete().execute()
-    M.BatchAdvisors.delete().execute()
+    M.StudentAdvisor.delete().execute()
     M.User.delete().execute()
     M.Role.delete().where(M.Role.code.not_in([c for c, _ in roles])).execute()
     M.RolePermission.insert_many([{"role": r, "permission": p} for r, p in grants]).execute()
@@ -526,8 +527,7 @@ async def test_batch_advisor_of_a_role_without_roster_instructor_can_approve(
     _add_role("BA", "enrolments.approve:own", "enrolments.change:any")
     make_user("adv", role="BA")
     stu = make_user("stu", role="STU", degree="BTE", year_of_entry="2024")
-    M.BatchAdvisors.create(user=M.User.get(M.User.login_id == "adv"),
-                           year_of_entry="2024", for_degree="BTE")
+    M.StudentAdvisor.create(student=stu, advisor=M.User.get(M.User.login_id == "adv"))
     co = make_offering(acad_session="2026-I", instructor=make_user("fac", role="FAC"))
     ce = enrol(stu, co, enrol_status="APEN")
     set_event_window("2026-I", "COURSE_REG")
