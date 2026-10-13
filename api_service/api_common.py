@@ -130,7 +130,7 @@ DB_VOCABS = ("Departments", "Degrees", "CourseSlots", "CourseTypes",
 # The columns that store a list's codes; a code must fit the shortest one.
 VOCAB_CODE_COLUMNS = {
     "Departments": (M.Person.dept_name, M.CourseOffering.dept_name, M.CourseCategory.dept),
-    "Degrees": (M.Person.degree, M.CourseCategory.degree, M.BatchAdvisors.for_degree),
+    "Degrees": (M.Person.degree, M.CourseCategory.degree),
     "CourseSlots": (M.CourseOffering.slot, M.CourseSlotTiming.slot),
     "CourseTypes": (M.CourseCategory.category,),
     "MinorConcSpecialization": (M.Person.deg_type_spec,),

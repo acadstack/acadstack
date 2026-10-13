@@ -159,16 +159,17 @@ Component for user details.
                 </select>
               </div>
             </div>
-            <div class="col" v-if="isBatchAdvisor" >
+            <div class="col" v-if="isStudent && user.advisor_name" >
               <div>
-                <label for="st_batch">Advisor For Batch</label>
-                <div class="input-group">
-                  <select class="form-select" id="ba_deg" v-model="user.for_degree" :disabled="viewOnly">
-                    <option v-for="x in SD.Degrees" v-bind:value="x.id" :key="x.id">{{ x.value }}</option>
-                  </select>
-                  <input id="st_batch" type="text" class="form-control" :disabled="viewOnly"
-                    placeholder="Year (YYYY)" v-model="user.batch" />
-                </div>
+                <label for="st_adv">Advisor</label>
+                <input id="st_adv" type="text" class="form-control" disabled :value="user.advisor_name" />
+              </div>
+            </div>
+            <div class="col" v-if="user.advisee_count > 0" >
+              <div>
+                <label for="adv_of">Advisor Of</label>
+                <input id="adv_of" type="text" class="form-control" disabled
+                  :value="user.advisee_count + ' students'" />
               </div>
             </div>
           </div>
@@ -311,9 +312,6 @@ export default {
     canSave() {
       return this.hasPermission('users.edit:any') ||
         (this.hasPermission('users.edit:own') && this.user.id == this.currentUser.id);
-    },
-    isBatchAdvisor() {
-      return this.user.batch !== undefined;
     },
     // The kinds of person the user's role counts as, e.g. ["student"].
     roster() {

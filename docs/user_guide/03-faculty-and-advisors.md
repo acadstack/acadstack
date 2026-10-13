@@ -109,7 +109,7 @@ A student's enrolment request goes through you and then the batch advisor:
 
 1. The student requests. The request waits for the **course instructor**.
 2. The instructor approves, and it moves to **Pending Advisor Approval**.
-3. The **batch advisor** of the student's batch approves, and the student is **Enrolled**.
+3. The student's **batch advisor** approves, and the student is **Enrolled**.
 
 Either of you can reject instead.
 
@@ -125,9 +125,9 @@ AcadStack shows "Updated enrollments!".
 
 **As a batch advisor**
 
-A **batch** is the students of one programme and department who joined in one year. The academic office assigns you as the advisor of a batch (see [chapter 4](04-academic-office-hod-dean.md#batch-advisors)). The advisor must belong to the same department as the batch.
+The academic office assigns you as the advisor of a group of students, usually a batch: the students of one programme and department who joined in one year (see [chapter 4](04-academic-office-hod-dean.md#batch-advisors)). The students can be from any department.
 
-1. Open *My Work → Action Pending* (or *My Work → Pending Tasks* if you have that item) and press the **Enrollments (for advisor)** tab. It lists the requests that the instructors have approved for students of your batch.
+1. Open *My Work → Action Pending* (or *My Work → Pending Tasks* if you have that item) and press the **Enrollments (for advisor)** tab. It lists the requests that the instructors have approved for your students.
 2. Tick the requests, then use **Action → Approve Add/Drop** or **Reject Add/Drop**.
 
 ![The advisor tab](../images/user_guide/faculty-advisor-tab.png)

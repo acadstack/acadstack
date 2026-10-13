@@ -91,12 +91,14 @@ async def get_instructor_academics(my_id):
 @P.require("instructors.view")
 async def get_advisor_detail(my_id):
     try:
-        res = DB.BatchAdvisors.select().where(
-            DB.BatchAdvisors.user_id == my_id)
+        res = DB.StudentAdvisor.select().where(
+            DB.StudentAdvisor.advisor == my_id)
         if res:
-            serialized = [{"year": r.year_of_entry, 
-                           "dept": r.user.person.dept_name, 
-                           "for_degree": r.for_degree} for r in res]
+            serialized = [{"org_id": r.student.person.org_id,
+                           "name": r.student.get_full_name(),
+                           "dept": r.student.person.dept_name,
+                           "year": r.student.person.year_of_entry,
+                           "for_degree": r.student.person.degree} for r in res]
             return apiVC.ok_json(serialized)
         else:
             return apiVC.error_json(f"Record not found for advisor {my_id}")

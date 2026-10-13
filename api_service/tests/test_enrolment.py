@@ -21,7 +21,7 @@ def setup(db):
     ins = make_user("ins", role="FAC")
     adv = make_user("adv", role="FAC")
     stu = make_user("stu", role="STU", degree="BTE", year_of_entry="2024")
-    M.BatchAdvisors.create(user=adv, year_of_entry="2024", for_degree="BTE")
+    M.StudentAdvisor.create(student=stu, advisor=adv)
     co = make_offering(acad_session=SESSION, instructor=ins)
     ce = enrol(stu, co, enrol_status="IPEN")
     set_event_window(SESSION, "COURSE_REG")
@@ -103,8 +103,20 @@ async def test_c11_advisor_can_approve_ipen_straight_to_enro(client, auth, setup
     assert status_of(setup["ce"]) == "ENRO"
 
 
+async def test_advisor_from_another_department_sees_and_approves(client, auth, setup):
+    M.Person.update(dept_name="MEC").where(M.Person.id == setup["adv"].person_id).execute()
+    # ADV holds enrolments.pending_advisor
+    M.User.update(role="ADV").where(M.User.id == setup["adv"].id).execute()
+    set_status(setup["ce"], "APEN")
+    await auth.login("adv")
+    body = await (await client.get("/acadstack/get_advisor_courses_enrol")).get_json()
+    assert [r["id"] for r in body["body"]] == [setup["ce"].id]
+    assert (await change_status(client, [setup["ce"].id], "approve"))["status"] == "OK"
+    assert status_of(setup["ce"]) == "ENRO"
+
+
 async def test_instructor_who_is_also_advisor_approves_in_two_steps(client, auth, setup):
-    M.BatchAdvisors.update(user=setup["ins"]).execute()
+    M.StudentAdvisor.update(advisor=setup["ins"]).execute()
     await auth.login("ins")
     await change_status(client, [setup["ce"].id], "approve")
     assert status_of(setup["ce"]) == "APEN"
@@ -113,7 +125,7 @@ async def test_instructor_who_is_also_advisor_approves_in_two_steps(client, auth
 
 
 async def test_instructor_who_is_also_advisor_rejects_as_advisor(client, auth, setup):
-    M.BatchAdvisors.update(user=setup["ins"]).execute()
+    M.StudentAdvisor.update(advisor=setup["ins"]).execute()
     await auth.login("ins")
     await change_status(client, [setup["ce"].id], "reject")
     assert status_of(setup["ce"]) == "AREJ"

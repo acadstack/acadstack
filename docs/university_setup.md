@@ -364,17 +364,18 @@ AcadStack does not work out S or C for you; it stores what you give.
 
 *Users → Manage Batch Advisors*
 
-A **batch** is the students who joined a program in one year. Its **batch advisor** is the faculty member who approves those students' course enrolments. You assign one advisor per entry year, program and department.
+A student's **batch advisor** is the faculty member who approves that student's course enrolments. Each student has at most one advisor. You can give the same advisor to a whole batch (one entry year, program and department), to a list of roll numbers, or to any other group of students you can find on this screen.
 
-The faculty member must belong to a role that holds `roster.instructor` (see section 2). For a new installation, that is the Faculty role.
+Any faculty member can be assigned, from any department. They must belong to a role that holds `roster.instructor` (see section 2). For a new installation, that is the Faculty role.
 
-1. Enter the **Entry Year**, for example `2026`.
-2. Choose the **Dept.** This is the department of the batch's students, and the advisor must belong to it too: an advisor approves the enrolments of their own department's students only.
-3. Choose the **Degree**, which is the program.
-4. Press **Find**. The screen shows the current advisor, or "No advisor found for BSC PHY 2026".
-5. To assign or replace the advisor, start typing the faculty member's name (at least three letters) in the box, pick them from the list that appears, and press **Assign**. Confirm.
+1. Fill in any of the search fields: **Entry Year**, **Dept.**, **Degree**, **Student name**, **Roll nos.** (separated by commas or spaces; a partial roll number such as `2026CS` matches every roll number that starts with it), **Current advisor**, or tick **Only students without an advisor**.
+2. Press **Find**. The table lists the matching students with their current advisor.
+3. Tick the students to change. The box in the table header ticks them all.
+4. To assign or replace their advisor, start typing the faculty member's name (at least three letters) in the box above the table, pick them from the list, and press **Assign to selected**. To take the advisor away, press **Remove advisor of selected**. Confirm.
 
-An advisor from another department is refused with "The batch advisor must be from the … department." A department whose students need an advisor from elsewhere needs that faculty member recorded under it.
+The table then shows each student's new advisor, and the status bar says how many students changed.
+
+Newly added students have no advisor until you assign one. Tick **Only students without an advisor** to find them.
 
 ## 11. A suggested order, and a final check
 

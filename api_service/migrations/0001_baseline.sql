@@ -89,26 +89,25 @@ CREATE SEQUENCE public.attendancephoto_id_seq
 
 ALTER SEQUENCE public.attendancephoto_id_seq OWNED BY public.attendancephoto.id;
 
-CREATE TABLE public.batchadvisors (
+CREATE TABLE public.studentadvisor (
     id bigint NOT NULL,
     is_deleted boolean NOT NULL,
     txn_no integer NOT NULL,
     ins_ts timestamp without time zone NOT NULL,
     upd_ts timestamp without time zone NOT NULL,
     txn_login_id character varying(40),
-    user_id bigint NOT NULL,
-    year_of_entry character varying(4) NOT NULL,
-    for_degree character varying(20) NOT NULL
+    student_id bigint NOT NULL,
+    advisor_id bigint NOT NULL
 );
 
-CREATE SEQUENCE public.batchadvisors_id_seq
+CREATE SEQUENCE public.studentadvisor_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
     CACHE 1;
 
-ALTER SEQUENCE public.batchadvisors_id_seq OWNED BY public.batchadvisors.id;
+ALTER SEQUENCE public.studentadvisor_id_seq OWNED BY public.studentadvisor.id;
 
 CREATE TABLE public.course (
     id bigint NOT NULL,
@@ -709,7 +708,7 @@ ALTER TABLE ONLY public.academicmilestone ALTER COLUMN id SET DEFAULT nextval('p
 
 ALTER TABLE ONLY public.attendancephoto ALTER COLUMN id SET DEFAULT nextval('public.attendancephoto_id_seq'::regclass);
 
-ALTER TABLE ONLY public.batchadvisors ALTER COLUMN id SET DEFAULT nextval('public.batchadvisors_id_seq'::regclass);
+ALTER TABLE ONLY public.studentadvisor ALTER COLUMN id SET DEFAULT nextval('public.studentadvisor_id_seq'::regclass);
 
 ALTER TABLE ONLY public.course ALTER COLUMN id SET DEFAULT nextval('public.course_id_seq'::regclass);
 
@@ -773,8 +772,8 @@ ALTER TABLE ONLY public.academicmilestone
 ALTER TABLE ONLY public.attendancephoto
     ADD CONSTRAINT attendancephoto_pkey PRIMARY KEY (id);
 
-ALTER TABLE ONLY public.batchadvisors
-    ADD CONSTRAINT batchadvisors_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.studentadvisor
+    ADD CONSTRAINT studentadvisor_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.course
     ADD CONSTRAINT course_pkey PRIMARY KEY (id);
@@ -873,11 +872,11 @@ CREATE UNIQUE INDEX attendancephoto_offering_id_attend_dt_file_name ON public.at
 
 CREATE INDEX attendancephoto_txn_no ON public.attendancephoto USING btree (txn_no);
 
-CREATE INDEX batchadvisors_txn_no ON public.batchadvisors USING btree (txn_no);
+CREATE INDEX studentadvisor_txn_no ON public.studentadvisor USING btree (txn_no);
 
-CREATE INDEX batchadvisors_user_id ON public.batchadvisors USING btree (user_id);
+CREATE UNIQUE INDEX studentadvisor_student_id ON public.studentadvisor USING btree (student_id);
 
-CREATE UNIQUE INDEX batchadvisors_user_id_year_of_entry_for_degree ON public.batchadvisors USING btree (user_id, year_of_entry, for_degree);
+CREATE INDEX studentadvisor_advisor_id ON public.studentadvisor USING btree (advisor_id);
 
 CREATE INDEX course_author_id ON public.course USING btree (author_id);
 
@@ -1032,8 +1031,11 @@ ALTER TABLE ONLY public.academicmilestone
 ALTER TABLE ONLY public.attendancephoto
     ADD CONSTRAINT attendancephoto_offering_id_fkey FOREIGN KEY (offering_id) REFERENCES public.courseoffering(id) ON DELETE CASCADE;
 
-ALTER TABLE ONLY public.batchadvisors
-    ADD CONSTRAINT batchadvisors_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id);
+ALTER TABLE ONLY public.studentadvisor
+    ADD CONSTRAINT studentadvisor_student_id_fkey FOREIGN KEY (student_id) REFERENCES public."user"(id);
+
+ALTER TABLE ONLY public.studentadvisor
+    ADD CONSTRAINT studentadvisor_advisor_id_fkey FOREIGN KEY (advisor_id) REFERENCES public."user"(id);
 
 ALTER TABLE ONLY public.course
     ADD CONSTRAINT course_author_id_fkey FOREIGN KEY (author_id) REFERENCES public."user"(id) ON DELETE SET NULL;
@@ -1310,8 +1312,8 @@ INSERT INTO public.permission (code, description, is_deleted, txn_no, ins_ts, up
     ('fees.delete:own', 'Delete a student''s fee payment record', false, 1, now(), now()),
     ('fees.delete:any', 'Delete a student''s fee payment record', false, 1, now(), now()),
     ('fees.report', 'Fee payments report', false, 1, now(), now()),
-    ('advisors.view', 'Find the batch advisor of a batch', false, 1, now(), now()),
-    ('advisors.assign', 'Assign batch advisors', false, 1, now(), now()),
+    ('advisors.view', 'View students'' advisors', false, 1, now(), now()),
+    ('advisors.assign', 'Assign advisors to students', false, 1, now(), now()),
     ('instructors.view:own', 'View an instructor''s courses and advisor duties; own: one''s own', false, 1, now(), now()),
     ('instructors.view:any', 'View an instructor''s courses and advisor duties; own: one''s own', false, 1, now(), now()),
     ('faces.add', 'Add one''s own face photo', false, 1, now(), now()),
@@ -1390,7 +1392,6 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('STU', 'roster.student', false, 1, now(), now()),
     ('FAC', 'roster.instructor', false, 1, now(), now()),
     ('ACA', 'roster.acad_section', false, 1, now(), now()),
-    ('STU', 'advisors.view', false, 1, now(), now()),
     ('STU', 'app.access', false, 1, now(), now()),
     ('STU', 'calendar.view', false, 1, now(), now()),
     ('STU', 'courses.view', false, 1, now(), now()),
@@ -1475,7 +1476,6 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('ACA', 'users.view_active', false, 1, now(), now()),
     ('ACA', 'wfnotes.edit', false, 1, now(), now()),
     ('ACA', 'wfnotes.view', false, 1, now(), now()),
-    ('FAC', 'advisors.view', false, 1, now(), now()),
     ('FAC', 'app.access', false, 1, now(), now()),
     ('FAC', 'attendance.mark:own', false, 1, now(), now()),
     ('FAC', 'attendance.view:own', false, 1, now(), now()),
@@ -1515,7 +1515,6 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('FAC', 'users.view:any', false, 1, now(), now()),
     ('FAC', 'wfnotes.edit', false, 1, now(), now()),
     ('FAC', 'wfnotes.view', false, 1, now(), now()),
-    ('HOD', 'advisors.view', false, 1, now(), now()),
     ('HOD', 'app.access', false, 1, now(), now()),
     ('HOD', 'attendance.view:any', false, 1, now(), now()),
     ('HOD', 'calendar.view', false, 1, now(), now()),
@@ -1656,7 +1655,6 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('SUP', 'users.view_active', false, 1, now(), now()),
     ('SUP', 'wfnotes.edit', false, 1, now(), now()),
     ('SUP', 'wfnotes.view', false, 1, now(), now()),
-    ('GUE', 'advisors.view', false, 1, now(), now()),
     ('GUE', 'app.access', false, 1, now(), now()),
     ('GUE', 'attendance.view:own', false, 1, now(), now()),
     ('GUE', 'calendar.view', false, 1, now(), now()),
@@ -1687,7 +1685,6 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('GUE', 'users.view:any', false, 1, now(), now()),
     ('GUE', 'wfnotes.edit', false, 1, now(), now()),
     ('GUE', 'wfnotes.view', false, 1, now(), now()),
-    ('PLA', 'advisors.view', false, 1, now(), now()),
     ('PLA', 'app.access', false, 1, now(), now()),
     ('PLA', 'calendar.view', false, 1, now(), now()),
     ('PLA', 'courses.view', false, 1, now(), now()),
@@ -1717,7 +1714,6 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('PLA', 'users.view:any', false, 1, now(), now()),
     ('PLA', 'wfnotes.edit', false, 1, now(), now()),
     ('PLA', 'wfnotes.view', false, 1, now(), now()),
-    ('ADV', 'advisors.view', false, 1, now(), now()),
     ('ADV', 'app.access', false, 1, now(), now()),
     ('ADV', 'attendance.view:own', false, 1, now(), now()),
     ('ADV', 'calendar.view', false, 1, now(), now()),
@@ -1749,7 +1745,6 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('ADV', 'users.view:any', false, 1, now(), now()),
     ('ADV', 'wfnotes.edit', false, 1, now(), now()),
     ('ADV', 'wfnotes.view', false, 1, now(), now()),
-    ('RES', 'advisors.view', false, 1, now(), now()),
     ('RES', 'app.access', false, 1, now(), now()),
     ('RES', 'attendance.view:own', false, 1, now(), now()),
     ('RES', 'calendar.view', false, 1, now(), now()),
