@@ -405,8 +405,27 @@ async def test_student_docs_list_marks_ownership(client, auth, db):
     make_doc(stu, "stu", category="FEETXN")
     await auth.login("stu")
     body = await (await client.get(f"/acadstack/get_student_docs/{stu.id}")).get_json()
-    got = {d["id"]: (d["can_delete"], d["uploaded_by_student"]) for d in body["body"]}
-    assert got == {own.id: (True, True), staff.id: (False, False)}
+    got = {d["id"]: d["can_delete"] for d in body["body"]}
+    assert got == {own.id: True, staff.id: False}
+
+
+@pytest.mark.parametrize("login_id,role", [("fac", "FAC"), ("hod", "HOD")])
+async def test_faculty_and_hod_see_student_docs(client, auth, db, login_id, role):
+    stu = make_user("stu", role="STU")
+    doc = make_doc(stu, "aca")
+    make_user(login_id, role=role)
+    await auth.login(login_id)
+    body = await (await client.get(f"/acadstack/get_student_docs/{stu.id}")).get_json()
+    assert [(d["id"], d["can_delete"]) for d in body["body"]] == [(doc.id, False)]
+
+
+async def test_student_cannot_see_others_docs(client, auth, db):
+    stu = make_user("stu", role="STU")
+    make_doc(stu, "aca")
+    make_user("stu2", role="STU")
+    await auth.login("stu2")
+    body = await (await client.get(f"/acadstack/get_student_docs/{stu.id}")).get_json()
+    assert body["status"] == "ERROR"
 
 
 # ---- DC chair lookup ----

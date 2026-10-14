@@ -1,6 +1,7 @@
 <template>
   <div class="container-fluid">
     <p class="h5">Student Registration Transaction Details</p>
+    <template v-if="isStudent">
     <p>
       NOTE: Only one combination of 
       {academic session, transaction no., 
@@ -66,6 +67,7 @@
         </div>
       </div>
     </div>
+    </template>
     <div class="card">
       <h6 class="card-header">Fees Payment Transactions (Delete the old one to upload a new version)</h6>
       <div class="card-body">
@@ -91,7 +93,9 @@
             </a>
           </div>
           <div class="col-md-1">
-            <button class="btn btn-outline-danger" @click="delete_doc(r)">Delete</button>
+            <button class="btn btn-outline-danger" :disabled="!canDelete"
+              :title="canDelete ? '' : 'You are not allowed to delete this record'"
+              @click="delete_doc(r)">Delete</button>
           </div>
         </div>
       </div>
@@ -108,9 +112,10 @@ export default {
     "FileUploader": FileUploader
     , "AcadSession": AcadSession
   },
+  props: ["student_id"],
   data: function() {
     return {
-      student_id: 0,
+      stuId: 0,
       formData: {
         acadSession: "", feesTxnNo: "",
         feesTxnDt: "", feesTxnBank: "",
@@ -119,19 +124,25 @@ export default {
       docs: []
     };
   },
+  computed: {
+    // Mirrors the fees.delete check of delete_fees_txn_data.
+    canDelete() {
+      return this.isStudent || this.hasPermission('fees.delete:any');
+    }
+  },
   async mounted() {
     let vm = this;
     if (vm.isStudent) {
-      vm.student_id = vm.currentUser.id;
+      vm.stuId = vm.currentUser.id;
     } else if (vm.hasPermission('fees.view:any')) {
-      vm.student_id = vm.$route.params.user_id;
+      vm.stuId = vm.student_id || vm.$route.params.user_id;
     } else {
       const msg = "You are not allowed to access this screen!";
       vm.setStatusMessage(msg);
       console.error(msg);
       return;
     }
-    await vm.doHttp(true, 'get_reg_fees_data/'+vm.student_id,null,
+    await vm.doHttp(true, 'get_reg_fees_data/'+vm.stuId,null,
       (b)=>{vm.docs = b;}, vm.setStatusMessage)
       vm.loaded = true;
   },
@@ -139,7 +150,7 @@ export default {
       file_reset() {
       let vm = this;
       this.formData = {
-        student_id: vm.student_id,
+        student_id: vm.stuId,
         acadSession: "", feesTxnNo: "",
         feesTxnDt: "", feesTxnBank: "",
         feesTxnAmt: 0
@@ -157,7 +168,7 @@ export default {
       this.file_reset();
     },
     file_selected() {
-      this.formData.student_id = this.student_id;
+      this.formData.student_id = this.stuId;
       if (Object.values(this.formData).some(x => !x)) {
         this.setStatusMessage("All fields are mandatory!");
       }

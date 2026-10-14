@@ -125,9 +125,12 @@ Component for student details.
         <button class="btn btn-outline-primary me-2"
         v-bind:class="{ 'text-decoration-underline fst-italic': tab=='acads' }"
         @click="tab='acads'">Academics</button>
-        <button class="btn btn-outline-primary"
+        <button class="btn btn-outline-primary me-2"
         v-bind:class="{ 'text-decoration-underline fst-italic': tab=='docs' }"
         @click="tab='docs'">Documents</button>
+        <button class="btn btn-outline-primary" v-if="hasPermission('fees.view')"
+        v-bind:class="{ 'text-decoration-underline fst-italic': tab=='fees' }"
+        @click="tab='fees'">Fees</button>
       </div>
       <div class="card-body">
         <div v-show="tab=='acads'">
@@ -141,6 +144,8 @@ Component for student details.
         </div>
         <StudentDocuments v-show="tab=='docs'" 
           v-bind:student_id="student.id" />
+        <RegistrationFeesDetails v-if="hasPermission('fees.view')" v-show="tab=='fees'"
+          v-bind:student_id="student.id" />
       </div>
     </div>
   </div>
@@ -149,12 +154,14 @@ Component for student details.
 <script>
 import StudentAcademics from "./StudentAcademics.vue";
 import StudentDocuments from "./StudentDocuments.vue";
+import RegistrationFeesDetails from "./RegistrationFeesDetails.vue";
 
 export default {
   name: "StudentDetails",
   components: {
     "StudentAcademics": StudentAcademics,
-    "StudentDocuments": StudentDocuments
+    "StudentDocuments": StudentDocuments,
+    "RegistrationFeesDetails": RegistrationFeesDetails
   },
 
   data: function() {

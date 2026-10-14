@@ -199,8 +199,9 @@ SCOPES = {
     "users.view": {"own": ["STU"], "any": _but("STU")},
     # user_save: is_admin = is_user_in_role(["ACA", "SUP"]); others only themselves
     "users.edit": {"own": _but("ACA", "SUP"), "any": ["ACA", "SUP"]},
-    # __is_doc_access_allowed: ACA/DEA or own
-    "student_docs.access": {"own": _but("ACA", "DEA"), "any": ["ACA", "DEA"]},
+    # __is_doc_access_allowed: ACA/DEA/FAC/HOD or own
+    "student_docs.access": {"own": _but("ACA", "DEA", "FAC", "HOD"),
+                            "any": ["ACA", "DEA", "FAC", "HOD"]},
     # fees: if STU and not own: error
     "fees.view": {"own": ["STU"], "any": _but("STU")},
     "fees.submit": {"own": ["STU"], "any": _but("STU")},
