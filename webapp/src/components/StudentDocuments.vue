@@ -20,8 +20,8 @@
         </div>
       </div>
     </div>
-    <div class="card mb-2" v-for="sec in sections" :key="sec.title">
-      <h6 class="card-header">{{sec.title}}</h6>
+    <div class="card mb-2">
+      <h6 class="card-header">Documents</h6>
       <div class="card-body">
         <div class="row hdr-row border-bottom border-info">
           <div class="col-md-1">S#</div>
@@ -31,8 +31,8 @@
           <div class="col-md-2">Updated On</div>
           <div class="col-md-1"></div>
         </div>
-        <p v-if="sec.rows.length == 0">Nothing to show yet!</p>
-        <div class="row row-striped mt-4" v-for="(r, i) in sec.rows" :key="r.id">
+        <p v-if="liveDocs.length == 0">Nothing to show yet!</p>
+        <div class="row row-striped mt-4" v-for="(r, i) in liveDocs" :key="r.id">
           <div class="col-md-1">{{i+1}}</div>
           <div class="col-md-3">
             <a :href="'get_doc/'+r.id" target="_blank">{{r.file_name}}</a>
@@ -41,13 +41,15 @@
           <div class="col-md-2">{{r.txn_login_id}}</div>
           <div class="col-md-2">{{r.upd_ts}}</div>
           <div class="col-md-1">
-            <button v-if="r.can_delete" class="btn btn-outline-danger" @click="delete_doc(r)">Delete</button>
+            <button class="btn btn-outline-danger" :disabled="!r.can_delete"
+              :title="r.can_delete ? '' : 'Only the uploader can delete this document'"
+              @click="delete_doc(r)">Delete</button>
           </div>
         </div>
       </div>
     </div>
-    <p v-if="hasPermission('student_docs.upload')" class="small text-muted">
-      You can delete only the documents you uploaded. Delete the old one to upload a new version.
+    <p class="small text-muted">
+      Only the uploader can delete a document. Delete the old one to upload a new version.
       Fee payment proofs are shown on the Registration Fees screen.
     </p>
   </div>
@@ -65,12 +67,8 @@ export default {
     return { formData: {}, docs: [] };
   },
   computed: {
-    sections() {
-      let live = this.docs.filter(x => !x.is_deleted);
-      return [
-        {title: "Uploaded by student", rows: live.filter(x => x.uploaded_by_student)},
-        {title: "Uploaded by staff", rows: live.filter(x => !x.uploaded_by_student)}
-      ];
+    liveDocs() {
+      return this.docs.filter(x => !x.is_deleted);
     }
   },
   created() {

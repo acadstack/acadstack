@@ -49,7 +49,6 @@ async def upload_student_doc():
         apiVC.save_entity(ud)
         d = apiVC.model_to_dict(ud, exclude=[DB.UserDoc.doc, DB.UserDoc.user])
         d["can_delete"] = True
-        d["uploaded_by_student"] = ud.txn_login_id == u.login_id
         return apiVC.ok_json(d)
     except Exception as ex:
         msg = "Error when handling document upload."
@@ -75,7 +74,6 @@ async def get_student_docs(stu_id):
             for r in u:
                 d = apiVC.model_to_dict(r, exclude=[DB.UserDoc.user])
                 d["can_delete"] = r.txn_login_id == actor.login_id
-                d["uploaded_by_student"] = r.txn_login_id == stu.login_id
                 serialized.append(d)
             return apiVC.ok_json(serialized)
         else:
