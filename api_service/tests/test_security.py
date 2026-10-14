@@ -326,6 +326,89 @@ async def test_owner_and_academic_section_delete_fee_record(client, auth, db, lo
     assert M.FeesTransaction.get_by_id(fee.id).is_deleted
 
 
+DENIED = "You are not allowed to access others' data! This incident has been reported."
+
+
+async def test_student_cannot_fetch_others_fee_proof(client, auth, db):
+    make_fee(make_user("stu", role="STU"))
+    make_user("stu2", role="STU")
+    await auth.login("stu2")
+    body = await (await client.get("/acadstack/get_fees_txn_file/f")).get_json()
+    assert body == {"status": "ERROR", "body": DENIED}
+
+
+async def test_unknown_fee_proof_not_found(client, auth, db):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await (await client.get("/acadstack/get_fees_txn_file/nope")).get_json()
+    assert body["status"] == "ERROR" and body["body"] != DENIED
+
+
+@pytest.mark.parametrize("login_id,role", [("stu", "STU"), ("aca", "ACA")])
+async def test_owner_and_academic_section_pass_fee_proof_check(client, auth, db, login_id, role):
+    make_fee(make_user("stu", role="STU"))
+    if role != "STU":
+        make_user(login_id, role=role)
+    await auth.login(login_id)
+    # The proof file is not on disk, so only the access check is exercised here.
+    body = await (await client.get("/acadstack/get_fees_txn_file/f")).get_json()
+    assert body["body"] != DENIED
+
+
+# ---- Student documents: only the uploader deletes ----
+
+def make_doc(student, uploader, category="STU"):
+    return M.UserDoc.create(user=student, category=category, description="d",
+                            file_name="a.pdf", doc="", txn_login_id=uploader)
+
+
+async def delete_doc(client, doc):
+    return await (await client.post(f"/acadstack/delete_doc/{doc.id}")).get_json()
+
+
+async def test_student_cannot_delete_staff_doc(client, auth, db):
+    stu = make_user("stu", role="STU")
+    doc = make_doc(stu, "aca")
+    await auth.login("stu")
+    assert (await delete_doc(client, doc))["status"] == "ERROR"
+    assert M.UserDoc.get_or_none(M.UserDoc.id == doc.id)
+
+
+async def test_student_cannot_delete_own_fee_proof(client, auth, db):
+    stu = make_user("stu", role="STU")
+    doc = make_doc(stu, "stu", category="FEETXN")
+    await auth.login("stu")
+    assert (await delete_doc(client, doc))["status"] == "ERROR"
+    assert M.UserDoc.get_or_none(M.UserDoc.id == doc.id)
+
+
+async def test_other_staff_cannot_delete_uploaders_doc(client, auth, db):
+    doc = make_doc(make_user("stu", role="STU"), "aca")
+    make_user("dea", role="DEA")
+    await auth.login("dea")
+    assert (await delete_doc(client, doc))["status"] == "ERROR"
+    assert M.UserDoc.get_or_none(M.UserDoc.id == doc.id)
+
+
+async def test_uploader_deletes_own_doc(client, auth, db):
+    doc = make_doc(make_user("stu", role="STU"), "aca")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    assert (await delete_doc(client, doc))["status"] == "OK"
+    assert not M.UserDoc.get_or_none(M.UserDoc.id == doc.id)
+
+
+async def test_student_docs_list_marks_ownership(client, auth, db):
+    stu = make_user("stu", role="STU")
+    own = make_doc(stu, "stu")
+    staff = make_doc(stu, "aca")
+    make_doc(stu, "stu", category="FEETXN")
+    await auth.login("stu")
+    body = await (await client.get(f"/acadstack/get_student_docs/{stu.id}")).get_json()
+    got = {d["id"]: (d["can_delete"], d["uploaded_by_student"]) for d in body["body"]}
+    assert got == {own.id: (True, True), staff.id: (False, False)}
+
+
 # ---- DC chair lookup ----
 
 async def test_dc_chair_lookup_only_for_self(client, auth, db):

@@ -47,7 +47,10 @@ async def upload_student_doc():
         ud.doc = apiVC.save_file_to_uploads_folder("docs", docf.stream.read())
 
         apiVC.save_entity(ud)
-        return apiVC.ok_json(apiVC.model_to_dict(ud, exclude=[DB.UserDoc.doc, DB.UserDoc.user]))
+        d = apiVC.model_to_dict(ud, exclude=[DB.UserDoc.doc, DB.UserDoc.user])
+        d["can_delete"] = True
+        d["uploaded_by_student"] = ud.txn_login_id == u.login_id
+        return apiVC.ok_json(d)
     except Exception as ex:
         msg = "Error when handling document upload."
         logging.exception(msg)
@@ -63,8 +66,17 @@ def __is_doc_access_allowed(stu_id):
 async def get_student_docs(stu_id):
     try:
         if __is_doc_access_allowed(stu_id):
-            u = DB.UserDoc.select().where(DB.UserDoc.user == int(stu_id))
-            serialized = [apiVC.model_to_dict(r, exclude=[DB.UserDoc.user]) for r in u]
+            actor = P.current_actor()
+            stu = DB.User.get_by_id(int(stu_id))
+            # Fee payment proofs are managed on the registration fees screen.
+            u = DB.UserDoc.select().where((DB.UserDoc.user == stu.id) &
+                                          (DB.UserDoc.category != "FEETXN"))
+            serialized = []
+            for r in u:
+                d = apiVC.model_to_dict(r, exclude=[DB.UserDoc.user])
+                d["can_delete"] = r.txn_login_id == actor.login_id
+                d["uploaded_by_student"] = r.txn_login_id == stu.login_id
+                serialized.append(d)
             return apiVC.ok_json(serialized)
         else:
             return apiVC.error_json("Student documents cannot be displayed.")
@@ -77,7 +89,13 @@ async def get_student_docs(stu_id):
 @P.require("student_docs.access")
 async def delete_doc(doc_id):
     try:
-        doc = DB.UserDoc.get_by_id(int(doc_id))
+        doc = DB.UserDoc.get_or_none(DB.UserDoc.id == int(doc_id))
+        if not doc:
+            return apiVC.error_json("Document not found!")
+        if doc.category == "FEETXN":
+            return apiVC.error_json("Fee payment proofs are removed by deleting the fee record.")
+        if doc.txn_login_id != P.current_actor().login_id:
+            return apiVC.error_json("Only the uploader can delete this document.")
         if __is_doc_access_allowed(doc.user.id):
             DB.UserDoc.delete_by_id(doc.id)
             # Remove file from disk
@@ -98,12 +116,8 @@ async def delete_doc(doc_id):
 async def get_doc(doc_id):
     try:
         u_doc = DB.UserDoc.get_or_none(DB.UserDoc.id == int(doc_id))
-        if u_doc.category == 'FEETXN':
-            docs_folder="FEETXN"
-        else:
-            docs_folder="docs"
-        
         if u_doc and u_doc.doc:
+            docs_folder = "FEETXN" if u_doc.category == 'FEETXN' else "docs"
             if __is_doc_access_allowed(u_doc.user.id):
                 fp = os.path.join(apiVC.get_upload_folder(),
                                   docs_folder, secure_filename(u_doc.doc))

@@ -20,31 +20,36 @@
         </div>
       </div>
     </div>
-    <div class="card">
-      <h6 v-if="hasPermission('student_docs.upload')" class="card-header">Documents (Delete the old one to upload a new version)</h6>
-      <h6 v-else class="card-header">Documents</h6>
+    <div class="card mb-2" v-for="sec in sections" :key="sec.title">
+      <h6 class="card-header">{{sec.title}}</h6>
       <div class="card-body">
         <div class="row hdr-row border-bottom border-info">
           <div class="col-md-1">S#</div>
           <div class="col-md-3">File Name</div>
           <div class="col">Document Description</div>
+          <div class="col-md-2">Uploaded By</div>
           <div class="col-md-2">Updated On</div>
           <div class="col-md-1"></div>
         </div>
-        <p v-if="docs.length == 0">Nothing to show yet!</p>
-        <div class="row row-striped mt-4" v-for="(r, i) in docs.filter(x => !x.is_deleted)" :key="r.id">
+        <p v-if="sec.rows.length == 0">Nothing to show yet!</p>
+        <div class="row row-striped mt-4" v-for="(r, i) in sec.rows" :key="r.id">
           <div class="col-md-1">{{i+1}}</div>
           <div class="col-md-3">
             <a :href="'get_doc/'+r.id" target="_blank">{{r.file_name}}</a>
           </div>
           <div class="col">{{r.description}}</div>
+          <div class="col-md-2">{{r.txn_login_id}}</div>
           <div class="col-md-2">{{r.upd_ts}}</div>
           <div class="col-md-1">
-            <button class="btn btn-outline-danger" @click="delete_doc(r)">Delete</button>
+            <button v-if="r.can_delete" class="btn btn-outline-danger" @click="delete_doc(r)">Delete</button>
           </div>
         </div>
       </div>
     </div>
+    <p v-if="hasPermission('student_docs.upload')" class="small text-muted">
+      You can delete only the documents you uploaded. Delete the old one to upload a new version.
+      Fee payment proofs are shown on the Registration Fees screen.
+    </p>
   </div>
 </template>
 
@@ -58,6 +63,15 @@ export default {
   props: ["student_id"],
   data: function() {
     return { formData: {}, docs: [] };
+  },
+  computed: {
+    sections() {
+      let live = this.docs.filter(x => !x.is_deleted);
+      return [
+        {title: "Uploaded by student", rows: live.filter(x => x.uploaded_by_student)},
+        {title: "Uploaded by staff", rows: live.filter(x => !x.uploaded_by_student)}
+      ];
+    }
   },
   created() {
     console.debug("Created StudentDocuments :: student_id="+this.student_id);

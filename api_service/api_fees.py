@@ -29,6 +29,15 @@ def init_routes(bp:Blueprint):
 @P.require("fees.view")
 async def get_fees_txn_image(file_name):
     try:
+        ftxn = DB.FeesTransaction.get_or_none(DB.FeesTransaction.doc_file_name == file_name)
+        if not ftxn:
+            return apiVC.error_json("Fees transaction proof not found.")
+        actor = P.current_actor()
+        if not actor.allowed("fees.view", own=lambda: ftxn.student.id == actor.id):
+            logging.error(
+                "DB.User {0} attempted to fetch fees transaction proof of user {1}.".format(apiVC.current_login_id(), ftxn.student.id))
+            return apiVC.error_json("You are not allowed to access others' data! This incident has been reported.")
+
         fp = os.path.join(apiVC.get_upload_folder(),
                           "FEETXN", secure_filename(file_name))
         return await send_file(fp, attachment_filename="{}.jpg".format(file_name))
