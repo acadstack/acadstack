@@ -467,12 +467,11 @@ slotwise_courses = """
 get_course_grades = """
     SELECT UPPER(u.first_name) AS FIRST_NAME,
 	UPPER(u.last_name) AS LAST_NAME, 
-	UPPER(p.org_id) AS ROLL_NO, UPPER(ce.grade) AS GRADE, c.code 
+	UPPER(p.org_id) AS ROLL_NO, UPPER(ce.grade) AS GRADE
     FROM public.courseenrollment ce
     JOIN public.user u ON u.id=ce.student_id
     JOIN public.person p ON p.id=u.person_id
     JOIN public.courseoffering co ON co.id=ce.course_offering_id
-    JOIN public.course c ON c.id=co.course_id
     WHERE co.id=%s
     AND ce.enrol_status='ENRO'
     ORDER BY p.org_id;"""

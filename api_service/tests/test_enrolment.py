@@ -458,8 +458,8 @@ async def test_c7_coordinator_downloads_enrolments_for_grades(client, auth, setu
     res = await client.get(f"/acadstack/download_enrollments_for_grades/{setup['co'].id}")
     assert res.status_code == 200
     lines = (await res.get_data(as_text=True)).splitlines()
-    assert lines[0] == "first_name,last_name,roll_no,grade,code"
-    assert lines[1] == "STU,USER,STU,NA,CS101"
+    assert lines[0] == "FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"
+    assert lines[1] == "STU,USER,STU,NA"
 
 
 # ---- slot conflicts ----

@@ -98,6 +98,6 @@ async def test_grades_download_has_the_requested_component_columns(client, auth,
     res = await client.get(f"/acadstack/download_enrollments_for_grades/{setup['co'].id}"
                            "?components=mse,lab")
     lines = (await res.get_data(as_text=True)).splitlines()
-    assert lines[0].lower() == "first_name,last_name,roll_no,grade,code,mse,lab"
-    assert lines[1].endswith("2024CSB1001,A,CS101,72.5,")
-    assert lines[2].endswith("2024CSB1002,NA,CS101,,")
+    assert lines[0] == "FIRST_NAME,LAST_NAME,ROLL_NO,GRADE,MSE,LAB"
+    assert lines[1].endswith("2024CSB1001,A,72.5,")
+    assert lines[2].endswith("2024CSB1002,NA,,")

@@ -1,4 +1,5 @@
-from io import BytesIO
+import csv
+from io import BytesIO, StringIO
 import logging
 from quart import Blueprint, request
 from quart import current_app as APP
@@ -510,27 +511,15 @@ async def download_course_enrollments(co_id, is_grades=False):
 
         qry = sql_by_id(sql_id)
         cursor = DB.db.execute_sql(qry, [int(co_id)])
-        ncols = len(cursor.description)
-        colnames = [cursor.description[i][0] for i in range(ncols)]
-        result = []
+        colnames = [d[0].upper() if is_grades else d[0] for d in cursor.description]
 
-        # Add the header row
-        hdr_row = []
-        for col_name in colnames:
-            hdr_row.append(col_name)
-        result.append(','.join(hdr_row + [ec.code for ec in comps]))
-
-        # Add the data rows
+        # Fields with commas are quoted and NULLs are written as empty cells
+        out = StringIO()
+        writer = csv.writer(out, lineterminator="\n")
+        writer.writerow(colnames + [ec.code for ec in comps])
         for row in cursor.fetchall():
-            row_data = []
-            for i in range(ncols):
-                row_data.append(row[i])
-            row_data += [scores.get((row[2], ec.id), "") for ec in comps]
-            result.append(','.join(row_data))
-        fp = BytesIO()
-        fp.write('\n'.join(result).encode('utf-8'))
-        fp.flush()
-        fp.seek(0)
+            writer.writerow(list(row) + [scores.get((row[2], ec.id), "") for ec in comps])
+        fp = BytesIO(out.getvalue().encode('utf-8'))
         return await send_file(fp, attachment_filename=f"{co.course.code}_students.csv",
                          as_attachment=True)
 
