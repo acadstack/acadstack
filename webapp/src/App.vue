@@ -8,7 +8,9 @@ import Navbar from "./components/Navbar.vue";
     <Navbar v-bind:navItems="navData" v-bind:user="currentUser" v-on:logout-user="onLogout"/>
     <br/>
     <div style="z-index: 999;" class="overflow-auto position-fixed top-50 start-50 translate-middle">
-      <div v-if="statusMsg != ''" class="alert alert-warning alert-dismissible fade show" role="alert">
+      <div v-if="statusMsg != ''" class="alert alert-dismissible fade show" style="white-space: pre-line;"
+        :class="{'alert-warning': statusKind == 'info', 'alert-success': statusKind == 'success',
+          'alert-danger': statusKind == 'error'}" role="alert">
         {{statusMsg}}
         <button @click="setStatusMessage('')" type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
       </div>
@@ -21,6 +23,8 @@ import Navbar from "./components/Navbar.vue";
 </template>
 <script>
 import { START_LOCATION } from 'vue-router'
+
+const PLEASE_WAIT = "Please wait..."
 export default {
   setup() {
     
@@ -35,6 +39,7 @@ export default {
       initDone: false,
       user: {},
       statusMessage: '',
+      statusKind: 'info',
       staticData: {},
       institute: {},
       viewOnlyFlag: false,
@@ -55,7 +60,8 @@ export default {
       // Add AJAX interceptors
       vm.$http.interceptors.request.use(function (config) {
         // Do something before request is sent
-        vm.statusMessage = "Please wait..."
+        // A success message stays up while the page reloads its data
+        if (vm.statusKind != 'success' || !vm.statusMessage) vm.setStatusMessage(PLEASE_WAIT)
         return config;
       }, function (error) {
         // Do something with request error
@@ -64,12 +70,13 @@ export default {
       vm.$http.interceptors.response.use(function (response) {
         // Any status code that lie within the range of 2xx cause this function to trigger
         // Do something with response data
-        vm.statusMessage = "";
+        // Leave alone any message that a caller has set meanwhile
+        if (vm.statusMessage === PLEASE_WAIT) vm.setStatusMessage("");
         return response;
       }, function (error) {
         // Any status codes that falls outside the range of 2xx cause this function to trigger
         // Do something with response error
-        vm.statusMessage = "Error occurred: " + error;
+        vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
         return Promise.reject(error);
       });
       console.log("Setup the HTTP request interceptors.")

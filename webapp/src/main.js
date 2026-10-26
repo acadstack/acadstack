@@ -11,23 +11,64 @@ app.mixin({
     methods: {
         async doHttp(isGet, url, postData, onOk, onError) {
             let vm = this;
+            let res;
             try {
-                const res = isGet ? await vm.$http.get(url) : await vm.$http.post(url, postData);
+                res = isGet ? await vm.$http.get(url) : await vm.$http.post(url, postData);
+            } catch (error) {
+                console.log(error);
+                vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
+                return;
+            }
+            try {
                 if (res.data.status == "OK") {
                     onOk(res.data.body)
                 } else {
                     onError(res.data.body)
+                    // Messages set by the error callback are shown as errors
+                    if (vm.$root.statusMessage && vm.$root.statusKind == 'info') {
+                        vm.$root.statusKind = 'error';
+                    }
                 }
             } catch (error) {
-                console.log(error);
-                vm.setStatusMessage("Error occurred when contacting the server.");
+                console.error(error);
+                vm.setStatusMessage("The page could not show the result of your request. " +
+                    "Please reload the page and check whether your change was saved.", 'error');
             }
+        },
+        httpErrorMessage(error) {
+            const resp = error && error.response;
+            if (!resp) {
+                return "Could not reach the server. Please check your network connection and try again.";
+            }
+            if (resp.status == 401 || resp.status == 403) {
+                return "Your session has expired or you are not allowed to do this. Please log in again.";
+            }
+            if (resp.status >= 500) {
+                return "The server hit an unexpected error. Please try again; if it keeps failing, contact the administrator.";
+            }
+            if (resp.data && typeof resp.data.body === 'string') return resp.data.body;
+            return "The request failed (HTTP " + resp.status + "). Please try again.";
         },
         setStaticData(sd) {
             this.$root.staticData = sd;
         },
-        setStatusMessage(msg) {
-            this.$root.statusMessage = msg;
+        /**
+         * Shows a message in the alert box. kind is 'info' (the default),
+         * 'success' (dismissed automatically) or 'error'. A list of messages is
+         * shown one per line.
+         */
+        setStatusMessage(msg, kind = 'info') {
+            const text = Array.isArray(msg) ? msg.join("\n") : (msg ?? "");
+            this.$root.statusMessage = text;
+            this.$root.statusKind = kind;
+            if (kind == 'success' && text) {
+                setTimeout(() => {
+                    if (this.$root.statusMessage === text) this.$root.statusMessage = "";
+                }, 8000);
+            }
+        },
+        setSuccessMessage(msg) {
+            this.setStatusMessage(msg, 'success');
         },
         setCurrentUser(user) {
             this.$root.user = user;

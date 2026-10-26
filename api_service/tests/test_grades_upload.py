@@ -76,6 +76,13 @@ async def test_unchanged_grades_are_not_counted(client, auth, app, setup):
     assert "updated 1 records" in body["body"]
 
 
+async def test_upload_that_changes_nothing_says_so(client, auth, app, setup):
+    await auth.login("ins")
+    await upload(client, app, "ins", setup["co"].id, GOOD_CSV)
+    body = await upload(client, app, "ins", setup["co"].id, GOOD_CSV)
+    assert body["status"] == "OK" and body["body"].startswith("No changes were made")
+
+
 async def test_academic_section_can_upload(client, auth, app, setup):
     make_user("aca", role="ACA")
     await auth.login("aca")

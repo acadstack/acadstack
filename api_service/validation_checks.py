@@ -57,7 +57,7 @@ def validate_coff_status(co):
  
     if co.status in ["F", "C"] and \
             not P.current_actor().can("offerings.edit_closed"):
-        raise AcadStackException("Cannot change data for a course that has ended/canceled!")
+        raise AcadStackException("Cannot change data for a course that has ended/canceled! Contact the academic section if a change is needed.")
 
 
 def check_enrollment_allowed(co):

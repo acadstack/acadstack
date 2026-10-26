@@ -33,7 +33,9 @@ def enrolment_next_status(actor, status, action, is_instructor, is_advisor):
     # Advisor's step for any enrolment
     if actor.has("enrolments.approve:any") and status == "APEN":
         return "ENRO" if approve else "AREJ"
-    raise AcadStackException("You do not have privileges to change one or more enrollments!")
+    raise AcadStackException("You cannot approve or reject one or more of the selected "
+                             "requests at this stage: only the course instructor, then the "
+                             "student's advisor, can act on a request.")
 
 
 # DC statuses each scope of dc.edit may change, and the statuses it may

@@ -692,6 +692,9 @@ async def grades_upload():
             txn.commit()
         if not P.current_actor().has("roster.acad_section"):
             send_grades_submission_email(co_id, upd_count)
+        if upd_count == 0:
+            return apiVC.ok_json("No changes were made: the grades in the file are the same "
+                                 "as the ones already saved.")
         return apiVC.ok_json(f"Grades processed successfully! Added/updated {
             upd_count} records.")
 
