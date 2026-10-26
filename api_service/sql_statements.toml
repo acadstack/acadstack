@@ -506,7 +506,7 @@ move_running_co_to_finish = """
         JOIN public.courseoffering co ON co.acad_session = c.acad_session
         WHERE co.status = 'R'
         AND c.event_code = 'GRADE_SUB_E'
-        AND TO_TIMESTAMP(c.event_value, %s) <= CURRENT_DATE
+        AND c.event_value::date < CURRENT_DATE
     )
     UPDATE public.courseoffering
     SET status = 'F'
@@ -518,7 +518,7 @@ move_enrolling_co_to_running = """
         JOIN public.courseoffering co ON co.acad_session = c.acad_session
         WHERE co.status = 'E'
             AND c.event_code = 'CLASSES_S'
-            AND TO_TIMESTAMP(c.event_value, %s) <= CURRENT_DATE)
+            AND c.event_value::date <= CURRENT_DATE)
     UPDATE public.courseoffering 
     SET status = 'R'
     WHERE id IN (select id from enrolling_courses);"""

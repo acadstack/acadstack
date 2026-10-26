@@ -474,11 +474,11 @@ def schedule_course_status(config=None):
         # Runs on a scheduler thread, with its own connection to the DB
         # that the app initialised.
         with DB.db.connection_context():
-            cur = DB.db.execute_sql(C.sql_by_id("move_running_co_to_finish"), ['%Y-%m-%d'])
+            cur = DB.db.execute_sql(C.sql_by_id("move_running_co_to_finish"))
             rc = DB.db.rows_affected(cur)
             logging.info(f"Changed {rc} Running course offerings to Completed.")
 
-            cur = DB.db.execute_sql(C.sql_by_id("move_enrolling_co_to_running"), ['%Y-%m-%d'])
+            cur = DB.db.execute_sql(C.sql_by_id("move_enrolling_co_to_running"))
             rc = DB.db.rows_affected(cur)
             logging.info(f"Changed {rc} Enrolling course offerings to Running.")
 
