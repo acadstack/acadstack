@@ -170,7 +170,7 @@ export default {
         this.SD.CourseGrades.some(g => g.id && g.id === gr.toUpperCase().trim());
     },
     fileUploaded(resBody) {
-      this.setStatusMessage(resBody);
+      this.setSuccessMessage(resBody);
     },
     onCourseSelect(c) {
       let vm = this;
