@@ -348,6 +348,30 @@ async def test_dates_save_rejects_unknown_events(client, auth, code):
     assert M.AcademicCalendar.select().count() == 0
 
 
+@pytest.mark.parametrize("value", ["2026-13-45", "2026-02-30", "31/12/2026", "soon",
+                                   "2026-7-1", 20260701])
+async def test_dates_save_rejects_values_that_are_not_dates(client, auth, value):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    res = await client.post("/acadstack/dates_save", json={
+        "session": "2026-I", "eventDates": {"SESSION_S": "2026-07-01", "SESSION_E": "2026-12-01",
+                                            "CLASSES_S": value}})
+    body = await res.get_json()
+    assert body["status"] == "ERROR" and "CLASSES_S" in body["body"]
+    assert M.AcademicCalendar.select().count() == 0
+
+
+async def test_dates_save_clears_an_event_whose_date_was_emptied(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    dates = {"SESSION_S": "2026-07-01", "SESSION_E": "2026-12-01", "CLASSES_S": "2026-07-25"}
+    await client.post("/acadstack/dates_save", json={"session": "2026-I", "eventDates": dates})
+    res = await client.post("/acadstack/dates_save", json={
+        "session": "2026-I", "eventDates": {**dates, "CLASSES_S": ""}})
+    assert (await res.get_json())["status"] == "OK"
+    assert sorted(r.event_code for r in M.AcademicCalendar.select()) == ["SESSION_E", "SESSION_S"]
+
+
 def test_upcoming_events_email_uses_labels(db, monkeypatch):
     M.VocabItem.create(vocab="CalendarEvents", code="CONVOCATION", label="Convocation")
     settings.save("label_overrides", {"WorkflowEvents": {"GRADE_SUB": "Marks entry"}})
