@@ -4,8 +4,9 @@ Most tests also put the same CSV in the uploader's folder first, which the
 route overwrites with the uploaded file.
 """
 
+import csv
 import os
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import pytest
 from quart.datastructures import FileStorage
@@ -73,6 +74,13 @@ async def test_unchanged_grades_are_not_counted(client, auth, app, setup):
     await auth.login("ins")
     body = await upload(client, app, "ins", setup["co"].id, GOOD_CSV)
     assert "updated 1 records" in body["body"]
+
+
+async def test_upload_that_changes_nothing_says_so(client, auth, app, setup):
+    await auth.login("ins")
+    await upload(client, app, "ins", setup["co"].id, GOOD_CSV)
+    body = await upload(client, app, "ins", setup["co"].id, GOOD_CSV)
+    assert body["status"] == "OK" and body["body"].startswith("No changes were made")
 
 
 async def test_academic_section_can_upload(client, auth, app, setup):
@@ -290,3 +298,27 @@ async def test_scores_of_audit_rejection_are_rolled_back(client, auth, app, setu
     assert body["status"] == "ERROR"
     assert scores(setup["ce1"]) == {}
 
+
+
+async def test_downloaded_file_with_filled_grades_can_be_uploaded(client, auth, app, setup):
+    # A student without a last name (NULL) and one whose name has a comma
+    M.User.update(last_name=None).where(M.User.id == setup["ce1"].student_id).execute()
+    M.User.update(first_name="Rao, K").where(M.User.id == setup["ce2"].student_id).execute()
+    await auth.login("ins")
+    res = await client.get(f"/acadstack/download_enrollments_for_grades/{setup['co'].id}")
+    assert res.status_code == 200
+    rows = list(csv.reader((await res.get_data(as_text=True)).splitlines()))
+    assert rows[0] == ["FIRST_NAME", "LAST_NAME", "ROLL_NO", "GRADE"]
+    assert rows[1][:2] == ["S1", ""] and rows[2][:2] == ["RAO, K", "USER"]
+
+    out = StringIO()
+    csv.writer(out).writerows(rows[:1] + [r[:3] + [g] for r, g in zip(rows[1:], ["A", "B"])])
+    body = await upload(client, app, "ins", setup["co"].id, out.getvalue())
+    assert body["status"] == "OK", body
+    assert grades(setup["ce1"], setup["ce2"]) == ["A", "B"]
+
+
+async def test_row_with_too_few_columns_is_reported(client, auth, app, setup):
+    await auth.login("ins")
+    body = await upload(client, app, "ins", setup["co"].id, f"{HEADER}\nA,B,2024CSB1001\n")
+    assert body["status"] == "ERROR" and "fewer than 4 columns" in body["body"]

@@ -47,12 +47,11 @@ export default {
         console.debug("No upload destination specified. Ignoring save.");
         return;
       }
-      if (!confirm("Confirm save?")) {
-        vm.setStatusMessage("User canceled save!");
+      if (vm.data_file == "" || vm.file_name == "") {
+        vm.setStatusMessage("Please select a file first.", 'error');
         return;
       }
-      if (vm.data_file == "" || vm.file_name == "") {
-        vm.setStatusMessage("Please select a file!");
+      if (!confirm("Confirm save?")) {
         return;
       }
       /** Prepare the form payload to POST. */ 
@@ -78,14 +77,14 @@ export default {
           } else {
             vm.data_file = ""
             vm.file_name = ""
-            vm.setStatusMessage(res.data.body);
+            vm.setStatusMessage(res.data.body, 'error');
             vm.$emit("fu-file-upload-error", res.data.body);
           }
         })
         .catch(function(error) {
           console.log(error);
-          const msg = "Error occurred when contacting the server.";
-          vm.setStatusMessage(msg);
+          const msg = vm.httpErrorMessage(error);
+          vm.setStatusMessage(msg, 'error');
           vm.$emit("fu-file-upload-error", msg);
         });
     },

@@ -568,24 +568,33 @@ async def grades_upload():
         # Convert all text to uppercase in the grades file
         with open(file_path, 'r') as inp:
             y = inp.read().upper().strip()
-            lines = y.splitlines()
-            if len(lines) < 2:
+            rows = [r for r in csv.reader(y.splitlines()) if r]
+            if len(rows) < 2:
                 return apiVC.error_json("No grades found in the CSV file you uploaded. Please upload a non-empty CSV file!")
 
-            if not lines[0].replace(' ', '').startswith("FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"):
-                return apiVC.error_json("Invalid header row in CSV. Please make sure that the header row contains only: roll_no, grade")
-            header = [h.strip() for h in lines[0].split(',')]
+            header = [h.strip() for h in rows[0]]
+            if header[:4] != ["FIRST_NAME", "LAST_NAME", "ROLL_NO", "GRADE"]:
+                return apiVC.error_json("Invalid header row in CSV. The first four columns "
+                                        "must be FIRST_NAME, LAST_NAME, ROLL_NO, GRADE "
+                                        "(download the enrolled students list and fill it in).")
             absent = [c for c in codes if c not in header]
             if absent:
                 return apiVC.error_json("The header row in CSV has no columns for the "
                                         f"selected evaluation components: {absent}")
 
             invalid_rows = []
+            short_rows = []
             valid_grades = apiVC.valid_grades()
-            for ll in lines[1:]:
-                if ll.split(',')[3].strip() not in valid_grades:
-                    invalid_rows.append(ll)
+            for n, cells in enumerate(rows[1:], start=2):  # n: row number in the file
+                if len(cells) < 4:
+                    short_rows.append(n)
+                elif cells[3].strip() not in valid_grades:
+                    invalid_rows.append(",".join(cells))
 
+            if short_rows:
+                return apiVC.error_json(f"Rows {short_rows} of the CSV have fewer than 4 "
+                                        "columns. Each row needs first name, last name, "
+                                        "roll number and grade.")
             if invalid_rows:
                 return apiVC.error_json(f"Found invalid grades in rows: {invalid_rows}. "
                                      f"Allowed grades values are: {valid_grades}")
@@ -683,6 +692,9 @@ async def grades_upload():
             txn.commit()
         if not P.current_actor().has("roster.acad_section"):
             send_grades_submission_email(co_id, upd_count)
+        if upd_count == 0:
+            return apiVC.ok_json("No changes were made: the grades in the file are the same "
+                                 "as the ones already saved.")
         return apiVC.ok_json(f"Grades processed successfully! Added/updated {
             upd_count} records.")
 

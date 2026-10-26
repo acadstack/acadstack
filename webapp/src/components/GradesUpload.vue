@@ -75,8 +75,10 @@ Component for uploading grades of a course.
                   before downloading the list: it then has a column per component, named
                   by its code. Write each score scaled to 0-100; a blank cell keeps the
                   stored score.</li>
-                <li>Write your grades in the downloaded CSV file and upload in Grade 
-                  submission page on AcadStack portal.</li>
+                <li>Write your grades in the GRADE column (and the scores in the
+                  component columns, if any) of the downloaded CSV file; leave the
+                  other columns as they are. Then upload it in Grade submission
+                  page on AcadStack portal.</li>
                 <li>A preview of the uploaded grades is shown on the right side for 
                   quick reference and verification.</li>
                 <li>Once grades are verified from the preview screen, for submitting 
@@ -129,6 +131,24 @@ import VueBootstrapTypeahead from "./VueBootstrapTypeahead.vue";
 import AcadSession from "./AcadSession.vue";
 import _ from "lodash";
 
+// Splits a CSV line into cells; a double-quoted cell may contain commas
+function splitCsvLine(line) {
+  const cells = [];
+  let cell = "", quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") { cells.push(cell); cell = ""; }
+    else cell += ch;
+  }
+  cells.push(cell);
+  return cells;
+}
+
 export default {
   name: "GradesUpload",
   components: {
@@ -170,7 +190,7 @@ export default {
         this.SD.CourseGrades.some(g => g.id && g.id === gr.toUpperCase().trim());
     },
     fileUploaded(resBody) {
-      this.setStatusMessage(resBody);
+      this.setSuccessMessage(resBody);
     },
     onCourseSelect(c) {
       let vm = this;
@@ -219,7 +239,7 @@ export default {
         let rr = evt.target.result.split("\n");
         rr.forEach(row => {
           if (!_.isEmpty(row.trim())) {
-            data.push(row.replace("\r", "").split(","));
+            data.push(splitCsvLine(row.replace("\r", "")));
           }
         });
         vm.result = data;

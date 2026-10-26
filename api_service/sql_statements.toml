@@ -467,12 +467,11 @@ slotwise_courses = """
 get_course_grades = """
     SELECT UPPER(u.first_name) AS FIRST_NAME,
 	UPPER(u.last_name) AS LAST_NAME, 
-	UPPER(p.org_id) AS ROLL_NO, UPPER(ce.grade) AS GRADE, c.code 
+	UPPER(p.org_id) AS ROLL_NO, UPPER(ce.grade) AS GRADE
     FROM public.courseenrollment ce
     JOIN public.user u ON u.id=ce.student_id
     JOIN public.person p ON p.id=u.person_id
     JOIN public.courseoffering co ON co.id=ce.course_offering_id
-    JOIN public.course c ON c.id=co.course_id
     WHERE co.id=%s
     AND ce.enrol_status='ENRO'
     ORDER BY p.org_id;"""
@@ -506,7 +505,7 @@ move_running_co_to_finish = """
         JOIN public.courseoffering co ON co.acad_session = c.acad_session
         WHERE co.status = 'R'
         AND c.event_code = 'GRADE_SUB_E'
-        AND TO_TIMESTAMP(c.event_value, %s) <= CURRENT_DATE
+        AND c.event_value::date < CURRENT_DATE
     )
     UPDATE public.courseoffering
     SET status = 'F'
@@ -518,7 +517,7 @@ move_enrolling_co_to_running = """
         JOIN public.courseoffering co ON co.acad_session = c.acad_session
         WHERE co.status = 'E'
             AND c.event_code = 'CLASSES_S'
-            AND TO_TIMESTAMP(c.event_value, %s) <= CURRENT_DATE)
+            AND c.event_value::date <= CURRENT_DATE)
     UPDATE public.courseoffering 
     SET status = 'R'
     WHERE id IN (select id from enrolling_courses);"""

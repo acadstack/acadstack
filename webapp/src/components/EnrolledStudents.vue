@@ -116,13 +116,12 @@ export default {
     },
     async save(){
       
-      if (!confirm("Confirm save?")) {
-        vm.setStatusMessage("User canceled save!");
-        return;
-      }
       var vm = this;
       if(vm.tochange.length == 0){
-        vm.setStatusMessage("Select student to enrol!");
+        vm.setStatusMessage("Select at least one enrolment request first.");
+        return;
+      }
+      if (!confirm(`Confirm to ${vm.newenrolled.status} the selected enrolment requests?`)) {
         return;
       }
       vm.newenrolled.ids = vm.tochange;
@@ -132,13 +131,14 @@ export default {
         if (res.data.status == "OK") {
           vm.reset();
           vm.$emit('update-enrollments', true);
+          vm.setSuccessMessage(res.data.body);
         } else {
-          vm.setStatusMessage(res.data.body);
+          vm.setStatusMessage(res.data.body, 'error');
         }
       })
       .catch(function (error) {
         console.log(error);
-        vm.setStatusMessage("Error occurred when contacting the server.");
+        vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
       });
     },
     reset(){

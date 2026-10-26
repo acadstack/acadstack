@@ -8,6 +8,7 @@ __status__ = "Development"
 """
 
 import logging
+from datetime import date
 
 from quart import Blueprint
 from quart.views import request
@@ -89,6 +90,15 @@ async def wfnote_delete(my_id):
         return apiVC.error_json(msg)
 
 
+def _is_iso_date(v):
+    """Whether v is a real date written as YYYY-MM-DD, the form in which the
+    calendar queries cast event values to a date."""
+    try:
+        return isinstance(v, str) and date.fromisoformat(v).isoformat() == v
+    except ValueError:
+        return False
+
+
 @P.require("calendar.edit")
 async def dates_save():
     try:
@@ -108,12 +118,20 @@ async def dates_save():
         unknown = sorted(set(eventdates) - allowed)
         if unknown:
             return apiVC.error_json(f"Unknown calendar events: {', '.join(unknown)}")
+        # An emptied date removes the event's date; any other value must be a date.
+        cleared = {k for k, v in eventdates.items() if v in (None, "")}
+        invalid = sorted(k for k, v in eventdates.items()
+                         if k not in cleared and k != "SESSION_CLOSED" and not _is_iso_date(v))
+        if invalid:
+            return apiVC.error_json(
+                f"Not a valid date (use the format YYYY-MM-DD) for: {', '.join(invalid)}. "
+                "Nothing was saved.")
         acs = M.AcademicSession.get_or_none(M.AcademicSession.code == session)
         # A closed session's dates also decide its grading rules, which closing froze
         if acs and VAL.is_session_closed(session):
             return apiVC.error_json(f"Session {session} is closed; its dates cannot change.")
         # A session is ordered and picked as current by its start and end dates.
-        if not acs and not {"SESSION_S", "SESSION_E"} <= set(eventdates):
+        if not acs and not {"SESSION_S", "SESSION_E"} <= set(eventdates) - cleared:
             return apiVC.error_json("A new session needs its start and end dates.")
         with M.db.atomic():
             if not acs:
@@ -127,6 +145,11 @@ async def dates_save():
                 # Only closing the session marks it closed, as that also freezes
                 # its credits.
                 if x == "SESSION_CLOSED":
+                    continue
+                if x in cleared:
+                    M.AcademicCalendar.delete().where(
+                        (M.AcademicCalendar.acad_session == session) &
+                        (M.AcademicCalendar.event_code == x)).execute()
                     continue
                 (ac.insert(acad_session=session, event_code=x, \
                            event_value=eventdates[x]) \

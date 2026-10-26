@@ -113,7 +113,6 @@ export default {
       let vm = this;
       let st = (status == "DROP" ? "drop" : "withdraw");
       if (!confirm(`Confirm course ${st}?`)) {
-        vm.setStatusMessage("User canceled the action!");
         return;
       }
       // Fetch data from an API
@@ -121,15 +120,15 @@ export default {
         .post(`drop_withdraw_course/${id}/${status}`)
         .then(function(res) {
           if (res.data.status == "OK") {
-            vm.setStatusMessage("dropped successfully");
             vm.$emit("reload-student-info");
+            vm.setSuccessMessage(res.data.body);
           } else {
-            vm.setStatusMessage(res.data.body);
+            vm.setStatusMessage(res.data.body, 'error');
           }
         })
         .catch(function(error) {
           console.log(error);
-          vm.setStatusMessage("Error: " + error);
+          vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
         });
     },
     filterEnrolments(enrolList) {

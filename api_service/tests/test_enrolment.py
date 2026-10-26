@@ -151,7 +151,7 @@ async def test_unrelated_faculty_cannot_decide(client, auth, setup):
     await auth.login("fac")
     body = await change_status(client, [setup["ce"].id], "approve")
     assert body["status"] == "ERROR"
-    assert "privileges" in body["body"]
+    assert "cannot approve or reject" in body["body"]
     assert status_of(setup["ce"]) == "IPEN"
 
 
@@ -386,7 +386,8 @@ async def test_student_enrols_and_emails_go_out_after_commit(client, auth, setup
     co = enrollable("CS301", "A")
     await auth.login("stu")
     body = await enroll(client, setup["stu"], [co])
-    assert body == {"status": "OK", "body": "Enrollment requested successfully!"}
+    assert body["status"] == "OK"
+    assert "Requested enrolment in CS301." in body["body"]
     ce = M.CourseEnrollment.get(M.CourseEnrollment.course_offering == co.id)
     assert (ce.enrol_status, ce.enrol_type) == ("IPEN", "C")
     assert emails == [ce.id]
@@ -398,8 +399,37 @@ async def test_c5_slot_clash_rolls_back_the_whole_request(client, auth, setup, n
     await auth.login("stu")
     body = await enroll(client, setup["stu"], [co1, co2])
     assert body["status"] == "ERROR"
+    assert isinstance(body["body"], str) and "clashes with" in body["body"]
     assert enrolments_in(co1, co2) == 0
     assert emails == []
+
+
+def not_offered(code, slot, day=0):
+    """An offering whose categorization does not include the setup student."""
+    co = make_offering(code, acad_session=SESSION, slot=slot)
+    M.CourseCategory.create(offering=co, degree="MTE", dept="CSE", category="PC",
+                            for_entry_years="2024")
+    M.CourseSlotTiming.create(slot=slot, week_day=day, start_time=9, end_time=11)
+    return co
+
+
+async def test_request_for_a_course_not_offered_to_the_student_is_an_error(client, auth, setup, no_fees_check, emails):
+    co = not_offered("CS303", "A")
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [co])
+    assert body["status"] == "ERROR"
+    assert "CS303 is not offered" in body["body"] and "No enrolment request was made" in body["body"]
+    assert enrolments_in(co) == 0
+
+
+async def test_request_names_the_courses_requested_and_those_skipped(client, auth, setup, no_fees_check, emails):
+    ok = enrollable("CS301", "A")
+    other = not_offered("CS303", "B", day=2)
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [ok, other])
+    assert body["status"] == "OK"
+    assert "Requested enrolment in CS301." in body["body"]
+    assert "Not requested: Course CS303 is not offered" in body["body"]
 
 
 async def test_c6_audit_only_student_can_enrol(client, auth, setup, no_fees_check, emails):
@@ -458,8 +488,8 @@ async def test_c7_coordinator_downloads_enrolments_for_grades(client, auth, setu
     res = await client.get(f"/acadstack/download_enrollments_for_grades/{setup['co'].id}")
     assert res.status_code == 200
     lines = (await res.get_data(as_text=True)).splitlines()
-    assert lines[0] == "first_name,last_name,roll_no,grade,code"
-    assert lines[1] == "STU,USER,STU,NA,CS101"
+    assert lines[0] == "FIRST_NAME,LAST_NAME,ROLL_NO,GRADE"
+    assert lines[1] == "STU,USER,STU,NA"
 
 
 # ---- slot conflicts ----

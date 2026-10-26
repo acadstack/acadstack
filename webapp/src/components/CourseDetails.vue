@@ -50,7 +50,7 @@ is implemented in a separate component.
                   v-for="act in actions" :key="act">{{act.label}}</a>
               </div>
             </div>
-            <button class="btn btn-outline-success me-2" type="button" @click="save">
+            <button class="btn btn-outline-success me-2" type="button" @click="save()">
               Save
               <i class="bi bi-save"></i>
             </button>
@@ -115,12 +115,16 @@ export default {
        * and the status of course that will be set when action is performed.
        */
       actionsByStage: {
-        "author": [{label: "Submit", status: "HAP"}, 
-                {label: "Delete", status: "DEL"}],
-        "hod": [{label: "Forward", status: "CAP"}, 
-                {label: "Return to Faculty", status: "HAR"}],
-        "dean": [{label: "Approve", status: "APP"}, 
-                {label: "Return to Dept.", status: "CAR"}],
+        "author": [{label: "Submit", status: "HAP",
+                    done: "Course submitted to the HoD for approval."}],
+        "hod": [{label: "Forward", status: "CAP",
+                    done: "Course forwarded to the Dean for approval."},
+                {label: "Return to Faculty", status: "HAR",
+                    done: "Course returned to the faculty for changes."}],
+        "dean": [{label: "Approve", status: "APP",
+                    done: "Course approved."},
+                {label: "Return to Dept.", status: "CAR",
+                    done: "Course returned to the department for changes."}],
       }
     };
   },
@@ -167,27 +171,28 @@ export default {
           vm.ltpsc.sc = ltp[3]+'-'+ltp[4];
           vm.oldStatus = vm.course.status;
         } else {
+          vm.setStatusMessage(res.data.body, 'error');
           vm.notFound = true;
         }
       } catch(error) {
         console.log(error);
-        vm.setStatusMessage("Error: "+error);
+        vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
         vm.notFound = true;
       }
     },
-    async save() {
+    async save(done = "Course saved.") {
       let vm = this;
       vm.v$.$touch()
       if (!vm.hasPermission('courses.edit_approved') && vm.v$.$invalid) {
+        vm.setStatusMessage("The course was not saved. Please fix the fields marked in red and try again.", 'error');
         return;
       }
       else {
         if (vm.oldStatus == "APP" && !vm.hasPermission('courses.edit_approved')) {
-          vm.setStatusMessage("Change not allowed! Please request the dean's office.");
+          vm.setStatusMessage("This course is approved, so only the Dean's office can change it. Ask them to make the edit.", 'error');
           return;
         }
         if (!confirm("Confirm save?")) {
-          vm.setStatusMessage("User canceled save!");
           return;
         }
         console.log("Saving course details.");
@@ -199,16 +204,18 @@ export default {
               let v = `${vm.$route.path}/${vm.course.id}`;
               console.log("Loading view: "+v);
               vm.$router.push({ path: v });
+              vm.setSuccessMessage(`Course ${vm.course.code} created as a draft. ` +
+                "Complete its details and submit it for approval when ready.");
             } else {
-              vm.setStatusMessage("Saved successfully!");
+              vm.setSuccessMessage(done);
             }
             return true;
           } else {
-            vm.setStatusMessage(res.data.body);
+            vm.setStatusMessage(res.data.body, 'error');
           }
         } catch(error) {
           console.log(error);
-          vm.setStatusMessage("Error occurred when contacting the server.");
+          vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
         }
       }
     },
@@ -223,19 +230,13 @@ export default {
     async onAction(act) {
       let vm = this;
       if (vm.oldStatus == "APP" && !vm.hasPermission('courses.edit_approved')) {
-        vm.setStatusMessage("Change not allowed! Please request the dean's office.");
+        vm.setStatusMessage("This course is approved, so only the Dean's office can change it. Ask them to make the edit.", 'error');
         return;
       }
-      if (act.status == "DEL") {
-        if (confirm("Sure you want to delete?")) {
-          //TODO: Delete
-        }
-      } else {
-        // Put the old status back if nothing was saved.
-        const prev = vm.course.status;
-        vm.course.status = act.status;
-        if (!(await vm.save())) vm.course.status = prev;
-      }
+      // Put the old status back if nothing was saved.
+      const prev = vm.course.status;
+      vm.course.status = act.status;
+      if (!(await vm.save(act.done))) vm.course.status = prev;
     }
   },
   validations() {

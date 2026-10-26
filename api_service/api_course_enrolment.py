@@ -1,4 +1,5 @@
-from io import BytesIO
+import csv
+from io import BytesIO, StringIO
 import logging
 from quart import Blueprint, request
 from quart import current_app as APP
@@ -324,20 +325,22 @@ def get_student_courses_perf_filtered(stu, include_attendance,
 async def drop_withdraw_course(my_id, status):
     try:
         if status not in ("DROP", "WDRAW"):
-            return apiVC.error_json(f"Invalid status {status}! Only drop/withdraw allowed!")
+            return apiVC.error_json("A course can only be dropped or withdrawn here.")
 
         # Raises AcadStackException
         actor = P.current_actor()
         VAL.validate_enrolment_change(my_id, status, actor)
 
+        done = "dropped" if status == "DROP" else "withdrawn"
         if actor.has("enrolments.edit:any"):
             status = "ASREJ"
+            done = "removed"
 
         ce = DB.CourseEnrollment.get_by_id(my_id)
         ce.enrol_status = status
         apiVC.save_entity(ce)
         send_enrolment_email(my_id)
-        return apiVC.ok_json("Course enrollment updated successfully")
+        return apiVC.ok_json(f"Course {ce.course_offering.course.code} {done}.")
     except AcadStackException as ex:
         msg = "Error when dropping/withdrawing the course"
         logging.exception(msg)
@@ -510,27 +513,15 @@ async def download_course_enrollments(co_id, is_grades=False):
 
         qry = sql_by_id(sql_id)
         cursor = DB.db.execute_sql(qry, [int(co_id)])
-        ncols = len(cursor.description)
-        colnames = [cursor.description[i][0] for i in range(ncols)]
-        result = []
+        colnames = [d[0].upper() if is_grades else d[0] for d in cursor.description]
 
-        # Add the header row
-        hdr_row = []
-        for col_name in colnames:
-            hdr_row.append(col_name)
-        result.append(','.join(hdr_row + [ec.code for ec in comps]))
-
-        # Add the data rows
+        # Fields with commas are quoted and NULLs are written as empty cells
+        out = StringIO()
+        writer = csv.writer(out, lineterminator="\n")
+        writer.writerow(colnames + [ec.code for ec in comps])
         for row in cursor.fetchall():
-            row_data = []
-            for i in range(ncols):
-                row_data.append(row[i])
-            row_data += [scores.get((row[2], ec.id), "") for ec in comps]
-            result.append(','.join(row_data))
-        fp = BytesIO()
-        fp.write('\n'.join(result).encode('utf-8'))
-        fp.flush()
-        fp.seek(0)
+            writer.writerow(list(row) + [scores.get((row[2], ec.id), "") for ec in comps])
+        fp = BytesIO(out.getvalue().encode('utf-8'))
         return await send_file(fp, attachment_filename=f"{co.course.code}_students.csv",
                          as_attachment=True)
 
@@ -629,7 +620,7 @@ async def enroll_in_courses():
             "Student attempted to enrol someone else in a course.")
         if ST.get("fees_check_enabled"):
             __check_student_fees_status()
-        CREDIT_NA_ALLOWED_MSG = ""
+        NOT_REQUESTED = []
         ALLOWED_COURSES = []
         saved_ids = []
         logging.debug("Enrolling student in courses: {}".format(fd))
@@ -647,15 +638,20 @@ async def enroll_in_courses():
                                 + str(co.acad_session))
                     VAL.check_enrollment_allowed(co)
                     ccode, msg = VAL.validate_course_categorization(co, std_id)
-                    CREDIT_NA_ALLOWED_MSG += msg
+                    if msg:
+                        NOT_REQUESTED.append(msg)
                     if ccode:
-                        ALLOWED_COURSES.append(ccode)
+                        ALLOWED_COURSES.append(co.course.code)
                     conflicts = __get_slot_conflicts(co_id, std_id)
                     if len(conflicts) > 0:
                         # Leaving atomic() by return commits, so undo the
                         # courses already saved in this request.
                         txn.rollback()
-                        return apiVC.error_json(conflicts)
+                        return apiVC.error_json(
+                            f"Course {co.course.code} clashes with a course you have already "
+                            f"requested or are enrolled in ({'; '.join(conflicts)}). "
+                            "None of the selected courses were requested. "
+                            "Deselect one of the clashing courses and try again.")
 
                     coe = DB.CourseEnrollment()
                     existing_ce = __get_existing_enrolment(co_id, std_id)
@@ -678,25 +674,30 @@ async def enroll_in_courses():
                 txn.commit()
             for ce_id in saved_ids:
                 send_enrolment_email(ce_id)
-            if CREDIT_NA_ALLOWED_MSG == "":
-                return apiVC.ok_json("Enrollment requested successfully!")
-            elif (len(ALLOWED_COURSES) != 0 and len(CREDIT_NA_ALLOWED_MSG)):
-                return apiVC.ok_json("Enrollment requested successfully for " + str(ALLOWED_COURSES).replace('[','').replace(']','').replace('\'','') + ". " + CREDIT_NA_ALLOWED_MSG)
-            else:
-                return apiVC.ok_json(CREDIT_NA_ALLOWED_MSG)
+            skipped = " ".join(NOT_REQUESTED)
+            if not ALLOWED_COURSES:
+                return apiVC.error_json(f"{skipped} No enrolment request was made.")
+            res = ("Requested enrolment in " + ", ".join(ALLOWED_COURSES) + ". The request "
+                   "now awaits approval of the course instructor and then of your advisor. "
+                   "Check its status in Student Record.")
+            if skipped:
+                res += f" Not requested: {skipped}"
+            return apiVC.ok_json(res)
         else:
-            return apiVC.error_json("Please select a course to enrol!")
+            return apiVC.error_json("Please tick at least one course to enrol in.")
     except IntegrityError as iex:
-        msg = "Enrollment already exists for one of the selected courses."
+        msg = ("You already have an enrolment or a pending request for one of the "
+               "selected courses. Check its status in Student Record.")
         logging.exception(msg)
-        return apiVC.error_json("ERROR: {0}".format(msg))
+        return apiVC.error_json(msg)
     except AcadStackException as ae:
         logging.exception(ae)
         return apiVC.error_json(str(ae))
     except Exception as ex:
-        msg = "Error when saving course enrollment details."
-        logging.exception(msg)
-        return apiVC.error_json("{0}".format(msg))
+        logging.exception("Error when saving course enrollment details.")
+        return apiVC.error_json("Your enrolment request could not be saved because of an "
+                                "unexpected error. Please try again; if it keeps failing, "
+                                "contact the academic section.")
 
 @P.require("enrolments.approve")
 async def change_enroll_status():
@@ -705,7 +706,7 @@ async def change_enroll_status():
         eids = fd.get("ids")
         status = fd.get("status")
         if len(eids) == 0:
-            return apiVC.error_json("Select students to enrol first!")
+            return apiVC.error_json("Select at least one enrolment request first.")
         actor = P.current_actor()
         ce_ownership = __get_ce_ownership(eids, actor)
         changed_ids = []
@@ -725,16 +726,19 @@ async def change_enroll_status():
             send_enrolment_email(eid)
 
         logging.info("Enrolled students in courses: {}".format(fd))
-        return apiVC.ok_json("Changed successfully!")
+        return apiVC.ok_json(
+            f"{'Approved' if status == 'approve' else 'Rejected'} "
+            f"{len(changed_ids)} enrolment request(s).")
 
     except AcadStackException as ae:
         logging.exception(ae)
         return apiVC.error_json(str(ae))
 
     except Exception as ex:
-        msg = "Error when changing course enrollment status."
-        logging.exception(msg)
-        return apiVC.error_json("{0}".format(msg))
+        logging.exception("Error when changing course enrollment status.")
+        return apiVC.error_json("The enrolment requests could not be updated because of an "
+                                "unexpected error. Please reload the page to see their "
+                                "current status and try again.")
 
 
 @P.require("enrolments.change")
@@ -784,7 +788,7 @@ async def course_enrollment_save():
 
                 access = VAL.is_enrollment_owner_valid(coe)
                 if not access:
-                    return apiVC.error_json("User not allowed to change enrollment!")
+                    return apiVC.error_json("You are not allowed to change this enrolment.")
 
                 if access == "own":
                     if fd.get("enrol_status") not in COE_STUDENT_STATUSES + [coe.enrol_status]:
@@ -799,7 +803,7 @@ async def course_enrollment_save():
                     record_grade_change(coe, old_grade, P.current_actor(),
                                         fd.get("grade_change_reason"))
                 if apiVC.update_entity(DB.CourseEnrollment, coe) != 1:  # if rc != 1:
-                    return apiVC.error_json("Could not update. Please try again.")
+                    return apiVC.error_json("This enrolment was changed by someone else after you opened it. Reload the page to see their changes, then make your changes again.")
                 logging.debug(f"Updated DB.CourseEnrollment details: {coe}")
             else:
                 if not P.current_actor().has("enrolments.edit:any"):
