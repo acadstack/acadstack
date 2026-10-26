@@ -43,7 +43,7 @@ def test_enrolment_next_status(who, status, action, instr, adv, expected):
     (actor(), "APEN", True, True),  # related but without the permission
 ])
 def test_enrolment_refused(who, status, instr, adv):
-    with pytest.raises(AcadStackException, match="privileges"):
+    with pytest.raises(AcadStackException, match="cannot approve or reject"):
         WF.enrolment_next_status(who, status, "approve", instr, adv)
 
 

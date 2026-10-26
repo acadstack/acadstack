@@ -197,7 +197,7 @@ async def course_offering_view(my_id):
 
             return apiVC.ok_json(obj)
         else:
-            return apiVC.error_json(f"DB.Course offering not found for ID {my_id}")
+            return apiVC.error_json("Course offering not found.")
     except Exception as ex:
         msg = "Error when fetching CourseOffering details."
         logging.exception(msg)
@@ -230,16 +230,16 @@ async def course_offering_save():
                                  dept=lambda: VAL.is_offering_in_actor_dept(cid, actor)):
                 if actor.has("offerings.edit:dept"):
                     return apiVC.error_json("Only the HoD of the offering department can make changes to the course offering.")
-                return apiVC.error_json("Only the course cordinator can make changes.")
+                return apiVC.error_json("Only the course coordinator can edit this offering. Ask the coordinator or your HoD to make the change.")
 
         acad_session = (fd.get("acad_session") or "").strip()
         fd["acad_session"] = acad_session
 
         if not apiVC.academic_session_valid(acad_session):
-            return apiVC.error_json("Academic session invalid!")
+            return apiVC.error_json(f"'{acad_session}' is not a valid academic session. Choose a session from the list.")
 
         if not _is_course_approved(fd["course"]):
-            return apiVC.error_json("The course being offered MUST be in approved state!")
+            return apiVC.error_json("The course must be approved before it can be offered. Ask the Dean's office to approve the course first.")
 
         co = DB.CourseOffering()
         old_status = "P"
@@ -250,7 +250,7 @@ async def course_offering_save():
                 VAL.validate_coff_status(co)
                 C.update_model_skip_unknown(co, fd)
                 if apiVC.update_entity(DB.CourseOffering, co) != 1:  # if rc != 1:
-                    return apiVC.error_json("Could not update. Please try again.")
+                    return apiVC.error_json("This offering was changed by someone else after you opened it. Reload the page to see their changes, then make your changes again.")
                 logging.debug("Updated DB.CourseOffering details: {}".format(co))
                 _save_co_instructors(fd.get("instructors"), co.id)
                 _save_co_categorization(fd.get("course_categories"), co.id)
@@ -264,10 +264,10 @@ async def course_offering_save():
                     old_co_status = res_rows[0][0]
                     cos_map = apiVC.static_data_item("OfferingStatuses")
                     cos_label = apiVC.label_for_static_data_item(old_co_status, cos_map)
-                    return apiVC.error_json("An offering of the course already \
-                        exists in status {0} for {1}. Please edit (or ask \
-                        your HoD to do it) the existing record instead of \
-                        creating a new one.".format(cos_label, co.acad_session))
+                    return apiVC.error_json(
+                        f"An offering of the course already exists in status {cos_label} "
+                        f"for {co.acad_session}. Edit that offering (or ask your HoD to) "
+                        "instead of creating a new one.")
 
                 apiVC.save_entity(co)
                 logging.debug(f"Inserted DB.CourseOffering: {co}")
@@ -283,10 +283,19 @@ async def course_offering_save():
         logging.exception(ae)
         return apiVC.error_json(str(ae))
 
+    except IntegrityError as iex:
+        logging.exception("Course offering details conflict with existing records.")
+        if str(iex).startswith("Could not update DB"):
+            return apiVC.error_json("Some instructor or categorization entries were changed "
+                                    "by someone else after you opened this offering. Reload "
+                                    "the page, then make your changes again.")
+        return apiVC.error_json("An offering with the same course, session, section and "
+                                "department already exists. Edit that offering instead.")
     except Exception as ex:
-        msg = "Error when saving course details."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+        logging.exception("Error when saving course offering details.")
+        return apiVC.error_json("The offering could not be saved because of an unexpected "
+                                "error. Please try again; if it keeps failing, contact "
+                                "the administrator.")
 
 
 def __fill_co_search_result(row, enrol_count):

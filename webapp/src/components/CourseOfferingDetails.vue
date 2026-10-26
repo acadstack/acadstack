@@ -249,7 +249,7 @@ Component for course offering details.
                   </li>
                 </ul>
               </div>
-              <button class="btn btn-outline-success me-2" @click="save" type="button">
+              <button class="btn btn-outline-success me-2" @click="save()" type="button">
                 Save
                 <i class="bi bi-save"></i>
               </button>
@@ -336,14 +336,14 @@ export default {
        * status of the offering that will be set when action is performed.
        */
       actionsByScope: {
-        "own": [{label: "Propose", status: "P"},
-                {label: "Cancel", status: "C"}],
-        "dept": [{label: "Enrolling", status: "E"}, 
-                {label: "Return to Faculty", status: "D"}],
-        "any": [{label: "Enrolling", status: "E"},
-                {label: "Running", status: "R"}, 
-                {label: "Return to Dept.", status: "D"},
-                {label: "Cancel", status: "C"}],
+        "own": [{label: "Propose", status: "P", done: "Offering proposed to your HoD for approval."},
+                {label: "Cancel", status: "C", done: "Offering canceled."}],
+        "dept": [{label: "Enrolling", status: "E", done: "Offering is now open for enrolment requests."},
+                {label: "Return to Faculty", status: "D", done: "Offering returned to the faculty (declined)."}],
+        "any": [{label: "Enrolling", status: "E", done: "Offering is now open for enrolment requests."},
+                {label: "Running", status: "R", done: "Offering marked as running."},
+                {label: "Return to Dept.", status: "D", done: "Offering returned to the department (declined)."},
+                {label: "Cancel", status: "C", done: "Offering canceled."}],
       },
       instructors: [],
       courses: [],
@@ -562,24 +562,25 @@ export default {
         vm.markViewOnly();
       } catch(error) {
         console.log(error);
-        vm.setStatusMessage("Error: " + error);
+        vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
       }
     },
-    async save() {
+    async save(done = "Offering saved.") {
       let vm = this;
       //TODO: Check status and role before allowing save
       console.log('submit!');
       vm.v$.coffer.$touch();
       if (vm.v$.coffer.$invalid) {
-        vm.setStatusMessage("Please correct the inputs first!");
+        vm.setStatusMessage("The offering was not saved. Please fix the fields marked in red " +
+          "(course, session, section, department, slot, exactly one coordinator, and every field of each crediting category) and try again.", 'error');
         return;
       }
       else if (vm.coffer.course_categories.length == 0){
-          vm.setStatusMessage("Please inputs atleast one Crediting Categorization details.");
+          vm.setStatusMessage("Add at least one crediting category (department, degree and entry years) before saving.", 'error');
+          return;
       }
       else {
         if (!confirm("Confirm save?")) {
-          vm.setStatusMessage("User canceled save!");
           return;
         }
         console.log("Saving course offering details.");
@@ -591,16 +592,17 @@ export default {
               let v = `${vm.$route.path}/${vm.coffer.id}`;
               console.log("Loading CO view: " + v);
               vm.$router.push({ path: v });
+              vm.setSuccessMessage("Offering created.");
             } else {
-              vm.setStatusMessage("Saved successfully!");
+              vm.setSuccessMessage(done);
             }
             return true;
           } else {
-            vm.setStatusMessage(res.data.body);
+            vm.setStatusMessage(res.data.body, 'error');
           }
         } catch(error) {
           console.log(error);
-          vm.setStatusMessage("Error occurred when contacting the server.");
+          vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
         }
       }
     },
@@ -620,7 +622,7 @@ export default {
         // Put the old status back if nothing was saved.
         const prev = vm.coffer.status;
         vm.coffer.status = act.status;
-        if (!(await vm.save())) vm.coffer.status = prev;
+        if (!(await vm.save(act.done))) vm.coffer.status = prev;
     },
     addCourseCat() {
       let vm = this;

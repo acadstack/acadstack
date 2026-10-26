@@ -70,7 +70,7 @@ async def course_save():
                                  pg=lambda: old.level in ("PG", "ALL")):
                 if actor.has("courses.edit:pg"):
                     return apiVC.error_json("You can edit only PG or all-level courses!")
-                return apiVC.error_json("Cannot save course authored by another faculty!")
+                return apiVC.error_json("You can edit only the courses you have authored. Ask the course author or the academic section to make this change.")
         else:
             # Assign the currently logged in user as the author
             if "author" not in fd:
@@ -96,7 +96,7 @@ async def course_save():
             C.update_model_skip_unknown(crs, fd)
 
             if apiVC.update_entity(DB.Course, crs) != 1:  # if rc != 1:
-                return apiVC.error_json("Could not update. Please try again.")
+                return apiVC.error_json("This course was changed by someone else after you opened it. Reload the page to see their changes, then make your changes again.")
             logging.debug("Updated course details: {}".format(crs))
             send_course_updated_email(crs_id, old_status)
         else:
@@ -106,10 +106,15 @@ async def course_save():
 
         return apiVC.ok_json(apiVC.model_to_dict(crs, exclude=[DB.Course.author.password_hashed]))
 
+    except IntegrityError:
+        logging.exception("Course details conflict with an existing record.")
+        return apiVC.error_json(f"A course with the code {fd.get('code')} already exists. "
+                                "Find it using Course Search, or use a different code.")
     except Exception as ex:
-        msg = "Error when saving course details."
-        logging.exception(msg)
-        return apiVC.error_json(msg)
+        logging.exception("Error when saving course details.")
+        return apiVC.error_json("The course could not be saved because of an unexpected "
+                                "error. Please try again; if it keeps failing, contact "
+                                "the administrator.")
 
 
 @P.require("courses.view")

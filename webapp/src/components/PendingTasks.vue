@@ -188,7 +188,6 @@ export default {
     },
     async onChangeEnrollments() {
       await this.load_enrol();
-      this.setStatusMessage("Updated enrollments!");
     },
     async load(){
       let vm = this;

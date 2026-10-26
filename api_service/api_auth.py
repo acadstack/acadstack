@@ -279,7 +279,7 @@ async def login():
             logging.info("Got user: {0}, {1}".format(u.login_id, u.first_name))
             valid = C.verify_password(plain_pass, u.password_hashed)
             if valid and u.is_locked:
-                return apiVC.error_json("DB.User is locked! Please contact admin.")
+                return apiVC.error_json("Your account is locked. Please contact the administrator.")
             if valid and C.password_needs_rehash(u.password_hashed):
                 DB.User.update(password_hashed=C.hash_password(plain_pass)).where(
                     DB.User.id == u.id).execute()
@@ -681,7 +681,7 @@ def oauth_verify(token):
         u = DB.User.get_or_none(DB.User.email == email_id)
         if u:
             if u.is_locked:
-                return apiVC.error_json("DB.User is locked! Please contact admin.")
+                return apiVC.error_json("Your account is locked. Please contact the administrator.")
         else:
             return apiVC.error_json(f"The user with email {email_id} not found!")
 
@@ -696,11 +696,11 @@ def oauth_verify(token):
                     "current_status": u.person.current_status,"is_oauth": True}
             
         C.session['user'] = user_obj
-        return apiVC.ok_json("Loging successful.")
+        return apiVC.ok_json("Login successful.")
 
     except Exception as ex:
         # Invalid token
-        msg = str(ex) if isinstance(ex, C.AcadStackException) else "Error when authrnticating."
+        msg = str(ex) if isinstance(ex, C.AcadStackException) else "Error when authenticating."
         logging.exception(msg)
         return apiVC.error_json(msg)
 

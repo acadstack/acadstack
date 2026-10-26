@@ -518,4 +518,4 @@ async def test_course_save_error_does_not_leak_exception_text(client, auth, db):
     make_user("aca", role="ACA")
     await auth.login("aca")
     body = await post(client, "cour_save", {"id": 999, "author": {"id": 1}})
-    assert body == {"status": "ERROR", "body": "Error when saving course details."}
+    assert body == {"status": "ERROR", "body": "The course could not be saved because of an unexpected error. Please try again; if it keeps failing, contact the administrator."}

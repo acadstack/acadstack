@@ -297,11 +297,16 @@ export default {
       vm.$http
         .post("enroll_in_courses", req_data)
         .then(function(res) {
-          vm.setStatusMessage(res.data.body);
+          if (res.data.status == "OK") {
+            vm.markedItems = [];
+            vm.setSuccessMessage(res.data.body);
+          } else {
+            vm.setStatusMessage(res.data.body, 'error');
+          }
         })
         .catch(function(error) {
           console.log(error);
-          vm.setStatusMessage("Error occurred when contacting the server.");
+          vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
         });
     },
     onAction(act) {
