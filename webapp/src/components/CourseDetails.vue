@@ -16,7 +16,7 @@ is implemented in a separate component.
         <div class="float-start">
           <ul class="nav nav-tabs">
             <li class="nav-item">
-              <a class="nav-link" v-bind:class="{'bg-danger':(v$.course.code.$error||v$.course.title.$error||v$.course.learning.$error||v$.course.evaluation.$error) , active: tab === 'main'}"   @click="tab='main'">Main</a>
+              <a class="nav-link" v-bind:class="{'bg-danger':(v$.course.code.$error||v$.course.title.$error||v$.ltpsc.$error||v$.course.learning.$error||v$.course.evaluation.$error) , active: tab === 'main'}"   @click="tab='main'">Main</a>
             </li>
             <li class="nav-item">
               <a class="nav-link" v-bind:class="{'bg-danger':v$.course.modules.$error, active: tab === 'mod'}" @click="tab='mod'">Modules</a>
@@ -101,9 +101,9 @@ export default {
     return {
       notFound: false,
       tab:"main", currentTabComponent: "CourseTGAP",
+      // The course's credits, one value per part of SD.CreditStructure
       ltpsc:{
-        ltp:"",
-        sc:""
+        parts: []
       },
       course: {
               level: "UG",
@@ -166,9 +166,7 @@ export default {
         let res = await vm.$http.get('cour/'+cid);
         if (res.data.status == "OK") {
           vm.course = res.data.body;
-          var ltp = vm.course.ltp.split("-");
-          vm.ltpsc.ltp = ltp[0]+'-'+ltp[1]+'-'+ltp[2];
-          vm.ltpsc.sc = ltp[3]+'-'+ltp[4];
+          vm.ltpsc.parts = (vm.course.ltp || "").split("-");
           vm.oldStatus = vm.course.status;
         } else {
           vm.setStatusMessage(res.data.body, 'error');
@@ -196,6 +194,7 @@ export default {
           return;
         }
         console.log("Saving course details.");
+        vm.course.ltp = (vm.SD.CreditStructure || []).map((_, i) => vm.ltpsc.parts[i] ?? "").join("-");
         try {
           let res = await vm.$http.post('cour_save', vm.course);
           if (res.data.status == "OK") {
@@ -225,6 +224,7 @@ export default {
         tkp:[], tgap:[], modules:[],ref_material:[],
         learning:{}, evaluation: {}, teaching: []
         };
+      this.ltpsc.parts = [];
       console.log("Clearing course details.");
     },
     async onAction(act) {
@@ -254,12 +254,10 @@ export default {
             var plannedLearning = 0;
             var count = 0;
             for (var x in vm.course.learning){
-              if(vm.course.learning[x] != undefined){
+              // A box left empty counts as not filled in
+              if(vm.course.learning[x] != undefined && vm.course.learning[x] !== ""){
                 plannedLearning += parseInt(vm.course.learning[x]);
                 count++;
-              }
-              else{
-                vm.$delete(vm.course.learning,x);
               }
             }
             
@@ -290,12 +288,10 @@ export default {
             var courseEvalution = 0;
             var count = 0;
             for (var x in vm.course.evaluation){
-              if(vm.course.evaluation[x].length!=0){
+              // A box left empty counts as not filled in
+              if(vm.course.evaluation[x] != undefined && vm.course.evaluation[x] !== ""){
                 count++;
                 courseEvalution += parseInt(vm.course.evaluation[x]);
-              }
-              else{
-                vm.$delete(vm.course.evaluation,x);
               }
             }
             
@@ -418,8 +414,12 @@ export default {
         }
       },
       ltpsc:{
-        ltp:{
-            required
+        parts:{
+          numeric(){
+            var vm = this;
+            return (vm.SD.CreditStructure || []).every((_, i) =>
+              /^\d+(\.\d+)?$/.test(String(vm.ltpsc.parts[i] ?? "")));
+          }
         }
       }
     }

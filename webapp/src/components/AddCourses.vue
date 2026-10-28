@@ -7,7 +7,7 @@ Component for uploading courses.
   <div class="container-fluid">
     <p class="h6">Add Courses</p>
     <p>Please upload new courses information in CSV format only, with the columns
-      <code>code,title,ltp,level</code> and an optional <code>freq</code>. The <code>ltp</code> is the full L-T-P-S-C, e.g. <code>3-0-2-6-4</code>. The level is one of
+      <code>code,title,ltp,level</code> and an optional <code>freq</code>. The <code>ltp</code> has one number per part of <code>{{ (SD.CreditStructure || []).join("-") }}</code>, separated by <code>-</code>, e.g. <code>3-0-2-6-4</code> for L-T-P-S-C; the last number is the credits. The level is one of
       <span v-for="(cl, i) in SD.CourseLevels" :key="cl.id">{{ i ? ", " : "" }}<code>{{ cl.id }}</code> ({{ cl.value }})</span>.
       A blank <code>freq</code> is left unset; otherwise it is one of
       <span v-for="(cf, i) in SD.CourseFreqs.filter(c => c.id)" :key="cf.id">{{ i ? ", " : "" }}<code>{{ cf.id }}</code> ({{ cf.value }})</span>.</p>

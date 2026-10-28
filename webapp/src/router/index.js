@@ -47,6 +47,7 @@ import GenCreditsData from "../components/GenCreditsData.vue";
 import GradeDistribution from "../components/GradeDistribution.vue";
 import CgpaSgpa from "../components/CgpaSgpa.vue";
 import ManageBatchAdvisors from "../components/ManageBatchAdvisors.vue";
+import MyAdvisees from "../components/MyAdvisees.vue";
 import DeptwiseAverage from "../components/DeptwiseAverage.vue";
 import CourseWiseFacultyScore from "../components/CourseWiseFacultyScore.vue";
 import QueWiseFacFeedbkScore from "../components/QueWiseFacFeedbkScore.vue";
@@ -300,6 +301,11 @@ const appRoutes = [{
   name: 'mba',
   path: '/mba',
   component: ManageBatchAdvisors
+},
+{
+  name: 'my.advisees',
+  path: '/my.advisees',
+  component: MyAdvisees
 },
 {
   name: 'dept.wiseavg',

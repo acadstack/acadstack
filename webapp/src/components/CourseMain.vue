@@ -18,14 +18,17 @@ Component for main tab of the course details.
             <input type="text" class="form-control" id="crs_title" v-model.trim="course.title" :disabled="viewOnly"/>
             <div v-if="error.course.title.$error && error.course.title.$dirty" class="text-danger">Enter title</div>
           </div>
-          <div class="col-sd-12 col-md-3">
-            <label for="crs_ltp">L-T-P</label>
+          <div class="col-sd-12 col-md-6">
+            <label for="crs_ltp0">Credits ({{creditLabels.join('-')}})</label>
             <div class="input-group">
-              <input required type="text" class="form-control" id="crs_ltp" v-model.trim="ltpsc.ltp" :disabled="viewOnly" v-on:input="calcCredits"/>
-              <div>
-                <span v-if="ltpsc.sc" class="input-group-text">{{ltpsc.sc}}</span> 
-                <span v-else class="input-group-text">s-c</span>
-              </div>
+              <template v-for="(lbl, i) in creditLabels" :key="i">
+                <span class="input-group-text">{{lbl}}</span>
+                <input type="number" min="0" step="any" class="form-control" :id="'crs_ltp'+i"
+                  v-model.trim="ltpsc.parts[i]" :disabled="viewOnly"/>
+              </template>
+            </div>
+            <div v-if="error.ltpsc.parts.$error" class="text-danger">
+              Enter a number for each of {{creditLabels.join(', ')}}; the last one is the credits.
             </div>
           </div>
         </div>
@@ -161,6 +164,9 @@ export default {
     };
   },
   computed: {
+    creditLabels() {
+      return this.SD.CreditStructure || [];
+    },
     eval_items() {
       return (this.SD.EvalItems || []).map(e => ({id: e.id, label: e.value}));
     }
@@ -170,49 +176,18 @@ export default {
     console.log("Creating CourseMain: "+JSON.stringify(vm.course));
     vm.viewOnly = !vm.hasPermission('courses.edit');
     if (vm.course.evaluation == undefined) {
-      vm.$set(vm.course, "evaluation", {});
+      vm.course.evaluation = {};
       for (let k of vm.eval_items) {
         vm.course.evaluation[k.id] = "0";
       }
       console.log("evaluation set to: "+JSON.stringify(vm.course.evaluation));
     }
     if (vm.course.learning == undefined) {
-      vm.$set(vm.course, "learning", {});
+      vm.course.learning = {};
       for (let k of vm.learning_items) {
         vm.course.learning[k.id] = "0";
       }
       console.log("learning set to: "+JSON.stringify(vm.course.learning));
-    }
-  },
-  methods: {
-    _tryParseNum(n) {
-      try {
-        const re = RegExp("^[-+]?\\d+[./]?\\d*$", "i");
-        if (re.test(n)) {
-          let x = eval(n);
-          return Number.isInteger(x) ? x : x.toFixed(2);
-        } else {
-          console.error(`Cannot parse ${n} as number.`);
-          return n;
-        }
-      } catch (err) {
-        console.error(`Cannot parse ${n} as number. ${err}`);
-        return 0;
-      }
-    },
-
-    calcCredits(){
-      var vm = this;
-      let ltp = vm.ltpsc.ltp.split("-");
-      let L = vm._tryParseNum(ltp[0]);
-      let T = vm._tryParseNum(ltp[1]);
-      let P = vm._tryParseNum(ltp[2]);
-      let S = 2*L - T + P/2;
-      S = S.toFixed(2);
-      let C = L + P/2;
-      C = C.toFixed(2);
-      vm.course.ltp = `${L}-${T}-${P}-${S}-${C}`;
-      vm.ltpsc.sc = `${S}-${C}`;
     }
   }
 };

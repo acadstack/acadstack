@@ -71,7 +71,7 @@
           <tr v-for="(c) in sem_grades['courses']" :key="c.id">
                 <td>{{ c.code.toUpperCase()}}</td>
                 <td>{{ c.title.toUpperCase()}}</td>
-                <td>{{ c.ltp.split("-")[4].replace(/\.00$/,'') }}</td>
+                <td>{{ c.ltp.split("-").pop().replace(/\.00$/,'') }}</td>
                 <td>{{ c.grade.toUpperCase() }}</td>
                 </tr>
                 </tbody>
