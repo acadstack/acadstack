@@ -6,7 +6,6 @@ import pytest
 import api_common as apiVC
 import common as C
 import models as M
-import policy as P
 import settings
 from conftest import enrol, make_offering, make_user
 from test_levels import _post, _upload_courses
@@ -90,15 +89,6 @@ async def test_course_csv_keeps_the_given_ltpsc(client, auth):
     body = await _upload_courses(client, "code,title,ltp,level\nAB1,One,3-0-0-5-4,UG\n")
     assert body["status"] == "OK", body
     assert M.Course.get(M.Course.code == "AB1").ltp == "3-0-0-5-4"
-
-
-def test_credit_hours_spent_reads_multi_digit_ltp(db):
-    fac = make_user("fac", role="FAC")
-    co = make_offering(code="CS900", ltp="10-0-2-21-11", acad_session="2026-I",
-                       instructor=fac)
-    rows = C.db.execute_sql(C.sql_by_id("credit_hours_spent"),
-                            [co.acad_session, P.roles_with("roster.instructor")]).fetchall()
-    assert [float(r[4]) for r in rows] == [231.0]
 
 
 async def test_slot_times_must_be_hhmm(client, auth):

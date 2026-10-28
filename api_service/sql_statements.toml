@@ -108,32 +108,6 @@ credits_earned_report = """
     ORDER BY first_name, last_name;
 """
 
-credit_hours_spent = """SELECT u.id, u.first_name, u.last_name, u.role, 
-    SUM(
-        (2 * split_part(c.ltp, '-', 1)::NUMERIC - split_part(c.ltp, '-', 2)::NUMERIC +
-        split_part(c.ltp, '-', 3)::NUMERIC / 2) *
-        (split_part(c.ltp, '-', 1)::NUMERIC + split_part(c.ltp, '-', 3)::NUMERIC / 2)
-    ) AS hours, o.acad_session, p.dept_name
-    FROM
-    (SELECT * FROM public.courseoffering co WHERE co.acad_session = %s) o
-    JOIN public.courseinstructor i ON i.offering_id = o.id
-    RIGHT JOIN public.user u ON u.id = i.instructor_id
-    LEFT JOIN public.course c ON o.course_id = c.id
-    JOIN public.person p ON u.person_id = p.id
-    GROUP BY u.id, o.acad_session, p.dept_name
-    HAVING u.role = ANY(%s);
-    """
-
-lectures_taken = """SELECT count(*) as student, o.acad_session, o.id
-    FROM public.studentattendance a   
-    join public.courseenrollment e on e.id=a.enrollment_id
-    join public.courseoffering o on o.id=e.course_offering_id
-    group by o.id, a.attend_dt) lc 
-    join public.courseinstructor i on i.offering_id = lc.id 
-    group by i.instructor_id,lc.acad_session
-    having lc.acad_session = %s;
-    """
-
 student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
     ci.id as course_instructor_id, c.title, c.code,
     ins.first_name, ins.last_name
