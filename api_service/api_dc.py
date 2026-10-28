@@ -90,18 +90,21 @@ async def get_instructor_academics(my_id):
 
 @P.require("instructors.view")
 async def get_advisor_detail(my_id):
+    """The students whose advisor is the user my_id."""
     try:
+        VAL.check_own_or_any("instructors.view", "user_id", my_id,
+                             "Advisor attempted to access another advisor's students.")
         res = DB.StudentAdvisor.select().where(
             DB.StudentAdvisor.advisor == my_id)
-        if res:
-            serialized = [{"org_id": r.student.person.org_id,
-                           "name": r.student.get_full_name(),
-                           "dept": r.student.person.dept_name,
-                           "year": r.student.person.year_of_entry,
-                           "for_degree": r.student.person.degree} for r in res]
-            return apiVC.ok_json(serialized)
-        else:
-            return apiVC.error_json(f"Record not found for advisor {my_id}")
+        serialized = [{"user_id": r.student.id,
+                       "org_id": r.student.person.org_id,
+                       "name": r.student.get_full_name(),
+                       "dept": r.student.person.dept_name,
+                       "year": r.student.person.year_of_entry,
+                       "for_degree": r.student.person.degree} for r in res]
+        return apiVC.ok_json(sorted(serialized, key=lambda s: s["org_id"] or ""))
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when fetching advisor year details."
         logging.exception(msg)
