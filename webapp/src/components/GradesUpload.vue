@@ -83,9 +83,11 @@ Component for uploading grades of a course.
                   quick reference and verification.</li>
                 <li>Once grades are verified from the preview screen, for submitting 
                   the grades click on <b>Submit Grades</b> button.</li>
-                <li>After submission the grades can be downloaded from the <b>Download 
-                  Grades</b> menu item, which is on the right side of the 
-                  <b>Enrolments</b> tab in <b>Course Offering Details</b> screen.</li>
+                <li>After submission the grades are shown in the <b>Grade</b> column of the
+                  <b>Enrolments</b> tab in <b>Course Offering Details</b> screen, and can be
+                  downloaded from its <b>Download Grades</b> menu item, on the right side.</li>
+                <li>To change a grade, upload the corrected file again while grade
+                  submission is open; only the changed grades are updated.</li>
               </ul>
               <b class="text-danger">!!! Additional Instructions Specific to This Session</b>
               <iframe width="500" height="400" src="https://docs.google.com/document/d/e/2PACX-1vS8TGuOQnMlNSijox2rN8SSIWtIPdIv3l-I2kLqE5V2Rv4bvb9GLsvWP99enxdbExFPIPiHVqEiIpoC/pub?embedded=true"></iframe>
