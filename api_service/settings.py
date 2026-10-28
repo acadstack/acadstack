@@ -122,6 +122,9 @@ SETTINGS = {
                  "Terms-of-use page shown at login; blank hides the link."),
     "guide_url": ("", lambda v: _text(v) and (v == "" or re.fullmatch(r"https?://\S+", v) is not None),
                  "User-guide page linked at login and in the Help menu; blank hides the link."),
+    "grades_instructions_url": ("", lambda v: _text(v) and (v == "" or re.fullmatch(r"https?://\S+", v) is not None),
+                               "Page shown on the grade upload screen with the current session's "
+                               "extra instructions; blank shows none."),
     "help_email": ("", lambda v: v == "" or _email_valid(v),
                    "Address for help requests; also receives access-violation alerts."),
     "broadcast_emails": ([], lambda v: type(v) is list and all(_email_valid(a) for a in v),

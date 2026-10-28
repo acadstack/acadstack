@@ -81,7 +81,8 @@ def logged_in_user():
 def institute_info():
     """What the web app shows of the institute's identity settings."""
     return {"help_email": ST.get("help_email"), "terms_url": ST.get("terms_url"),
-            "guide_url": ST.get("guide_url")}
+            "guide_url": ST.get("guide_url"),
+            "grades_instructions_url": ST.get("grades_instructions_url")}
 
 
 def get_current_user_and_nav():

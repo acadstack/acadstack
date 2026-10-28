@@ -89,8 +89,10 @@ Component for uploading grades of a course.
                 <li>To change a grade, upload the corrected file again while grade
                   submission is open; only the changed grades are updated.</li>
               </ul>
-              <b class="text-danger">!!! Additional Instructions Specific to This Session</b>
-              <iframe width="500" height="400" src="https://docs.google.com/document/d/e/2PACX-1vS8TGuOQnMlNSijox2rN8SSIWtIPdIv3l-I2kLqE5V2Rv4bvb9GLsvWP99enxdbExFPIPiHVqEiIpoC/pub?embedded=true"></iframe>
+              <template v-if="$root.institute && $root.institute.grades_instructions_url">
+                <b class="text-danger">!!! Additional Instructions Specific to This Session</b>
+                <iframe width="500" height="400" :src="$root.institute.grades_instructions_url"></iframe>
+              </template>
             </div>
           </div>
         </div>
