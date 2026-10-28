@@ -49,8 +49,7 @@ export default {
   data: function() {
     return {
       ltpsc:{
-        ltp:"",
-        sc:""
+        parts: []
       },
       course: {
               tkp:[], tgap:[], modules:{},
@@ -79,9 +78,7 @@ export default {
       .then(function (res) {
         if (res.data.status == "OK") {
           vm.course = res.data.body;
-          var ltp = vm.course.ltp.split("-");
-          vm.ltpsc.ltp = ltp[0]+'-'+ltp[1]+'-'+ltp[2];
-          vm.ltpsc.sc = ltp[3]+'-'+ltp[4];
+          vm.ltpsc.parts = (vm.course.ltp || "").split("-");
           vm.oldStatus = vm.course.status;
         } else {
           vm.setStatusMessage(res.data.body);
@@ -99,8 +96,9 @@ export default {
           code: { required },
           evaluation: {}, teaching: {}, modules: {},
           title:{}, learning:{}, ref_material: {}, 
-          tkp: {}, tgap: {} 
-        } 
+          tkp: {}, tgap: {}
+        },
+        ltpsc: { parts: {} }
       }
   }
 };

@@ -95,6 +95,11 @@ def ten_point_scheme(level):
 SETTINGS = {
     "max_credits": (24, _int_between(1, 100),
                     "Most credits a student may enrol for in a session."),
+    "credit_structure": ("L-T-P-S-C",
+                         lambda v: type(v) is str and
+                         all(re.fullmatch(r"[^\s-]+", p) for p in v.split("-")),
+                         "Labels of the parts of a course's credits, separated by '-'; "
+                         "the last part is the credits."),
     "face_match_tolerance": (0.45, lambda v: type(v) in (int, float) and 0 < v <= 1,
                              "Face-match tolerance for photo attendance; lower is stricter."),
     "lockout_limit": (5, _int_between(1, 100),

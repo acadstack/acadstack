@@ -187,6 +187,7 @@ def static_data_dict():
     hidden = ST.get("hidden_enrol_types")
     sd["EnrolTypes"] = [e for e in sd["EnrolTypes"] if e["id"] not in hidden]
     sd["AcademicSessions"] = acs
+    sd["CreditStructure"] = ST.get("credit_structure").split("-")
     sd["CourseGrades"] = [{"id": "", "value": "-Select-"}] + [
         {"id": g, "value": g} for g in valid_grades()]
     for v in DB_VOCABS:

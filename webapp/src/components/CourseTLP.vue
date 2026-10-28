@@ -81,10 +81,10 @@ export default {
     let vm = this;
     vm.viewOnly = !vm.hasPermission('courses.edit');
     if (vm.course.teaching == undefined) {
-      vm.$set(vm.course, "teaching", []);
+      vm.course.teaching = [];
     }
     if (vm.course.ref_material == undefined) {
-      vm.$set(vm.course, "ref_material", []);
+      vm.course.ref_material = [];
     }
   },
   methods: {
