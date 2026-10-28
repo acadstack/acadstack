@@ -16,6 +16,7 @@ from conftest import enrol, make_offering, make_user
     ("app_url", "www.example.org"), ("app_url", "https://a b"),
     ("terms_url", "www.example.org"), ("terms_url", "https://a b"),
     ("guide_url", "www.example.org"), ("guide_url", "https://a b"),
+    ("grades_instructions_url", "www.example.org"), ("grades_instructions_url", "https://a b"),
     ("help_email", "nobody"), ("help_email", "a@b, c@d"),
     ("broadcast_emails", "a@b.org"), ("broadcast_emails", ["a@b.org", "x"]),
 ])
@@ -26,7 +27,8 @@ def test_identity_settings_reject_invalid_values(db, key, value):
 
 def test_identity_settings_are_blank_by_default(db):
     assert [settings.get(k) for k in ("institute_name", "institute_place", "app_url",
-                                      "terms_url", "guide_url", "help_email")] == [""] * 6
+                                      "terms_url", "guide_url", "help_email",
+                                      "grades_instructions_url")] == [""] * 7
     assert settings.get("broadcast_emails") == []
 
 
@@ -84,11 +86,21 @@ async def test_login_page_shows_institute_and_help(client, app, tmp_path):
 async def test_current_user_carries_help_email(client, auth):
     make_user("aca", role="ACA")
     settings.save("help_email", "help@example.org")
-    expected = {"help_email": "help@example.org", "terms_url": "", "guide_url": ""}
+    expected = {"help_email": "help@example.org", "terms_url": "", "guide_url": "",
+                "grades_instructions_url": ""}
     res = await auth.login("aca")
     assert (await res.get_json())["body"]["institute"] == expected
     res = await client.get("/acadstack/current_user")
     assert (await res.get_json())["body"]["institute"] == expected
+
+
+async def test_current_user_carries_the_grades_instructions_url(client, auth):
+    make_user("fac", role="FAC")
+    settings.save("grades_instructions_url", "https://uni.example.org/grades")
+    await auth.login("fac")
+    res = await client.get("/acadstack/current_user")
+    body = (await res.get_json())["body"]
+    assert body["institute"]["grades_instructions_url"] == "https://uni.example.org/grades"
 
 
 def test_template_in_override_folder_is_used(tmp_path):

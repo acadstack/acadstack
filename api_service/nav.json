@@ -245,6 +245,13 @@
         "group": "Approvals"
     },
     {
+        "label": "My Advisees",
+        "href": "#/my.advisees",
+        "perm": "instructors.view",
+        "menu": "My Work",
+        "group": "Students"
+    },
+    {
         "label": "Check Total Credits",
         "href": "#/credits.earned",
         "perm": "credits.reports",

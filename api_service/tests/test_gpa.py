@@ -159,14 +159,15 @@ def test_fractional_credits():
     assert r["sgpa"] == 10
 
 
-def test_ltp_without_five_parts_is_rejected():
-    with pytest.raises(C.AcadStackException, match="L-T-P-S-C"):
-        compute([course("A", ltp="3-0-2-4")], "UG")
+def test_credits_are_the_last_part_of_any_structure():
+    assert compute([course("A", ltp="3-0-2-4")], "UG")["ec"] == 4
+    assert compute([course("A", ltp="3-1")], "UG")["ec"] == 1
 
 
-def test_c13_malformed_ltp_raises_index_error():
-    with pytest.raises(IndexError):
-        compute([course("A", ltp="3-1")], "UG")
+@pytest.mark.parametrize("ltp", ["3-0-2-7-x", "3-0-2-7-"])
+def test_ltp_without_numeric_credits_is_rejected(ltp):
+    with pytest.raises(C.AcadStackException, match="Credits missing"):
+        compute([course("A", ltp=ltp)], "UG")
 
 
 def test_empty_grade_earns_no_credit():

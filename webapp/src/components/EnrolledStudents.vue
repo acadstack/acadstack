@@ -17,6 +17,7 @@ Component for showing the enrolled student in a course.
           <div class="col">Status</div>
           <div class="col">Acad Session</div>
           <div class="col">Attnd.</div>
+          <div class="col" v-if="hasGrades">Grade</div>
           <div class="col">
               <input class="form-check-input" type="checkbox" id="filterCb" v-model="showEnrolled">
               <label class="form-check-label" for="filterCb">Show only Enrolled</label>
@@ -70,6 +71,9 @@ Component for showing the enrolled student in a course.
             </span>
             <span v-else>--</span>
           </div>
+          <div class="col" v-if="hasGrades">{{ s.grade && s.grade != 'NA' ? s.grade : '--' }}</div>
+          <!-- Under the header's "Show only Enrolled" filter -->
+          <div class="col"></div>
           <div class="col" v-if="hasPermission('enrolments.download')">
             <input type="checkbox" class="form-check-input"
             v-model="tochange" :value="s.id"
@@ -97,6 +101,12 @@ export default {
         all_marked: false,
         showEnrolled: false
       };
+  },
+  computed: {
+    // The server sends the grades only to those who may see them
+    hasGrades() {
+      return (this.enrollments || []).some(s => "grade" in s);
+    }
   },
   created: function() {
     console.log("Creating Course Enrollments");

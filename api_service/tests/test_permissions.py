@@ -14,7 +14,7 @@ import policy as P
 import settings
 from conftest import enrol, make_offering, make_user, set_event_window
 
-ROLES = ["STU", "ACA", "FAC", "HOD", "DEA", "SUP", "GUE", "PLA", "ADV", "RES"]
+ROLES = ["STU", "ACA", "FAC", "HOD", "DEA", "SUP", "GUE", "PLA", "RES"]
 PUBLIC = "public"
 LOGIN = ROLES
 
@@ -33,7 +33,7 @@ ROLE_CHECKS = {
     "bulk_download_sem_grade": ['ACA', 'DEA', 'SUP'],
     "bulk_enrol_in_course": ['ACA', 'DEA'],
     "cgpa_sgpa": ['ACA', 'DEA', 'GUE'],
-    "change_enroll_status": ['ACA', 'ADV', 'DEA', 'FAC', 'HOD'],
+    "change_enroll_status": ['ACA', 'DEA', 'FAC', 'HOD'],
     "course_enrollment_save": LOGIN,
     "course_enrollment_view": LOGIN,
     "course_find": LOGIN,
@@ -88,7 +88,7 @@ ROLE_CHECKS = {
     "generate_students_credits_info": ['ACA', 'DEA'],
     "get_active_feedback_form": LOGIN,
     "get_active_users": ['ACA', 'DEA', 'SUP'],
-    "get_advisor_courses_enrol": ['ACA', 'ADV', 'DEA', 'HOD'],
+    "get_advisor_courses_enrol": ['ACA', 'DEA', 'HOD'],
     "get_advisor_detail": ['ACA', 'DEA', 'FAC', 'HOD'],
     "get_background_task_status": ['ACA', 'DEA'],
     "get_bulk_gradesheets": ['ACA', 'DEA', 'SUP'],
@@ -223,16 +223,16 @@ SCOPES = {
     "enrolments.change": {"own": ["STU"], "any": _but("STU")},
     # is_enrollment_owner_valid: FAC instructor, HOD of dept, ACA/DEA any
     "enrolments.edit": {"own": ["FAC"], "dept": ["HOD"], "any": ["ACA", "DEA"]},
-    # change_enroll_status: FAC/HOD/ADV by ownership; HOD any APEN
-    "enrolments.approve": {"own": ["ADV", "FAC", "HOD"], "any": ["ACA", "DEA", "HOD"]},
+    # change_enroll_status: FAC/HOD by ownership; HOD any APEN
+    "enrolments.approve": {"own": ["FAC", "HOD"], "any": ["ACA", "DEA", "HOD"]},
     # get_advisor_courses_enrol: HOD query by department
-    "enrolments.pending_advisor": {"own": ["ACA", "ADV", "DEA"], "dept": ["HOD"]},
+    "enrolments.pending_advisor": {"own": ["ACA", "DEA"], "dept": ["HOD"]},
     # grades_upload: coordinator unless ACA/DEA
     "grades.upload": {"own": ["FAC"], "any": ["ACA", "DEA"]},
     # mark_attendance: coordinator unless ACA/DEA
     "attendance.mark": {"own": ["FAC"], "any": ["ACA"]},
     # daywise attendance: instructor unless SUP/ACA/DEA/HOD
-    "attendance.view": {"own": ["ADV", "FAC", "GUE", "RES"], "any": ["ACA", "DEA", "HOD", "SUP"]},
+    "attendance.view": {"own": ["FAC", "GUE", "RES"], "any": ["ACA", "DEA", "HOD", "SUP"]},
     # get_instructor_feedback: FAC only own
     "feedback.view_instructor": {"own": ["FAC"], "any": ["ACA", "DEA"]},
     # dc_details/dc_search: STU only own
@@ -338,7 +338,7 @@ async def test_view_attendance_menu_follows_attendance_view(client, auth, role, 
     assert ("View Attendance" in await _nav_labels(client)) == sees
 
 
-@pytest.mark.parametrize("role", ["STU", "GUE", "PLA", "FAC", "ADV", "HOD", "RES", "ACA", "DEA", "SUP"])
+@pytest.mark.parametrize("role", ["STU", "GUE", "PLA", "FAC", "HOD", "RES", "ACA", "DEA", "SUP"])
 async def test_university_setup_entries_only_for_setup_roles(client, auth, role):
     make_user("u", role=role)
     await auth.login("u")

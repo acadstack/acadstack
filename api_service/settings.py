@@ -95,6 +95,11 @@ def ten_point_scheme(level):
 SETTINGS = {
     "max_credits": (24, _int_between(1, 100),
                     "Most credits a student may enrol for in a session."),
+    "credit_structure": ("L-T-P-S-C",
+                         lambda v: type(v) is str and
+                         all(re.fullmatch(r"[^\s-]+", p) for p in v.split("-")),
+                         "Labels of the parts of a course's credits, separated by '-'; "
+                         "the last part is the credits."),
     "face_match_tolerance": (0.45, lambda v: type(v) in (int, float) and 0 < v <= 1,
                              "Face-match tolerance for photo attendance; lower is stricter."),
     "lockout_limit": (5, _int_between(1, 100),
@@ -117,6 +122,9 @@ SETTINGS = {
                  "Terms-of-use page shown at login; blank hides the link."),
     "guide_url": ("", lambda v: _text(v) and (v == "" or re.fullmatch(r"https?://\S+", v) is not None),
                  "User-guide page linked at login and in the Help menu; blank hides the link."),
+    "grades_instructions_url": ("", lambda v: _text(v) and (v == "" or re.fullmatch(r"https?://\S+", v) is not None),
+                               "Page shown on the grade upload screen with the current session's "
+                               "extra instructions; blank shows none."),
     "help_email": ("", lambda v: v == "" or _email_valid(v),
                    "Address for help requests; also receives access-violation alerts."),
     "broadcast_emails": ([], lambda v: type(v) is list and all(_email_valid(a) for a in v),

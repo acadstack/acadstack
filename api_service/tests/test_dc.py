@@ -308,3 +308,47 @@ async def test_dc_search_by_supervisor(client, auth, people):
         body = await (await client.post("/acadstack/dc_find", json={
             "member_id": people[mem].id, "member_role": "SU"})).get_json()
         assert [d["id"] for d in body["body"]] == found
+
+
+async def _advisees(client, advisor_id):
+    res = await client.get(f"/acadstack/get_advisor_detail/{advisor_id}")
+    return await res.get_json()
+
+
+async def test_advisor_lists_own_advisees(client, auth):
+    adv = make_user("adv", role="FAC")
+    other = make_user("other", role="FAC")
+    s1 = make_user("s1", role="STU", org_id="R2")
+    s2 = make_user("s2", role="STU", org_id="R1")
+    s3 = make_user("s3", role="STU", org_id="R3")
+    for s in (s1, s2):
+        M.StudentAdvisor.create(student=s, advisor=adv)
+    M.StudentAdvisor.create(student=s3, advisor=other)
+    await auth.login("adv")
+    body = await _advisees(client, adv.id)
+    assert body["status"] == "OK", body
+    assert [(s["user_id"], s["org_id"]) for s in body["body"]] == [(s2.id, "R1"), (s1.id, "R2")]
+
+
+async def test_advisor_cannot_list_another_advisors_students(client, auth):
+    make_user("adv", role="FAC")
+    other = make_user("other", role="FAC")
+    M.StudentAdvisor.create(student=make_user("s1", role="STU"), advisor=other)
+    await auth.login("adv")
+    body = await _advisees(client, other.id)
+    assert body["status"] == "ERROR"
+
+
+async def test_academic_section_lists_any_advisors_students(client, auth):
+    make_user("aca", role="ACA")
+    adv = make_user("adv", role="FAC")
+    M.StudentAdvisor.create(student=make_user("s1", role="STU"), advisor=adv)
+    await auth.login("aca")
+    body = await _advisees(client, adv.id)
+    assert body["status"] == "OK" and len(body["body"]) == 1, body
+
+
+async def test_advisor_without_advisees_gets_an_empty_list(client, auth):
+    adv = make_user("adv", role="FAC")
+    await auth.login("adv")
+    assert await _advisees(client, adv.id) == {"status": "OK", "body": []}

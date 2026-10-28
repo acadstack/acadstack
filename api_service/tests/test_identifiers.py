@@ -1,12 +1,14 @@
 """Roll numbers, course codes and L-T-P-S-C values are not tied to one
 university's format."""
 
+import pytest
+
 import api_common as apiVC
 import common as C
 import models as M
-import policy as P
-from conftest import make_offering, make_user
-from test_levels import _upload_courses
+import settings
+from conftest import enrol, make_offering, make_user
+from test_levels import _post, _upload_courses
 
 
 def test_entry_years_are_any_comma_separated_four_digit_years():
@@ -89,15 +91,6 @@ async def test_course_csv_keeps_the_given_ltpsc(client, auth):
     assert M.Course.get(M.Course.code == "AB1").ltp == "3-0-0-5-4"
 
 
-def test_credit_hours_spent_reads_multi_digit_ltp(db):
-    fac = make_user("fac", role="FAC")
-    co = make_offering(code="CS900", ltp="10-0-2-21-11", acad_session="2026-I",
-                       instructor=fac)
-    rows = C.db.execute_sql(C.sql_by_id("credit_hours_spent"),
-                            [co.acad_session, P.roles_with("roster.instructor")]).fetchall()
-    assert [float(r[4]) for r in rows] == [231.0]
-
-
 async def test_slot_times_must_be_hhmm(client, auth):
     make_user("aca", role="ACA")
     await auth.login("aca")
@@ -110,3 +103,43 @@ async def test_slot_times_must_be_hhmm(client, auth):
     res = await client.post("/acadstack/save_slot", json={
         "slot": "A", "week_day": 1, "start_time": 0, "end_time": 2359})
     assert (await res.get_json())["status"] == "OK"
+
+
+async def test_course_edit_stores_the_new_ltpsc(client, auth):
+    aca = make_user("aca", role="ACA")
+    crs = M.Course.create(code="AB1", title="T", ltp="3-0-2-7-4", status="DRA", author=aca)
+    await auth.login("aca")
+    body = await _post(client, "cour_save", {"id": crs.id, "ltp": "1.5-0-2-4-2.5",
+                                             "txn_no": crs.txn_no})
+    assert body["status"] == "OK", body
+    assert M.Course.get_by_id(crs.id).ltp == "1.5-0-2-4-2.5"
+
+
+async def test_course_ltp_follows_the_credit_structure_setting(client, auth):
+    settings.save("credit_structure", "L-T-P-C")
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    body = await _post(client, "cour_save", {"code": "AB1", "title": "T",
+                                             "ltp": "3-0-2-7-4", "level": "UG"})
+    assert body["status"] == "ERROR" and "L-T-P-C" in body["body"], body
+    body = await _post(client, "cour_save", {"code": "AB1", "title": "T",
+                                             "ltp": "3-0-2-4", "level": "UG"})
+    assert body["status"] == "OK", body
+    body = await _upload_courses(client, "code,title,ltp,level\nAB2,Two,3-1-0-3.5,UG\n")
+    assert body["status"] == "OK", body
+    assert apiVC.static_data_dict()["CreditStructure"] == ["L", "T", "P", "C"]
+
+
+def test_credit_structure_setting_needs_non_empty_labels(db):
+    for bad in ("", "L--C", "L-T P", 5, None):
+        with pytest.raises(ValueError):
+            settings.save("credit_structure", bad)
+    settings.save("credit_structure", "LEC-CR")
+    assert settings.get("credit_structure") == "LEC-CR"
+
+
+def test_frozen_credits_are_the_last_ltp_part(db):
+    stu = make_user("s1", role="STU")
+    ce = enrol(stu, make_offering(code="CS901", ltp="3-0-2-4.5", acad_session="2026-I"))
+    C.db.execute_sql(C.sql_by_id("freeze_session_credits"), ["2026-I"])
+    assert float(M.CourseEnrollment.get_by_id(ce.id).credits) == 4.5

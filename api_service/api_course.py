@@ -42,9 +42,16 @@ def _course_levels():
 
 
 def _ltpsc_valid(ltpsc):
-    """The credits are given as L-T-P-S-C, five numbers such as 3-0-2-6-4."""
+    """The credits are given as one number per part of the credit_structure
+    setting, such as 3-0-2-6-4 for L-T-P-S-C."""
     parts = (ltpsc or "").split("-")
-    return len(parts) == 5 and all(re.fullmatch(r"[0-9]+(\.[0-9]+)?", x) for x in parts)
+    return len(parts) == len(ST.get("credit_structure").split("-")) and \
+        all(re.fullmatch(r"[0-9]+(\.[0-9]+)?", x) for x in parts)
+
+
+def _ltpsc_format():
+    """The credit_structure setting, for error messages."""
+    return f"{ST.get('credit_structure')} format, one number per part"
 
 
 @P.require("courses.edit")
@@ -59,7 +66,7 @@ async def course_save():
         if "level" in fd and fd["level"] not in levels:
             return apiVC.error_json(f"Course level must be one of {', '.join(levels)}.")
         if (crs_id <= 0 or "ltp" in fd) and not _ltpsc_valid(fd.get("ltp")):
-            return apiVC.error_json("The credits must be in the L-T-P-S-C format, e.g. 3-0-2-6-4.")
+            return apiVC.error_json(f"The credits must be in the {_ltpsc_format()}.")
 
         if crs_id > 0:
             # Edit case: the author stays as stored
@@ -227,7 +234,7 @@ async def bulk_add_courses():
                     if not _ltpsc_valid(ltpsc):
                         raise C.AcadStackException(
                             f"Course {row.get('code')}: ltp must be in the "
-                            "L-T-P-S-C format, e.g. 3-0-2-6-4.")
+                            f"{_ltpsc_format()}.")
                     freq = (row.get("freq") or "").strip().upper()
                     if freq and freq not in freqs:
                         raise C.AcadStackException(

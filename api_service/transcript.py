@@ -46,17 +46,15 @@ def resolve_scheme(schemes, level, acad_session, order):
 
 
 def course_credits(course):
-    """The frozen credits of the enrolment, or else the C part of the
-    course's L-T-P-S-C."""
+    """The frozen credits of the enrolment, or else the last part of the
+    course's credits (the C of L-T-P-S-C). Saving a course checks its parts
+    against the credit_structure setting."""
     if course.get("credits") is not None:
         return round(float(course["credits"]), 2)
-    ltp = course["ltp"].strip().split("-")
-    if len(ltp) < 2 or not (ltp[0] and ltp[2]):
-        raise AcadStackException(f"LTP data missing for course {course["code"]}")
-    if len(ltp) != 5:
-        raise AcadStackException(
-            f"LTP data not in L-T-P-S-C format for course {course["code"]}")
-    return round(C.parse_number(ltp[-1]), 2)
+    credits = C.parse_number((course["ltp"] or "").split("-")[-1])
+    if credits is None:
+        raise AcadStackException(f"Credits missing for course {course["code"]}")
+    return round(credits, 2)
 
 
 def session_gpa(courses, rules):

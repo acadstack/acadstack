@@ -322,3 +322,28 @@ async def test_row_with_too_few_columns_is_reported(client, auth, app, setup):
     await auth.login("ins")
     body = await upload(client, app, "ins", setup["co"].id, f"{HEADER}\nA,B,2024CSB1001\n")
     assert body["status"] == "ERROR" and "fewer than 4 columns" in body["body"]
+
+
+async def _enrolment_grades(client, co_id):
+    body = await (await client.get(f"/acadstack/get_course_enrollments/{co_id}")).get_json()
+    assert body["status"] == "OK", body
+    return [r.get("grade", "hidden") for r in body["body"]]
+
+
+@pytest.mark.parametrize("login, role, teaches, shown", [
+    ("coord", "FAC", "coordinator", True),
+    ("inst", "FAC", "instructor", True),
+    ("fac", "FAC", None, False),
+    ("aca", "ACA", None, True),
+    ("stu", "STU", None, False),
+])
+async def test_enrolment_list_shows_grades_to_who_may_see_them(client, auth, db,
+                                                              login, role, teaches, shown):
+    user = make_user(login, role=role)
+    co = make_offering(acad_session=SESSION,
+                       instructor=user if teaches else make_user("other", role="FAC"),
+                       is_coordinator=teaches == "coordinator")
+    stu = user if role == "STU" else make_user("stu1", role="STU")
+    enrol(stu, co, grade="A")
+    await auth.login(login)
+    assert await _enrolment_grades(client, co.id) == ["A" if shown else "hidden"]

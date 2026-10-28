@@ -586,6 +586,13 @@ async def get_course_enrollments(my_id):
         actor = P.current_actor()
         if not actor.has("students.academics:any"):
             res = res.where(DB.CourseEnrollment.student == actor.id)
+        # The grades are shown to the offering's instructors and to those who
+        # may upload or report any course's grades. Not via
+        # validate_course_instructor, which alerts on a mere view.
+        show_grades = actor.can("grades.reports") or actor.allowed(
+            "grades.upload", own=lambda: DB.CourseInstructor.select().where(
+                (DB.CourseInstructor.offering == my_id) &
+                (DB.CourseInstructor.instructor == actor.id)).exists())
         if res:
             result = []
             for coe in res:
@@ -594,11 +601,14 @@ async def get_course_enrollments(my_id):
                        "org_id": coe.student.person.org_id,
                        "enrol_type": coe.enrol_type,
                        "enrol_status": coe.enrol_status,
+                       "acad_session": coe.course_offering.acad_session,
                        "year": coe.student.person.year_of_entry,
                        "dep": coe.student.person.dept_name,
                        "degree": coe.student.person.degree,
                        "course": (coe.course_offering.course.code + ' ' + 
                                   coe.course_offering.course.title)}
+                if show_grades:
+                    obj["grade"] = coe.grade
                 __calculate_attendance(obj, coe)
                 result.append(obj)
 
