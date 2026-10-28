@@ -22,8 +22,8 @@ export default {
    * be stored in the form.
    * 'save_button_label' if supplied will be used as the label for
    * save button. Default label will be "Upload".
-   * 'max_file_size_mb' is the max. file size allowed (in MB). 
-   * Default is 1MB.
+   * 'max_file_size_mb' is the max. file size allowed (in MB);
+   * none if not supplied.
    */
   props: ["destination", "upload_form_data", "file_key", 
     "save_button_label", "max_file_size_mb"],
@@ -35,9 +35,6 @@ export default {
   async created() {
     if (this.save_button_label != undefined) {
       this.save_label = this.save_button_label;
-    }
-    if (this.max_file_size_mb == undefined) {
-      this.max_file_size_mb = 1;
     }
   },
   methods: {
@@ -99,7 +96,8 @@ export default {
       let errMsg = undefined;
       if (!files.length) {
         errMsg = "No file selected!";
-      } else if (files[0].size > 1000000 * this.max_file_size_mb) {
+      } else if (this.max_file_size_mb != undefined &&
+          files[0].size > 1000000 * this.max_file_size_mb) {
         errMsg = `Please select a file smaller than the max. allowed file size ${this.max_file_size_mb}MB`;
       }
       if (errMsg != undefined) {
