@@ -81,15 +81,6 @@ async def test_advisor_approval_after_instructor(client, auth, setup):
     assert status_of(setup["ce"]) == "ENRO"
 
 
-async def test_advisor_with_the_adv_role_can_approve(client, auth, setup):
-    setup["adv"].role = "ADV"
-    setup["adv"].save()
-    set_status(setup["ce"], "APEN")
-    await auth.login("adv")
-    assert (await change_status(client, [setup["ce"].id], "approve"))["status"] == "OK"
-    assert status_of(setup["ce"]) == "ENRO"
-
-
 async def test_advisor_rejection(client, auth, setup):
     set_status(setup["ce"], "APEN")
     await auth.login("adv")
@@ -105,12 +96,11 @@ async def test_c11_advisor_can_approve_ipen_straight_to_enro(client, auth, setup
 
 async def test_advisor_from_another_department_sees_and_approves(client, auth, setup):
     M.Person.update(dept_name="MEC").where(M.Person.id == setup["adv"].person_id).execute()
-    # ADV holds enrolments.pending_advisor
-    M.User.update(role="ADV").where(M.User.id == setup["adv"].id).execute()
     set_status(setup["ce"], "APEN")
     await auth.login("adv")
-    body = await (await client.get("/acadstack/get_advisor_courses_enrol")).get_json()
-    assert [r["id"] for r in body["body"]] == [setup["ce"].id]
+    # A faculty advisor's requests are in the advisor tab of Action Pending
+    body = await (await client.get("/acadstack/get_instructor_courses_enrol")).get_json()
+    assert [r["id"] for r in body["body"]["advisor_enrol"]] == [setup["ce"].id]
     assert (await change_status(client, [setup["ce"].id], "approve"))["status"] == "OK"
     assert status_of(setup["ce"]) == "ENRO"
 

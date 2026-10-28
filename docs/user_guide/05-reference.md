@@ -19,8 +19,7 @@ The table shows the roles of a **new installation**. Your university can change 
 | Role | Who | Menus and notable items |
 |---|---|---|
 | Student (STU) | Students | *Student Record*; *Courses* (offered courses, slotwise, catalogue, course feedback); *Fees*; *University → Academic Events*; *Users → Profile Photo*; *PhD* for doctoral students. Everything is about their own records. |
-| Faculty (FAC) | Instructors | *Courses* (offer, create, upload grades, view and mark attendance); *My Work* (courses offered, courses created, action pending); *PhD* (doctoral committees and progress reports); some *Reports*; *Users → Find User, Find Students*. |
-| Advisor (ADV) | Batch advisors with an advisor role | *My Work → Pending Tasks*; *Courses* (view only, with attendance); *PhD*; some *Reports*; *Users* lookups. |
+| Faculty (FAC) | Instructors | *Courses* (offer, create, upload grades, view and mark attendance); *My Work* (courses offered, courses created, action pending, which also holds the approvals of a batch advisor); *PhD* (doctoral committees and progress reports); some *Reports*; *Users → Find User, Find Students*. |
 | Head of Dept. (HOD) | Heads of department | Faculty items for the department's courses, with *Pending Tasks*: enrolments for advisor, courses to forward, offerings to move to Enrolling. |
 | Dean of Academics (DEA) | The dean | Everything the academic section has, except *Mark Attendance*, *New User*, *Add Users* and *Upload User Faces*. Approves courses and doctoral committees. |
 | Academic Section (ACA) | Academic office staff | All *Users* items, all *Courses* items including feedback forms and statistics, all *Reports*, and the *University* items for dates, slots and credits data. |

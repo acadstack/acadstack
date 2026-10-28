@@ -158,7 +158,6 @@ The default roles:
 | SUP | Superuser |
 | GUE | Guest |
 | PLA | Placement cell |
-| ADV | Advisor |
 
 Where the code needs a kind of person, it selects the users whose role holds
 a `roster.*` permission, never a role code:
