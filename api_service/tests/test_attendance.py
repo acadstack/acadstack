@@ -198,6 +198,7 @@ async def test_instructor_sees_whole_class_roster(client, auth, setup):
     body = await (await client.get(
         f"/acadstack/get_course_enrollments/{setup['co'].id}")).get_json()
     assert sorted(r["org_id"] for r in body["body"]) == ["2024CSB1001", "2024CSB1002"]
+    assert {r["acad_session"] for r in body["body"]} == {SESSION}
 
 
 async def test_daywise_attendance_sql_missing_group_by_so_route_always_fails(client, auth, setup):

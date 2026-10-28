@@ -601,6 +601,7 @@ async def get_course_enrollments(my_id):
                        "org_id": coe.student.person.org_id,
                        "enrol_type": coe.enrol_type,
                        "enrol_status": coe.enrol_status,
+                       "acad_session": coe.course_offering.acad_session,
                        "year": coe.student.person.year_of_entry,
                        "dep": coe.student.person.dept_name,
                        "degree": coe.student.person.degree,
