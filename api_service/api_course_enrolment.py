@@ -154,8 +154,10 @@ def __calculate_attendance(obj, se):
         obj["attendance"] = percent
 
 
-def __fetch_student_enrollments_data(enrols, include_attendance):
-    
+def __fetch_student_enrollments_data(enrols, include_attendance, hide_undeclared):
+    """hide_undeclared: show NA for the grades of sessions whose results are not
+    declared yet."""
+
     # Dict's key is acad_session and value will be an object containing 
     # information about courses, CGPA, SGPA, earned credits etc.
     enrol_data = {}
@@ -210,26 +212,20 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
             logging.warning("Course categorization not found. CO id="
                             f"{se.course_offering.id}")
 
-        # Release the grade only after result declaration date
-        try:
-            result_dec_dt  = VAL.get_event_date("RESULT_DECLARATION", 
-                                                se.course_offering.acad_session)
-        except:
-            pass
-        else:
-            result_dec_dt = VAL.get_event_date("RESULT_DECLARATION", 
-                                               se.course_offering.acad_session)
-            if result_dec_dt > C.current_dt_str():
-                my_course["grade"] = "NA"
-
         if include_attendance:
             __calculate_attendance(my_course, se)
 
         acad_sess_key = my_course["acad_session"]
         if acad_sess_key not in enrol_data:
-            enrol_data[acad_sess_key] = {"courses": [], "sgpa": 0, "ec": 0}
+            enrol_data[acad_sess_key] = {"courses": [], "sgpa": 0, "ec": 0,
+                                         "declared": VAL.is_result_declared(acad_sess_key)}
+        sess = enrol_data[acad_sess_key]
 
-        enrol_data[acad_sess_key]["courses"].append(my_course)
+        # Release the grade only after result declaration date
+        if hide_undeclared and not sess["declared"]:
+            my_course["grade"] = "NA"
+
+        sess["courses"].append(my_course)
     
     # Sort by academic session. Needed for cgpa calculations
     acad_sess_list = TR.sort_sessions(enrol_data.keys(), apiVC.session_start_dates(enrol_data.keys()))
@@ -244,16 +240,20 @@ def __fetch_student_enrollments_data(enrols, include_attendance):
     return acad_sess_list, enrol_data_sorted
 
 
-def __get_student_courses_perf(stu, include_attendance):
+def __get_student_courses_perf(stu, include_attendance, hide_undeclared=True):
     level = apiVC.degree_level(stu.person.degree)
+    held = result_holds(stu)
     # 'CC' -> Credit for concentration
-    perf_conc = get_student_courses_perf_filtered(stu, include_attendance, "CC", level)
+    perf_conc = get_student_courses_perf_filtered(stu, include_attendance, "CC", level,
+                                                  hide_undeclared, held)
 
     # 'CM' -> Credit for minor
-    perf_minor = get_student_courses_perf_filtered(stu, include_attendance, "CM", level)
+    perf_minor = get_student_courses_perf_filtered(stu, include_attendance, "CM", level,
+                                                   hide_undeclared, held)
 
     # 'C' -> Credit
-    perf_regu = get_student_courses_perf_filtered(stu, include_attendance, "C", level)
+    perf_regu = get_student_courses_perf_filtered(stu, include_attendance, "C", level,
+                                                  hide_undeclared, held)
 
     user = model_to_dict(stu, exclude=[DB.User.password_hashed])
     user["enrollments"] = {"CC": perf_conc, "CM": perf_minor, "C": perf_regu}
@@ -283,6 +283,7 @@ def init_routes(bp:Blueprint):
     bp.add_url_rule('/get_course_enrollments/<int:my_id>', view_func=get_course_enrollments, methods=['GET'])
     bp.add_url_rule('/get_student_academics/<int:my_id>', view_func=get_student_academics, methods=['GET'])
     bp.add_url_rule('/get_passed_courses/<int:user_id>', view_func=get_passed_courses, methods=['GET'])
+    bp.add_url_rule('/result_hold', view_func=result_hold, methods=['POST'])
     bp.add_url_rule('/drop_withdraw_course/<int:my_id>/<string:status>',
                        view_func=drop_withdraw_course, methods=['POST'])
     bp.add_url_rule('/download_course_enrollments/<int:co_id>', 
@@ -296,9 +297,20 @@ def init_routes(bp:Blueprint):
                        view_func=download_course_enrolments, methods=['GET'])
 
 
+def result_holds(stu):
+    """The sessions whose results are withheld for the student: {session: reason}."""
+    return {h.acad_session: h.reason for h in DB.ResultHold.select()
+            .where(DB.ResultHold.student == stu.id)}
+
+
 def get_student_courses_perf_filtered(stu, include_attendance, 
-                                        filter_by_enrol_type=None, level=None):
-    """level: the student's degree_level, when the caller already has it."""
+                                        filter_by_enrol_type=None, level=None,
+                                        hide_undeclared=True, held=None):
+    """level: the student's degree_level, when the caller already has it.
+    hide_undeclared: show NA for the grades of a session whose results are not
+    declared yet, or are withheld for the student; else give the reason of a
+    withheld result. held: the student's result_holds, when the caller already
+    has them."""
     if filter_by_enrol_type == "C": # 'C' -> Credit, 'A' -> Audit, etc.
         enrols = stu.enrollments.where(DB.CourseEnrollment.enrol_type 
                                        << (filter_by_enrol_type, 'A'))
@@ -309,7 +321,7 @@ def get_student_courses_perf_filtered(stu, include_attendance,
         enrols = stu.enrollments
     
     acad_sessions, enrol_data = __fetch_student_enrollments_data(
-        enrols, include_attendance)
+        enrols, include_attendance, hide_undeclared)
     # acad_sessions is already in properly sorted chronology
     rules = apiVC.grading_rules(level or apiVC.degree_level(stu.person.degree),
                                 acad_sessions)
@@ -317,6 +329,21 @@ def get_student_courses_perf_filtered(stu, include_attendance,
                              [rules[ad] for ad in acad_sessions])
     for ad, gpa in zip(acad_sessions, gpas):
         enrol_data[ad].update(gpa)
+
+    # A withheld session still counts in the later sessions' CGPA; only its own
+    # grades and figures are hidden.
+    held = result_holds(stu) if held is None else held
+    for ad in acad_sessions:
+        sess = enrol_data[ad]
+        sess["withheld"] = ad in held
+        if not sess["withheld"]:
+            continue
+        if hide_undeclared:
+            for c in sess["courses"]:
+                c["grade"] = "NA"
+            sess.update(sgpa="NA", ec="NA", cec="NA", cgpa="NA")
+        else:
+            sess["hold_reason"] = held[ad]
 
     return {"enrollments": enrol_data, "acad_sessions": acad_sessions}
 
@@ -433,6 +460,40 @@ async def get_passed_courses(user_id):
         return apiVC.error_json(str(ae))
     except Exception as ex:
         msg = "Error when fetching student academic details."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@P.require("results.withhold")
+async def result_hold():
+    """Withholds (hold is true) or releases a student's result of a session."""
+    try:
+        fd = await request.get_json(force=True)
+        user_id = fd.get("user_id")
+        stu = DB.User.get_or_none(DB.User.id == user_id) if type(user_id) is int else None
+        if not (stu and "roster.student" in P.perms_of(stu.role)):
+            return apiVC.error_json("Please select a student.")
+        acad_session = fd.get("acad_session")
+        if not (acad_session and apiVC.academic_session_valid(acad_session)):
+            return apiVC.error_json("Please supply a valid academic session!")
+
+        hold = DB.ResultHold.get_or_none((DB.ResultHold.student == stu.id) &
+                                         (DB.ResultHold.acad_session == acad_session))
+        who = f"{stu.person.org_id} for {acad_session}"
+        if fd.get("hold"):
+            reason = (fd.get("reason") or "").strip() or None
+            if not hold:
+                apiVC.save_entity(DB.ResultHold(student=stu, acad_session=acad_session,
+                                                reason=reason))
+            elif hold.reason != reason:
+                hold.reason = reason
+                apiVC.update_entity(DB.ResultHold, hold)
+            return apiVC.ok_json(f"Withheld the result of {who}.")
+        if hold:
+            hold.delete_instance()
+        return apiVC.ok_json(f"Released the result of {who}.")
+    except Exception:
+        msg = "Error when withholding or releasing the result."
         logging.exception(msg)
         return apiVC.error_json(msg)
 
@@ -566,7 +627,9 @@ async def get_student_academics(my_id):
 
         stu = DB.User.get_by_id(my_id)
         if stu:
-            user = __get_student_courses_perf(stu, True)
+            # Those who issue grade sheets see the grades before they are released
+            user = __get_student_courses_perf(
+                stu, True, not P.current_actor().can("grades.reports"))
             return apiVC.ok_json(user)
         else:
             return apiVC.error_json(f"Student not found for ID {my_id}")

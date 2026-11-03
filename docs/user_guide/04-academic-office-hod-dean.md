@@ -101,6 +101,10 @@ Students who already have an enrolment record in the offering, including a dropp
 
 Grades are uploaded by the coordinator of each offering, see [Uploading grades](03-faculty-and-advisors.md#uploading-grades). Use *Reports → Check the Submitted Grades* to see which offerings still have grades pending.
 
+Before the session's **Result declaration** date students see their grades as NA, but you see the real grades, in a student's record and on grade sheets, so you can check them before releasing.
+
+**Withholding a result.** To hold back one student's result of a session (for example for unpaid dues), open the student's record and press **Withhold result** in the session's bar, and give a reason. The student then sees NA for that session's grades and cannot download its grade sheet, and *Bulk Download Grade Sheet* leaves the student out. You still see the grades, and the student's credits still count in *Generate Students Credits Data*. Press **Release result** to release it.
+
 ## Approvals
 
 *My Work → Action Pending* and *My Work → Pending Tasks* are the same inbox. The tabs you see depend on your role.
@@ -168,12 +172,12 @@ All reports are under *Reports*. You see the ones your role may use. Most have a
 | *Check Category-wise Credits* | Degree, department, entry year, course category, minimum and maximum credits | Students and their credits in that category. |
 | *Generate Semester Grade* | A roll number, a session and an enrolment type | One student's grade sheet for the semester. |
 | *Course Wise Grade Distribution* | A degree and a session | How many students got each grade in each course. |
-| *Generation of CGPA and SGPA report* | A session | Each student's CGPA, SGPA and credits. |
+| *Generation of CGPA and SGPA report* | A session, and optionally a degree and an entry year | Each student's CGPA, SGPA and credits, by department and highest CGPA first. Useful for a merit list, such as for a change of branch. It uses the stored credits data, so run *Generate Students Credits Data* for the session first. |
 | *Check the Submitted Grades* | Whether to list **Grades Submitted Till Date** or **Pending Grades**, and a session | The offerings and instructors concerned. |
 | *Bulk Download Grade Sheet* | Degree, department, entry year, enrolment type | The semester grade sheets of a whole batch. |
 | *Generate Consolidated Grade Sheet* | A roll number and an enrolment type | One student's consolidated grade sheet over all semesters. |
 | *Generate Degree Certificate* | A roll number, name in a second language, thesis title (PhD only), document serial number, convocation date | A degree certificate. |
-| *Generate Course Enrolments* | Department, entry year, session | Every enrolment of the batch, as a CSV. |
+| *Generate Course Enrolments* | Department, entry year, session | Every enrolment of the batch, as a CSV, by course and then roll number. Leave department and entry year empty for every registered student of the session, for example for exam seating. For one course, use **Download Enrolled Students List** on its offering. |
 | *Student Strength Degree/Course wise* | A course code and a session | How many students each course has, by programme. |
 | *Fees Payment Report* | Degree, department, entry year | The fee payment records that students of the batch have submitted. |
 
@@ -189,7 +193,7 @@ The **University** menu holds the dates and timetable that many other screens de
 
 - *University → Academic Events*: the dates of each session. They decide when students can enrol, drop, withdraw and give feedback, and when faculty can upload grades. Setting them is described in [Academic Events](../university_setup.md#5-academic-events). When something is "not open", this is the first place to check.
 - *University → Course Slot Timings*: the weekly times of each slot. A course in a slot without timings cannot be enrolled in. See [Course Slot Timings](../university_setup.md#7-course-slot-timings).
-- *University → Generate Students Credits Data*: calculates and stores the credits of every student enrolled in a session. Choose the **session** and press the magnifier. The work runs in the background, so press **Check Status** to see how it is going.
+- *University → Generate Students Credits Data*: calculates and stores the credits of every student enrolled in a session. Choose the **session** and press the magnifier. The work runs in the background, so press **Check Status** to see how it is going. It can run only from the session's **Result declaration** date. Run it again after any grade change.
 
 ![Generating the credits data](../images/user_guide/staff-credits-data.png)
 

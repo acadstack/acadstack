@@ -99,6 +99,27 @@ def _is_iso_date(v):
         return False
 
 
+# Pairs of calendar dates where the first may not fall after the second
+_DATE_ORDER = [
+    ("COURSE_REG_S", "ADD_DROP_S"),
+    ("ADD_DROP_S", "WITHDRAW_S"),
+    ("CLASSES_S", "MINOR_EXAM_S"),
+    ("MINOR_EXAM_E", "MAJOR_EXAM_S"),
+    ("FEEDBACK_MID_S", "SHOW_MIDSEM_FB_S"),
+    ("FEEDBACK_S", "SHOW_ENDSEM_FB_S"),
+    ("GRADE_SUB_E", "RESULT_DECLARATION"),
+]
+
+
+def _date_order_errors(dates, labels):
+    """The broken ordering rules among the session's dates ({event_code: ISO
+    date}): an event's start after its end, or a pair of _DATE_ORDER."""
+    pairs = [(f"{c}_S", f"{c}_E") for c in labels] + _DATE_ORDER
+    return [f"{apiVC.calendar_entry_label(a, labels)} must not be after "
+            f"{apiVC.calendar_entry_label(b, labels).lower()}"
+            for a, b in pairs if dates.get(a) and dates.get(b) and dates[a] > dates[b]]
+
+
 @P.require("calendar.edit")
 async def dates_save():
     try:
@@ -133,6 +154,13 @@ async def dates_save():
         # A session is ordered and picked as current by its start and end dates.
         if not acs and not {"SESSION_S", "SESSION_E"} <= set(eventdates) - cleared:
             return apiVC.error_json("A new session needs its start and end dates.")
+        # The rules apply to the dates the session will have after this save
+        dates = {r.event_code: r.event_value for r in M.AcademicCalendar.select().where(
+            M.AcademicCalendar.acad_session == session) if r.event_code not in cleared}
+        dates.update({k: v for k, v in eventdates.items() if k not in cleared})
+        broken = _date_order_errors(dates, apiVC.calendar_event_labels())
+        if broken:
+            return apiVC.error_json(f"{'; '.join(broken)}. Nothing was saved.")
         with M.db.atomic():
             if not acs:
                 apiVC.save_entity(M.AcademicSession(

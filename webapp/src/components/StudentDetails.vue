@@ -139,7 +139,8 @@ Component for student details.
             v-on:reload-student-info="loaded=false; load()"
             v-bind:enrollments="student.enrollments" 
             v-bind:acad_sessions="student.acad_sessions" 
-            v-bind:user_id="student.id" />
+            v-bind:user_id="student.id"
+            v-bind:org_id="student.person.org_id" />
           <div class="text-center" v-else>Loading student academics...</div>
         </div>
         <StudentDocuments v-show="tab=='docs'" 

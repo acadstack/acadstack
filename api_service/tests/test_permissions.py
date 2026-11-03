@@ -57,7 +57,8 @@ ROLE_CHECKS = {
     "delete_doc": LOGIN,
     "delete_student_reg_fees_data": LOGIN,
     "download_catwise_earned_credits": LOGIN,
-    "download_cgpa_sgpa": LOGIN,
+    # Was credits.reports, open to every role but STU; now the report's own permission
+    "download_cgpa_sgpa": ['ACA', 'DEA', 'GUE'],
     "download_consolidated_grade_sheet": ['ACA', 'DEA', 'SUP'],
     "download_course_enrollments": LOGIN,
     "download_course_enrolments": LOGIN,
@@ -70,7 +71,6 @@ ROLE_CHECKS = {
     "download_grade_distribution": ['ACA', 'DEA'],
     "download_grade_status": ['ACA', 'DEA', 'SUP'],
     "download_quewise_facfeedbk_score": ['ACA', 'DEA'],
-    "download_sem_grade": ['ACA', 'DEA', 'SUP'],
     "drop_withdraw_course": LOGIN,
     "earned_credit_check": LOGIN,
     "enroll_in_courses": ['ACA', 'STU'],
@@ -163,7 +163,7 @@ INLINE_GATES = {
     # if is_user_in_role("STU"): return error
     **{ep: _but("STU") for ep in (
         "user_find", "find_students", "upload_student_doc", "wfnote_save", "wfnote_delete",
-        "download_course_enrollments", "download_course_enrolments", "download_cgpa_sgpa",
+        "download_course_enrollments", "download_course_enrolments",
         "download_catwise_earned_credits", "credits_earned_report", "course_lect_in_session",
         "earned_credit_check", "get_dc_students", "save_progress_report")},
     # role in config "hide_course_stats_from" (["STU"])
@@ -186,6 +186,10 @@ NARROWED = {
 
 NEW_ROUTES = {"get_permissions": ["SUP"], "save_role_permissions": ["SUP"],
               "close_session": ["ACA", "SUP"],
+              "result_hold": ["ACA"],
+              # students.academics passes the gate; the body then needs grades.reports,
+              # or the student's own sheet
+              "download_sem_grade": LOGIN,
               # users.edit at any scope passes the gate; the body then needs users.edit:any
               "admin_gen_prk": LOGIN,
               # no permission: the body requires a logged-in user
@@ -248,6 +252,7 @@ SCOPES = {
 INNER = {
     "courses.edit_approved": ["ACA", "DEA", "RES"],  # is_course_status_valid_for_current_user
     "offerings.edit_closed": ["ACA", "DEA"],          # validate_coff_status
+    "results.withhold": ["ACA"],                      # result_hold
     "faces.replace": _but("STU"),                     # kface_add: STU may not replace
     # role == "STU"/"FAC"/"ACA" where the code selects a kind of person
     "roster.student": ["STU"],

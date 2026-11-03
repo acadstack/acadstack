@@ -171,6 +171,8 @@ The home page reminds you to contact the course instructor directly for any chan
 | Grade | Your grade. Some grades may still be waiting for approval by the senate. The records confirmed by the academic section take precedence over what is shown here. |
 | Attd. | Your attendance percentage. Open it for the dates. |
 
+Once a session's results are declared, its bar has a **Grade sheet** button that downloads your grade sheet for the session as a PDF. Until then the grades show as NA. If the bar says **Result withheld**, your grades for that session are not released yet; contact the academic section.
+
 **Documents** lists the files kept for you, such as the fee payment proofs you uploaded, with their description and update time.
 
 ![The Documents tab](../images/user_guide/student-record-documents.png)

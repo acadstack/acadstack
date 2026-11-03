@@ -389,11 +389,15 @@ def _create_acad_sessions():
         for sem in ("I", "II"):
             M.AcademicSession.create(code=f"{yr}-{sem}")
         for idx, ec in enumerate(ACAD_EVENTS):
-            _save_acad_cal("I", f"{ec}_S", yr, DATES_MMDD_I[idx][0])
-            _save_acad_cal("I", f"{ec}_E", yr, DATES_MMDD_I[idx][1])
-
-            _save_acad_cal("II", f"{ec}_S", yr, DATES_MMDD_II[idx][0])
-            _save_acad_cal("II", f"{ec}_E", yr, DATES_MMDD_II[idx][1])
+            for sem, dates in (("I", DATES_MMDD_I), ("II", DATES_MMDD_II)):
+                # Result declaration is a single date, under its own code; the
+                # show-feedback events have only a start date.
+                if ec == "RESULT_DECLARATION":
+                    _save_acad_cal(sem, ec, yr, dates[idx][0])
+                    continue
+                _save_acad_cal(sem, f"{ec}_S", yr, dates[idx][0])
+                if not ec.startswith("SHOW_"):
+                    _save_acad_cal(sem, f"{ec}_E", yr, dates[idx][1])
 
 def _create_offerings(acs, open_sess):
     print("Creating course offerings and enrolling students...")

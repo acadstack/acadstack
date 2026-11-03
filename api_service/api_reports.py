@@ -18,6 +18,7 @@ import common as C
 import models as DB
 import tasks_helper as TH
 import policy as P
+import validation_checks as VAL
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/dept.wiseavg', view_func=generate_dept_wise_avg, methods=['POST'])
@@ -362,8 +363,10 @@ def __process_credits_gen_request(acad_session):
         with DB.db.atomic() as txn:
             for (user_id, roll_no) in entry_nos:
                 stu = DB.User.get_by_id(user_id)
-                # Fetch the student's credits data                
-                data = __get_student_courses_perf(stu, False)
+                # Fetch the student's credits data; a withheld result counts:
+                # the hold hides it from the student, not from the staff who
+                # see the CGPA report
+                data = __get_student_courses_perf(stu, False, hide_undeclared=False)
                 if not (data['enrollments']["CC"] or data['enrollments']["CM"] 
                         or data['enrollments']["C"]):
                     logging.error(f"Student record not found for entry no. {roll_no}")
@@ -407,6 +410,11 @@ def __process_credits_gen_request(acad_session):
 @P.require("credits.generate")
 async def generate_students_credits_info(acad_session):
     try:
+        # The stored credits are those of the released grades
+        if not VAL.is_result_declared(acad_session):
+            return apiVC.error_json(f"Results of {acad_session} are not declared yet. "
+                                    "Generate the credits data on or after the result "
+                                    "declaration date.")
         job_key = TH.create_task(__process_credits_gen_request, acad_session)
         logging.info(f"Submitted background job with key {job_key}")
         return apiVC.ok_json({"job_key": job_key, "message": 
@@ -475,8 +483,11 @@ async def cgpa_sgpa():
         if acad_session and not apiVC.academic_session_valid(acad_session):
             raise C.AcadStackException("Unknown academic session.")
 
+        degree = form_data.get("degree") or ""
+        entry_year = str(form_data.get("entry_year") or "")
         cursor = DB.db.execute_sql(C.sql_by_id("generate_cgpa_sgpa"),
-                                [str(acad_session)])
+                                [str(acad_session), degree, degree,
+                                 entry_year, entry_year])
         data = []
         for row in cursor.fetchall():
             data.append({'roll_no': row[0], 'first_name': row[1],

@@ -202,6 +202,15 @@ def get_event_date(event_code, for_acad_session=None):
                             .format(event_code, acad_session))
 
 
+def is_result_declared(acad_session):
+    """The session's results are declared: its result declaration date has
+    come, or it has none."""
+    ev = DB.AcademicCalendar.get_or_none(
+        (DB.AcademicCalendar.acad_session == acad_session) &
+        (DB.AcademicCalendar.event_code == "RESULT_DECLARATION"))
+    return ev is None or ev.event_value <= current_dt_str()
+
+
 def is_enrollment_owner_valid(coe):
     """Checks whether the current user may view and change the supplied
     enrollment: through enrolments.edit (as coordinator of the offering, as a
