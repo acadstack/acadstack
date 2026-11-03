@@ -268,7 +268,8 @@ Component for user details.
             v-on:reload-student-info="enrollments_loaded=false; load_student_academics()"
             v-bind:enrollments="student_enrollments" 
             v-bind:acad_sessions="acad_sessions"
-            v-bind:user_id="user.id" />
+            v-bind:user_id="user.id"
+            v-bind:org_id="user.person.org_id" />
             <!-- <StudentAcademics v-if="user.role=='STU'" v-bind:user_id="user.id" /> -->
             <InstructorTeaching v-if="isInstructor" v-bind:user_id="user.id"/>
           </div>

@@ -565,6 +565,27 @@ CREATE SEQUENCE public.studentcredits_id_seq
 
 ALTER SEQUENCE public.studentcredits_id_seq OWNED BY public.studentcredits.id;
 
+CREATE TABLE public.resulthold (
+    id bigint NOT NULL,
+    is_deleted boolean NOT NULL,
+    txn_no integer NOT NULL,
+    ins_ts timestamp without time zone NOT NULL,
+    upd_ts timestamp without time zone NOT NULL,
+    txn_login_id character varying(40),
+    student_id bigint NOT NULL,
+    acad_session character varying(10) NOT NULL,
+    reason text
+);
+
+CREATE SEQUENCE public.resulthold_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.resulthold_id_seq OWNED BY public.resulthold.id;
+
 CREATE TABLE public.studentfeedbackstatus (
     id bigint NOT NULL,
     is_deleted boolean NOT NULL,
@@ -748,6 +769,8 @@ ALTER TABLE ONLY public.studentattendance ALTER COLUMN id SET DEFAULT nextval('p
 
 ALTER TABLE ONLY public.studentcredits ALTER COLUMN id SET DEFAULT nextval('public.studentcredits_id_seq'::regclass);
 
+ALTER TABLE ONLY public.resulthold ALTER COLUMN id SET DEFAULT nextval('public.resulthold_id_seq'::regclass);
+
 ALTER TABLE ONLY public.studentfeedbackstatus ALTER COLUMN id SET DEFAULT nextval('public.studentfeedbackstatus_id_seq'::regclass);
 
 ALTER TABLE ONLY public.studentsupervisor ALTER COLUMN id SET DEFAULT nextval('public.studentsupervisor_id_seq'::regclass);
@@ -831,6 +854,9 @@ ALTER TABLE ONLY public.studentattendance
 
 ALTER TABLE ONLY public.studentcredits
     ADD CONSTRAINT studentcredits_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.resulthold
+    ADD CONSTRAINT resulthold_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.studentfeedbackstatus
     ADD CONSTRAINT studentfeedbackstatus_pkey PRIMARY KEY (id);
@@ -986,6 +1012,12 @@ CREATE UNIQUE INDEX studentcredits_student_id_acad_session ON public.studentcred
 
 CREATE INDEX studentcredits_txn_no ON public.studentcredits USING btree (txn_no);
 
+CREATE INDEX resulthold_student_id ON public.resulthold USING btree (student_id);
+
+CREATE UNIQUE INDEX resulthold_student_id_acad_session ON public.resulthold USING btree (student_id, acad_session);
+
+CREATE INDEX resulthold_txn_no ON public.resulthold USING btree (txn_no);
+
 CREATE INDEX studentfeedbackstatus_course_instructor_id ON public.studentfeedbackstatus USING btree (course_instructor_id);
 
 CREATE UNIQUE INDEX studentfeedbackstatus_course_instructor_id_student_id_fe_ce0120 ON public.studentfeedbackstatus USING btree (course_instructor_id, student_id, feedback_form_id);
@@ -1093,6 +1125,9 @@ ALTER TABLE ONLY public.studentattendance
 
 ALTER TABLE ONLY public.studentcredits
     ADD CONSTRAINT studentcredits_student_id_fkey FOREIGN KEY (student_id) REFERENCES public."user"(id);
+
+ALTER TABLE ONLY public.resulthold
+    ADD CONSTRAINT resulthold_student_id_fkey FOREIGN KEY (student_id) REFERENCES public."user"(id);
 
 ALTER TABLE ONLY public.studentfeedbackstatus
     ADD CONSTRAINT studentfeedbackstatus_course_instructor_id_fkey FOREIGN KEY (course_instructor_id) REFERENCES public.courseinstructor(id) ON DELETE CASCADE;
@@ -1361,6 +1396,7 @@ INSERT INTO public.permission (code, description, is_deleted, txn_no, ins_ts, up
     ('reports.course_enrolments', 'Course enrolments report', false, 1, now(), now()),
     ('reports.student_strength', 'Degree/course-wise student strength report', false, 1, now(), now()),
     ('reports.student_strength_download', 'Download degree-wise student lists', false, 1, now(), now()),
+    ('results.withhold', 'Withhold and release a student''s result of a session', false, 1, now(), now()),
     ('reports.students_list', 'Download student lists for placement', false, 1, now(), now()),
     ('attendance.mark:own', 'Upload attendance photos; own: for courses one coordinates', false, 1, now(), now()),
     ('attendance.mark:any', 'Upload attendance photos; own: for courses one coordinates', false, 1, now(), now()),
@@ -1461,6 +1497,7 @@ INSERT INTO public.rolepermission (role, permission, is_deleted, txn_no, ins_ts,
     ('ACA', 'reports.course_enrolments', false, 1, now(), now()),
     ('ACA', 'reports.student_strength', false, 1, now(), now()),
     ('ACA', 'reports.student_strength_download', false, 1, now(), now()),
+    ('ACA', 'results.withhold', false, 1, now(), now()),
     ('ACA', 'sessions.close', false, 1, now(), now()),
     ('ACA', 'slots.manage', false, 1, now(), now()),
     ('ACA', 'student_docs.access:any', false, 1, now(), now()),

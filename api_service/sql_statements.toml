@@ -537,6 +537,7 @@ generate_cgpa_sgpa = """
     join public.user u on u.id=sc.student_id
     join public.person p on p.id=u.person_id
     where sc.sgpa > 0 and sc.cred_registered > 0 and sc.acad_session=%s
+    and (p.degree=%s OR %s = '') and (p.year_of_entry=%s OR %s = '')
     order by p.dept_name, sc.cgpa desc
 """
     

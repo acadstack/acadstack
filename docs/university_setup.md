@@ -197,6 +197,13 @@ Rules the screen enforces:
 
 - A new session needs its **Academic session** start and end dates, because the application orders sessions and chooses the current one by them.
 - Every other date must fall between the session's start and end dates. The exception is **Result declaration**, which may be later. Otherwise you get "Please ensure that all dates are within the academic session start and end dates!"
+- Each event's start may not be after its end, and the events must come in this order (each date on or after the one before it):
+  - **Course pre-registration** start, then **Course add/drop** start, then **Course withdrawal** start;
+  - **Classes** start, then **Mid sem exams** start; **Mid sem exams** end, then **End sem exams** start;
+  - **Midsem course feedback** start, then **Show feedback (midsem)**; **Course feedback** start, then **Show feedback (endsem)**;
+  - **Grades submission** end, then **Result declaration**. So instructors cannot upload grades after the results are declared.
+
+  A date that breaks a rule is reported, for example "Grades submission ends must not be after result declaration", and nothing is saved. The rules apply to the dates the session will have after the save, including those you didn't change.
 - The session name is permanent, and at most 10 characters.
 
 To change a session later, choose it in **Load for session** at the top, edit the dates and save. The pickers elsewhere in the application offer the current session and the next two; to load an older one, tick **Other** and type its name.
@@ -218,7 +225,7 @@ The event names can be relabelled on the **Workflow labels** tab of *Lists*. The
 | Course feedback | Students can submit end-of-term feedback between these dates. |
 | Grades submission | Instructors can submit grades between these dates. After the end date, running offerings become "Completed". |
 | Show feedback (midsem), Show feedback (endsem) | The date from which the feedback results can be seen. |
-| Result declaration | A single date. Students see their grades only from this date. |
+| Result declaration | A single date. Students see their grades, and can download their grade sheets, only from this date. The academic section sees the grades before it. *Generate Students Credits Data* runs only from this date. |
 | Session closed | Set only by closing the session (below). |
 
 Any events you added under *Lists → CalendarEvents* appear below these as optional rows, with the same date-range rule.

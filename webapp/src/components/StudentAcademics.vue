@@ -43,6 +43,12 @@ Component for showing the academics details of a student.
                   <span class="me-2">Earned Credits: {{ acs_item.ec }}</span> |
                   <span class="me-2">Cumul. Earned Credits: {{ acs_item.cec }}</span> |
                   <span>CGPA: {{ acs_item.cgpa }}</span>
+                  <span class="badge bg-warning text-dark ms-2" v-if="acs_item.withheld">Result withheld{{ acs_item.hold_reason ? `: ${acs_item.hold_reason}` : "" }}</span>
+                  <a class="btn btn-sm btn-light ms-2" v-if="isStudent && acs_item.declared && !acs_item.withheld"
+                    :href="`download_sem_grade/${acs_index}/${org_id}/${key}`">Grade sheet</a>
+                  <button type="button" class="btn btn-sm btn-light ms-2" v-if="hasPermission('results.withhold')"
+                    @click="resultHold(acs_index, !acs_item.withheld)">
+                    {{ acs_item.withheld ? "Release result" : "Withhold result" }}</button>
                 </div>
                 <div class="row row-striped" v-for="(c, index) in filterEnrolments(acs_item.courses)" :key="c.id">
                   <div class="col-md-1">{{ index + 1 }}</div>
@@ -91,7 +97,7 @@ Component for showing the academics details of a student.
 <script>
 export default {
   name: "StudentAcademics",
-  props: {user_id: Number, enrollments: Object, acad_sessions: Array},
+  props: {user_id: Number, org_id: String, enrollments: Object, acad_sessions: Array},
   data: function() {
     return {
       showEnrolled: true
@@ -130,6 +136,22 @@ export default {
           console.log(error);
           vm.setStatusMessage(vm.httpErrorMessage(error), 'error');
         });
+    },
+    async resultHold(acad_session, hold) {
+      let vm = this;
+      let reason = "";
+      if (hold) {
+        reason = prompt(`Reason for withholding the result of ${acad_session}:`);
+        if (reason === null) return;
+      } else if (!confirm(`Release the result of ${acad_session}?`)) {
+        return;
+      }
+      await vm.doHttp(false, "result_hold",
+        {user_id: vm.user_id, acad_session: acad_session, hold: hold, reason: reason},
+        (msg) => {
+          vm.setSuccessMessage(msg);
+          vm.$emit("reload-student-info");
+        }, (msg) => vm.setStatusMessage(msg, 'error'));
     },
     filterEnrolments(enrolList) {
       let vm = this;

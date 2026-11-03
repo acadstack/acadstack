@@ -497,6 +497,20 @@ class StudentCredits(BaseModel):
         )
 
 
+class ResultHold(BaseModel):
+    """The student's result of the session is withheld: their grades of it are
+    not released to them."""
+    student = ORM.ForeignKeyField(User, backref='result_holds')
+    acad_session = ORM.CharField(max_length=10)
+    reason = ORM.TextField(null=True)
+
+    class Meta:
+        indexes = (
+            # Unique index
+            (('student', 'acad_session'), True),
+        )
+
+
 class DcForStudent(BaseModel):
  
     student = ORM.ForeignKeyField(User,

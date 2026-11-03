@@ -61,7 +61,7 @@ def init_routes(bp: Blueprint):
     bp.add_url_rule('/generate_semester_grade', view_func=generate_semester_grade, methods=['POST'])
     bp.add_url_rule('/download_sem_grade/<string:acad_session>/<string:entry_no>/<string:enrol_type>', 
                        view_func=download_sem_grade, methods=['GET'])
-    bp.add_url_rule('/download_cgpa_sgpa/<string:acad_session>',
+    bp.add_url_rule('/download_cgpa_sgpa/<string:acad_session>/<string:degree>/<string:entry_year>',
                        view_func=download_cgpa_sgpa, methods=['GET'])
     bp.add_url_rule(('/download_catwise_earned_credits/<string:acad_session>/'
                         '<string:degree>/<string:dept_name>/<string:course_type>/'
@@ -117,7 +117,8 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
                 return apiVC.error_json(msg)
             # Fill the sudents personal info
             # report_data = _get_student_courses_perf(stu, True)
-            report_data = get_student_courses_perf_filtered(stu, False, enrol_type)
+            report_data = get_student_courses_perf_filtered(stu, False, enrol_type,
+                                                            hide_undeclared=False)
             sem_courses = []
             for index,courses in report_data["enrollments"].items():
                 sem_courses = courses
@@ -187,7 +188,9 @@ async def download_consolidated_grade_sheet(entry_no,enrol_type):
                                  "certificate PDF file for download.")
 
 
-def _get_semester_grade_data(entry_no, acad_session, enrol_type):
+def _get_semester_grade_data(entry_no, acad_session, enrol_type, hide_undeclared=False):
+    """hide_undeclared: NA for the grades of a session whose results are not
+    declared yet, or are withheld for the student."""
     acad_session = acad_session.strip()
     report_data = {}
     if acad_session and not apiVC.academic_session_valid(acad_session):
@@ -224,7 +227,8 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
         report_data["deg_type_spec"] = deg_type_spec
 
    #TODo: check method calling with three parameters.
-    all_data = get_student_courses_perf_filtered(stu, False, enrol_type)
+    all_data = get_student_courses_perf_filtered(stu, False, enrol_type,
+                                                 hide_undeclared=hide_undeclared)
     if not all_data["enrollments"]:
         raise C.AcadStackException("Records not found for this degree "
                                 f"type for student {entry_no}")
@@ -242,6 +246,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type):
     report_data['creg']   = sem_courses['creg']
     report_data['cec'] = sem_courses['cec']
     report_data['cgpa'] = sem_courses['cgpa']
+    report_data['withheld'] = sem_courses['withheld']
     return report_data
 
 
@@ -264,10 +269,27 @@ async def generate_semester_grade():
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
 
 
-@P.require("grades.reports")
+@P.require("students.academics")
 async def download_sem_grade(acad_session, entry_no, enrol_type):
+    """The grade sheet of a student for a session. A student may download only
+    their own, once the session's results are declared and not withheld."""
     try:
-        data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
+        actor = P.current_actor()
+        is_own = not actor.can("grades.reports")
+        if is_own:
+            user = apiVC.logged_in_user()
+            if not (actor.has("students.academics:own") and
+                    entry_no.upper() == user.person.org_id.upper()):
+                return apiVC.error_json("You may download only your own grade sheet.")
+            if not VAL.is_result_declared(acad_session.strip()):
+                return apiVC.error_json(f"Results of {acad_session} are not declared yet.")
+        data = _get_semester_grade_data(entry_no, acad_session, enrol_type,
+                                        hide_undeclared=is_own)
+        if not data:
+            raise C.AcadStackException(f"Records not found for student {entry_no}")
+        if is_own and data["withheld"]:
+            return apiVC.error_json(f"Your result of {acad_session} is withheld. "
+                                    "Please contact the academic section.")
         data['enrol_type'] = enrol_type
         # TODO: Check the HTML and the data's structure
         html = _fill_report("semester_grades.html", data)
@@ -312,6 +334,7 @@ def _bulk_download_sem_grade(form_data, job_key):
         year_of_entry = str(form_data.get("for_year"))
         sub_dir = 'BULK_GS_PDF'
         missing_stu_enrol = []
+        withheld = []
         file_folder = os.path.join(apiVC.get_upload_folder(), sub_dir, job_key)
         zip_file = f"{os.path.join(apiVC.get_upload_folder(), sub_dir)}_{job_key}"
         Path(file_folder).mkdir(parents=True, exist_ok=True)
@@ -321,6 +344,10 @@ def _bulk_download_sem_grade(form_data, job_key):
                                 f"Department for Entry Year {year_of_entry}")
         for entry_no in resp:
             data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
+            # These sheets go out to the students
+            if data and data["withheld"]:
+                withheld.append(entry_no)
+                continue
             if data:
                 data['enrol_type'] = enrol_type
                 html = _fill_report("semester_grades.html", data)
@@ -337,6 +364,7 @@ def _bulk_download_sem_grade(form_data, job_key):
         return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
     logging.info("Missing Students Sem Grades Sheet, While Bulk "
                 f"downloading: {missing_stu_enrol}")
+    logging.info(f"Withheld results left out of the bulk grade sheets: {withheld}")
     return zip_file
 
 
@@ -389,14 +417,19 @@ async def download_grade_distribution(acad_session, degree):
         return apiVC.error_json(msg)
 
 
-@P.require("credits.reports")
-async def download_cgpa_sgpa(acad_session):
+@P.require("grades.cgpa_report")
+async def download_cgpa_sgpa(acad_session, degree, entry_year):
     try:
         if acad_session == "-":
             acad_session = ""
+        if degree == "-":
+            degree = ""
+        if entry_year == "-":
+            entry_year = ""
 
         cursor = DB.db.execute_sql(C.sql_by_id("generate_cgpa_sgpa"),
-                                [str(acad_session)])
+                                [str(acad_session), degree, degree,
+                                 entry_year, entry_year])
         fp = apiVC.db_result_to_excel(cursor)
         return await send_file(fp, attachment_filename="download_cgpa_sgpa.csv",
                          as_attachment=True)

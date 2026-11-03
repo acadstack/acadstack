@@ -7,7 +7,19 @@
                 label="Academic Session"
                 v-on:update:acad_session='search_crit.acad_session=$event'/>
       </div>
-    
+      <div class="col">
+        <label for="degree">Degree</label>
+        <select id="degree" class="form-select" v-model="search_crit.degree">
+          <option value="">Any</option>
+          <option v-for="d in SD.Degrees" v-bind:value="d.id" :key="d.id">{{ d.value }}</option>
+        </select>
+      </div>
+      <div class="col">
+        <label for="ent_yr">Entry Year</label>
+        <input id="ent_yr" class="form-control" type="number" min="2010" max="2099"
+          v-model.trim="search_crit.entry_year" placeholder="YYYY (e.g., 2025)"/>
+      </div>
+
       <div class="col">
         <button class="btn btn-outline-success me-2 mt-3"
           @click="search" type="submit">
@@ -31,8 +43,8 @@
           <div class="col">Cred Earned</div>
           <div class="col">Cred Registered</div>
           <div class="col">Commulative earned Total</div>
-          <div class="col" v-if="hasPermission('credits.reports')">
-              <a class="btn btn-outline-success" :href="`download_cgpa_sgpa/${search_crit.acad_session}`">Download CSV</a>
+          <div class="col" v-if="hasPermission('grades.cgpa_report')">
+              <a class="btn btn-outline-success" :href="`download_cgpa_sgpa/${search_crit.acad_session || '-'}/${search_crit.degree || '-'}/${search_crit.entry_year || '-'}`">Download CSV</a>
           </div>
         </div>
       </div>
@@ -67,6 +79,8 @@ export default {
       search_crit: {
         report_name: "GenerateCgpaSgpa",
         acad_session: "",
+        degree: "",
+        entry_year: "",
       },
       enrolments: [],
   };
@@ -111,7 +125,9 @@ export default {
       sessionStorage.CgpaSgpa = undefined;
       this.search_crit = {
         report_name: "GenerateCgpaSgpa",
-        acad_session: "",        
+        acad_session: "",
+        degree: "",
+        entry_year: "",
         };
       this.enrolments = [];
     },
