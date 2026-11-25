@@ -322,12 +322,28 @@ def validate_course_categorization(co,stu_id):
                 allowed_courses.append(course.code)
                 status = True
         if status == False:
-            msg = f"Course {course.code} is not offered for "\
-                f"{apiVC.label_for_static_data_item(stu.degree, degreetypes)}-"\
-                f"{stu.year_of_entry}, "\
-                f"{apiVC.label_for_static_data_item(stu.dept_name, depttypes)}. "\
-                f"Kindly check the Crediting Categorization of the {course.code}."
-            
+            degree = apiVC.label_for_static_data_item(stu.degree, degreetypes)
+            dept = apiVC.label_for_static_data_item(stu.dept_name, depttypes)
+            msg = f"Course {course.code} is not offered for {degree}-{stu.year_of_entry}, {dept}. "
+            # A student repeating a course (e.g. after failing it) is usually of
+            # an older batch than the one the new offering is categorized for.
+            earlier = {e.course_offering.acad_session for e in DB.CourseEnrollment
+                       .select(DB.CourseEnrollment, DB.CourseOffering)
+                       .join(DB.CourseOffering)
+                       .where((DB.CourseEnrollment.student == stu_id) &
+                              (DB.CourseEnrollment.enrol_status == "ENRO") &
+                              (DB.CourseOffering.course == course.id) &
+                              (DB.CourseOffering.id != co.id))}
+            order = apiVC.session_order()
+            earlier = sorted(earlier, key=lambda s: (order.get(s, len(order)), s))
+            if earlier:
+                msg += (f"You took it before (in {', '.join(earlier)}). To take it again, "
+                        f"entry year {stu.year_of_entry} of {degree}, {dept} must be added to "
+                        "the Crediting Categorization of this offering; please ask the "
+                        "academic section or the course coordinator.")
+            else:
+                msg += f"Kindly check the Crediting Categorization of the {course.code}."
+
         return allowed_courses, msg
         
 

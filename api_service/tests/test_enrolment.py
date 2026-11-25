@@ -422,6 +422,39 @@ async def test_request_names_the_courses_requested_and_those_skipped(client, aut
     assert "Not requested: Course CS303 is not offered" in body["body"]
 
 
+def failed_and_reoffered(stu, entry_years):
+    """CS301 failed by the student in an earlier session, and a new offering of
+    it in SESSION categorized for the given entry years."""
+    old = make_offering("CS301", acad_session="2025-II", status="F", slot="A")
+    enrol(stu, old, grade="F")
+    new = M.CourseOffering.create(course=old.course, acad_session=SESSION, status="E",
+                                  slot="A")
+    M.CourseCategory.create(offering=new, degree="BTE", dept="CSE", category="PC",
+                            for_entry_years=entry_years)
+    M.CourseSlotTiming.create(slot="A", week_day=0, start_time=9, end_time=11)
+    return new
+
+
+async def test_student_can_repeat_a_failed_course(client, auth, setup, no_fees_check, emails):
+    new = failed_and_reoffered(setup["stu"], "2024,2025")
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [new])
+    assert body["status"] == "OK"
+    assert M.CourseEnrollment.get(M.CourseEnrollment.course_offering == new.id
+                                  ).enrol_status == "IPEN"
+
+
+async def test_repeater_outside_the_categorization_is_told_what_to_ask_for(
+        client, auth, setup, no_fees_check, emails):
+    new = failed_and_reoffered(setup["stu"], "2025")
+    await auth.login("stu")
+    body = await enroll(client, setup["stu"], [new])
+    assert body["status"] == "ERROR"
+    assert "You took it before (in 2025-II)" in body["body"]
+    assert "entry year 2024" in body["body"]
+    assert enrolments_in(new) == 0
+
+
 async def test_c6_audit_only_student_can_enrol(client, auth, setup, no_fees_check, emails):
     # The setup enrolment is the student's only one; make it an audit too, so
     # the student has no credit enrolments and the credit sum is NULL.

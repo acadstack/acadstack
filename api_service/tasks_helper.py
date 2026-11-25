@@ -6,7 +6,9 @@ from quart import current_app, session
 from common import AcadStackException
 from models import db
 
-TASK_TTL_SECONDS = 60  # TTL for completed tasks
+# How long a completed task's outcome is kept; its owner fetches the outcome
+# (e.g. downloads the bulk grade sheets) by its task id until then.
+TASK_TTL_SECONDS = 3600
 
 def _remove_expired_tasks():
     """Drops tasks completed more than TASK_TTL_SECONDS ago."""
@@ -32,6 +34,17 @@ def get_own_task_info(task_id):
     if task_info and task_info.get("owner") == session.get("user", {}).get("login_id"):
         return task_info
     return None
+
+
+def own_task_status(task_id):
+    """The status ("running" or "done"), result and error of a task of the
+    logged-in user, for showing to them; None if there is no such task."""
+    task_info = get_own_task_info(task_id)
+    if not task_info:
+        return None
+    if task_info["status"] != "done":
+        return {"status": task_info["status"], "result": "Job not done yet.", "error": None}
+    return {k: task_info[k] for k in ("status", "result", "error")}
 
 
 def create_task(func, *args, task_id=None, **kwargs):

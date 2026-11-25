@@ -99,6 +99,21 @@ def _is_iso_date(v):
         return False
 
 
+# Session names go into web addresses and file names, where these characters
+# break; "-" alone stands for "any session" in report addresses.
+_SESSION_NAME_FORBIDDEN = '/\\?#%'
+
+
+def _session_name_error(name):
+    """Why a session may not have this name, or None if it may."""
+    if any(ch in _SESSION_NAME_FORBIDDEN or not ch.isprintable() for ch in name):
+        return (f"A session name cannot contain {' '.join(_SESSION_NAME_FORBIDDEN)} "
+                "or control characters.")
+    if name == "-":
+        return 'A session name cannot be just "-".'
+    return None
+
+
 # Pairs of calendar dates where the first may not fall after the second
 _DATE_ORDER = [
     ("COURSE_REG_S", "ADD_DROP_S"),
@@ -130,6 +145,9 @@ async def dates_save():
         max_len = M.AcademicSession.code.max_length
         if not session or len(session) > max_len:
             return apiVC.error_json(f"Session name must have 1 to {max_len} characters.")
+        bad_name = _session_name_error(session)
+        if bad_name:
+            return apiVC.error_json(bad_name)
         if not isinstance(eventdates, dict):
             return apiVC.error_json("eventDates must be an object.")
         # An event has a date under its own code, or a start and an end date

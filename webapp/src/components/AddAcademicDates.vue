@@ -17,7 +17,7 @@ Component for adding the academic event dates.
             <div class="card-header">
                 <span class="float-start">
                     Event dates for academic session:
-                    <input :disabled="viewOnly" v-model.trim="acad_dates.session" maxlength="10" placeholder="Session name" />
+                    <input :disabled="viewOnly" v-model.trim="acad_dates.session" maxlength="30" placeholder="Session name" />
                     <label class="ms-2">
                         <input type="checkbox" :disabled="viewOnly" v-model="acad_dates.is_additional" />
                         Additional session (overlaps the regular terms, e.g. summer)

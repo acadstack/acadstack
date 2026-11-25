@@ -56,14 +56,25 @@ async def test_upcoming_sessions_include_additional_ones(client, auth):
     assert "(additional)" in sessions[1]["value"]
 
 
-async def test_session_names_are_checked_for_length_only(client, auth):
+async def test_session_names_are_checked_for_length_and_characters(client, auth):
     make_user("aca", role="ACA")
     await auth.login("aca")
-    for name in ("", "   ", "Autumn 2027"):
+    for name in ("", "   ", "x" * 31, "2027/28", "Fall?", "Sem#1", "50%", "a\\b", "-",
+                 "Fall\t2027"):
         body = await _save_session(client, name, _days(0), _days(1))
-        assert body["status"] == "ERROR"
+        assert body["status"] == "ERROR", name
     assert M.AcademicSession.select().count() == 0
     assert M.AcademicCalendar.select().count() == 0
+
+
+async def test_session_can_have_a_long_name_in_its_own_style(client, auth):
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    name = "Monsoon 2027-28 (Sem. I)"
+    assert (await _save_session(client, name, _days(-1), _days(60)))["status"] == "OK"
+    assert apiVC.academic_session_valid(name)
+    make_offering(acad_session=name)
+    assert apiVC.current_acad_session() == name
 
 
 async def test_resaving_dates_keeps_is_additional(client, auth):

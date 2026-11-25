@@ -140,6 +140,13 @@
         "group": "Feedback"
     },
     {
+        "label": "Students with Pending Feedback",
+        "href": "#/feedback.pending",
+        "perm": "feedback.reports",
+        "menu": "Courses",
+        "group": "Feedback"
+    },
+    {
         "label": "Dept Wise Feedback Average",
         "href": "#/dept.wiseavg",
         "perm": "feedback.reports",

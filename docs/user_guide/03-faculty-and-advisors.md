@@ -84,7 +84,7 @@ A course that is HoD Rejected or Council Rejected comes back to you to correct a
 2. Press **Lookup** beside **Course** and type at least three characters of the title or code, then choose the course.
 3. Choose the **Offering Department**, the **Acad session**, the **Section** and the **Slot**.
 4. Under **Instructor** look up the instructors by name. Tick **Is Coord.** for the coordinator. Only the coordinator can upload grades and attendance. There must be at least one instructor.
-5. Under **Crediting Categorization** press **Add** for each programme the course counts for, and fill in the **Degree**, **Department**, **Category** and **For Entry Years** (for example `2019,2020`). Every field of a row is required. A student can enrol only if their degree, department and entry year match a row. Otherwise they see "Course ... is not offered for ...".
+5. Under **Crediting Categorization** press **Add** for each programme the course counts for, and fill in the **Degree**, **Department**, **Category** and **For Entry Years** (for example `2019,2020`). Every field of a row is required. A student can enrol only if their degree, department and entry year match a row. Otherwise they see "Course ... is not offered for ...". Students repeating the course (for example after failing it) are of an earlier batch: add their entry year too, or they cannot enrol.
 6. Press **Save** and confirm.
 
 ![Offering a course](../images/user_guide/faculty-offer-course.png)

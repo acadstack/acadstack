@@ -91,13 +91,13 @@ class AcademicSession(BaseModel):
     """A session created on Academic Events; its dates are in AcademicCalendar.
     Additional sessions (e.g. trimesters, summer) overlap the regular ones and
     are never picked as the current session."""
-    code = ORM.CharField(max_length=10, unique=True)
+    code = ORM.CharField(max_length=30, unique=True)
     is_additional = ORM.BooleanField(default=False)
 
 
 class AcademicCalendar(BaseModel):
     # The AcademicSession code
-    acad_session = ORM.CharField(max_length=10)
+    acad_session = ORM.CharField(max_length=30)
 
     # Descriptions and codes defined in static_data.json
     # E.g., session start date, mid-sem exam start/end dates etc.
@@ -212,7 +212,7 @@ class CourseOffering(BaseModel):
         ("C", "Canceled")
     ]
     # Academic session start date in which course is floated
-    acad_session = ORM.CharField(max_length=10)
+    acad_session = ORM.CharField(max_length=30)
     course = ORM.ForeignKeyField(Course, backref='offerings',
                              null=True, on_delete='SET NULL')
     status = ORM.CharField(max_length=2, choices=CO_STATUSES,
@@ -405,7 +405,7 @@ class CourseInstructorFeedback(BaseModel):
     submission_id = ORM.CharField(max_length=40)
 
     # YYYY-S
-    acad_session = ORM.CharField(max_length=10)
+    acad_session = ORM.CharField(max_length=30)
     # class Meta:
     #     indexes = (
     #         # Unique index
@@ -464,7 +464,7 @@ class FeesTransaction(BaseModel):
     student = ORM.ForeignKeyField(User,
                               backref='student_fee_transactions',
                               on_delete='CASCADE')
-    acad_session = ORM.CharField(max_length=10)
+    acad_session = ORM.CharField(max_length=30)
     fees_txn_amt = ORM.IntegerField()
     fees_txn_no = ORM.CharField(max_length=50)
     fees_txn_dt = ORM.DateField()
@@ -483,7 +483,7 @@ class FeesTransaction(BaseModel):
 
 class StudentCredits(BaseModel):
     student = ORM.ForeignKeyField(User, backref='student_credits')
-    acad_session = ORM.CharField(max_length=10)
+    acad_session = ORM.CharField(max_length=30)
     cgpa = ORM.FloatField()
     sgpa = ORM.FloatField()
     cred_earned = ORM.FloatField()
@@ -501,7 +501,7 @@ class ResultHold(BaseModel):
     """The student's result of the session is withheld: their grades of it are
     not released to them."""
     student = ORM.ForeignKeyField(User, backref='result_holds')
-    acad_session = ORM.CharField(max_length=10)
+    acad_session = ORM.CharField(max_length=30)
     reason = ORM.TextField(null=True)
 
     class Meta:
@@ -570,7 +570,7 @@ class PhDProgressReport(BaseModel):
     dc_member = ORM.ForeignKeyField(DcMember,
                                  backref='phd_progress_reports',
                                  on_delete='CASCADE')
-    acad_session = ORM.CharField(max_length=10)
+    acad_session = ORM.CharField(max_length=30)
     is_satisfactory = ORM.BooleanField(default=False)
     note = ORM.TextField()
 

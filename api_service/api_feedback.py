@@ -1,4 +1,6 @@
+import csv
 import uuid
+from io import BytesIO, StringIO
 from quart.helpers import send_file
 from create_email import send_access_violation_alert
 from validation_checks import (check_own_or_any, 
@@ -10,6 +12,18 @@ import api_common as apiVC
 import models as DB
 import common as C
 import policy as P
+
+
+def pending_feedback(acad_sessions, form_type, student_id=0, entry_year="", degree="",
+                     dept_name=""):
+    """The feedback that students owe (see feedback_pending in
+    sql_statements.toml): one row per student, offering and instructor.
+    student_id 0 and blank filters match any."""
+    cursor = DB.db.execute_sql(C.sql_by_id("feedback_pending"),
+                               [list(acad_sessions), form_type, student_id, student_id,
+                                entry_year, entry_year, degree, degree, dept_name, dept_name])
+    return apiVC.result_set_from_cursor(cursor)
+
 
 def init_routes(bp: Blueprint):
     bp.add_url_rule('/form_save', view_func=save_feedback_form, methods=['POST'])
@@ -28,6 +42,10 @@ def init_routes(bp: Blueprint):
                        view_func=download_course_wise_faculty_score, methods=['GET'])
     bp.add_url_rule('/download_quewise_facfeedbk_score/<string:form_type>/<string:acad_session>',
                        view_func=download_quewise_facfeedbk_score, methods=['GET'])
+    bp.add_url_rule('/feedback_pending', view_func=feedback_pending_report, methods=['POST'])
+    bp.add_url_rule('/download_feedback_pending/<string:form_type>/<string:acad_session>/'
+                    '<string:degree>/<string:dept_name>/<string:entry_year>',
+                    view_func=download_feedback_pending, methods=['GET'])
 
 
 @P.require("feedback.manage_forms")
@@ -404,5 +422,63 @@ async def download_quewise_facfeedbk_score(form_type, acad_session):
                          as_attachment=True)
     except Exception as ex:
         msg = "Error when Downloading Questions Wise Faculty Feedback as CSV."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+def _pending_feedback_rows(form_type, acad_session, degree, dept_name, entry_year):
+    """The feedback owed in a session, for the report; "-" or blank filters
+    match any. Raises AcadStackException for an unknown form type or session."""
+    if form_type not in {f["id"] for f in apiVC.static_data_item("FormTypes")}:
+        raise C.AcadStackException("Select a feedback type.")
+    if not apiVC.academic_session_valid(acad_session):
+        raise C.AcadStackException("Select an academic session.")
+    any_ = lambda v: "" if v in (None, "-") else str(v).strip()
+    return pending_feedback([acad_session], form_type, entry_year=any_(entry_year),
+                            degree=any_(degree), dept_name=any_(dept_name))
+
+
+@P.require("feedback.reports")
+async def feedback_pending_report():
+    """The students who have not submitted feedback in a session, each with
+    the courses and instructors they owe it for."""
+    try:
+        fd = await request.get_json(force=True)
+        rows = _pending_feedback_rows(fd.get("form_type"), fd.get("acad_session"),
+                                      fd.get("degree"), fd.get("dept_name"),
+                                      fd.get("entry_year"))
+        students = {}
+        for r in rows:
+            stu = students.setdefault(r["org_id"], {
+                k: r[k] for k in ("org_id", "first_name", "last_name", "email", "degree",
+                                  "dept_name", "year_of_entry")} | {"pending": []})
+            stu["pending"].append(f"{r['code']} {r['title']} ({r['instructor']})")
+        return apiVC.ok_json(list(students.values()))
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception:
+        msg = "Error when fetching the students with pending feedback."
+        logging.exception(msg)
+        return apiVC.error_json(msg)
+
+
+@P.require("feedback.reports")
+async def download_feedback_pending(form_type, acad_session, degree, dept_name, entry_year):
+    """feedback_pending_report as a CSV file, one row per course and instructor."""
+    try:
+        rows = _pending_feedback_rows(form_type, acad_session, degree, dept_name, entry_year)
+        text = StringIO()
+        out = csv.writer(text)
+        cols = ["org_id", "first_name", "last_name", "email", "degree", "dept_name",
+                "year_of_entry", "acad_session", "code", "title", "instructor"]
+        out.writerow(cols)
+        out.writerows([r[c] for c in cols] for r in rows)
+        fp = BytesIO(text.getvalue().encode("utf-8"))
+        return await send_file(fp, attachment_filename="feedback_pending.csv",
+                               as_attachment=True)
+    except C.AcadStackException as ae:
+        return apiVC.error_json(str(ae))
+    except Exception:
+        msg = "Error when downloading the students with pending feedback."
         logging.exception(msg)
         return apiVC.error_json(msg)
