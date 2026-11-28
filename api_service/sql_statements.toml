@@ -91,8 +91,12 @@ credits_earned_report = """
         JOIN public.person p ON p.id = u.person_id
         JOIN public.courseoffering o ON o.id = e.course_offering_id
         JOIN public.course c ON c.id = o.course_id
+        LEFT JOIN public.vocabitem lv ON lv.vocab = 'Degrees' AND lv.code = p.degree
         WHERE e.enrol_status = 'ENRO'
         AND e.enrol_type IN ('C', 'CM', 'CC')
+        -- Only grades that earn credit under the session's grading scheme
+        AND (COALESCE(lv.attrs->>'level', 'PG'), o.acad_session, e.grade) IN
+            (SELECT * FROM unnest(%s::text[], %s::text[], %s::text[]))
         AND c.code <> %s
         AND (p.year_of_entry = %s OR %s = '')
         AND (p.degree = %s OR %s = '')
@@ -130,6 +134,38 @@ student_enrolments_for_fb = """SELECT ce.id as enrolment_id,
         AND ff.is_active=true
         AND ff.form_type=%s
         );"""
+
+# Feedback a student owes: a credit enrolment in an offering (not cancelled or
+# declined) whose instructor has no feedback submitted by the student on a form
+# of the given type, whichever form that was. Params: sessions, form type,
+# student id (0: any), entry year, degree, department ('' : any).
+feedback_pending = """
+    SELECT p.org_id, stu.first_name, stu.last_name, stu.email, p.degree, p.dept_name,
+    p.year_of_entry, co.acad_session, c.code, c.title,
+    CONCAT(ins.first_name, ' ', ins.last_name) AS instructor
+    FROM public.courseenrollment ce
+    JOIN public.courseoffering co ON co.id = ce.course_offering_id
+    JOIN public.course c ON c.id = co.course_id
+    JOIN public.courseinstructor ci ON ci.offering_id = co.id
+    JOIN public.user ins ON ins.id = ci.instructor_id
+    JOIN public.user stu ON stu.id = ce.student_id
+    JOIN public.person p ON p.id = stu.person_id
+    WHERE co.acad_session = ANY(%s::text[])
+    AND ce.enrol_status = 'ENRO'
+    AND ce.enrol_type IN ('C', 'CM', 'CC')
+    AND co.status NOT IN ('C', 'D')
+    AND NOT EXISTS (
+        SELECT 1 FROM public.studentfeedbackstatus sfs
+        JOIN public.feedbackform ff ON ff.id = sfs.feedback_form_id
+        WHERE sfs.course_instructor_id = ci.id
+        AND sfs.student_id = ce.student_id
+        AND sfs.is_submitted
+        AND ff.form_type = %s)
+    AND (ce.student_id = %s OR %s = 0)
+    AND (p.year_of_entry = %s OR %s = '')
+    AND (p.degree = %s OR %s = '')
+    AND (p.dept_name = %s OR %s = '')
+    ORDER BY p.org_id, co.acad_session, c.code, instructor;"""
 
 enrolment_info = """
     SELECT (c.title || ' :: ' || c.code) as course, 

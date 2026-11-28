@@ -44,7 +44,10 @@ Component for showing the academics details of a student.
                   <span class="me-2">Cumul. Earned Credits: {{ acs_item.cec }}</span> |
                   <span>CGPA: {{ acs_item.cgpa }}</span>
                   <span class="badge bg-warning text-dark ms-2" v-if="acs_item.withheld">Result withheld{{ acs_item.hold_reason ? `: ${acs_item.hold_reason}` : "" }}</span>
-                  <a class="btn btn-sm btn-light ms-2" v-if="isStudent && acs_item.declared && !acs_item.withheld"
+                  <span class="badge bg-info text-dark text-wrap text-start ms-2" v-if="acs_item.feedback_pending">{{ isStudent
+                    ? "Result shown once you submit the end-semester feedback for all your courses (Courses → Course Feedback). If feedback is closed, contact the academic section."
+                    : "End-semester feedback pending; result hidden from the student" }}</span>
+                  <a class="btn btn-sm btn-light ms-2" v-if="isStudent && acs_item.declared && !acs_item.withheld && !acs_item.feedback_pending"
                     :href="`download_sem_grade/${acs_index}/${org_id}/${key}`">Grade sheet</a>
                   <button type="button" class="btn btn-sm btn-light ms-2" v-if="hasPermission('results.withhold')"
                     @click="resultHold(acs_index, !acs_item.withheld)">

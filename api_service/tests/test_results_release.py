@@ -7,7 +7,8 @@ from datetime import date, timedelta
 import pytest
 
 import models as M
-from conftest import enrol, json_of, make_offering, make_user
+import settings
+from conftest import enrol, json_of, make_offering, make_user, set_event_window
 
 
 def _days(n):
@@ -200,6 +201,83 @@ async def test_student_downloads_own_grade_sheet(client, auth, grading_schemes):
     await auth.login("stu")
     res = await client.get("/acadstack/download_sem_grade/2026-I/2023CSB1001/C")
     assert (await res.get_data()).startswith(b"%PDF")
+
+
+# ---- Results shown only after feedback ----
+
+@pytest.fixture
+def owes_feedback(db, grading_schemes):
+    """A student graded A in 2026-I, whose results are declared and whose
+    end-semester feedback window is set, but who has not given feedback."""
+    ins = make_user("ins", role="FAC")
+    stu = make_user("stu", role="STU", org_id="2023CSB1001", degree="BTE",
+                    year_of_entry="2023")
+    co = make_offering(ltp="3-0-0-6-4", status="F", instructor=ins)
+    enrol(stu, co, grade="A")
+    _declare("2026-I", -1)
+    set_event_window("2026-I", "FEEDBACK", open_=False)
+    settings.save("results_need_feedback", True)
+    return {"stu": stu, "ci": M.CourseInstructor.get(M.CourseInstructor.offering == co)}
+
+
+def _give_feedback(s, form_type="END_SEM_FB", is_active=True):
+    form = M.FeedbackForm.create(form_name=f"Form {form_type} {is_active}",
+                                 form_type=form_type, is_active=is_active)
+    M.StudentFeedbackStatus.create(feedback_form=form, course_instructor=s["ci"],
+                                   student=s["stu"], is_submitted=True)
+
+
+async def test_results_wait_for_the_students_feedback(client, auth, owes_feedback):
+    stu = owes_feedback["stu"]
+    await auth.login("stu")
+    sess = await _academics(client, stu)
+    assert sess["feedback_pending"] and not sess["withheld"]
+    assert (sess["courses"][0]["grade"], sess["sgpa"], sess["cgpa"]) == ("NA", "NA", "NA")
+    body = await json_of(await client.get("/acadstack/download_sem_grade/2026-I/2023CSB1001/C"))
+    assert body["status"] == "ERROR" and "end-semester feedback" in body["body"]
+
+    await auth.logout()
+    make_user("aca", role="ACA")
+    await auth.login("aca")
+    sess = await _academics(client, stu)
+    assert sess["feedback_pending"] and sess["courses"][0]["grade"] == "A"
+
+
+async def test_results_show_once_feedback_is_given(client, auth, owes_feedback):
+    # A form since replaced by another still records the feedback
+    _give_feedback(owes_feedback, is_active=False)
+    await auth.login("stu")
+    sess = await _academics(client, owes_feedback["stu"])
+    assert not sess["feedback_pending"] and sess["courses"][0]["grade"] == "A"
+
+
+async def test_mid_semester_feedback_does_not_release_results(client, auth, owes_feedback):
+    _give_feedback(owes_feedback, form_type="MID_SEM_FB")
+    await auth.login("stu")
+    assert (await _academics(client, owes_feedback["stu"]))["feedback_pending"]
+
+
+async def test_results_need_no_feedback_when_the_setting_is_off(client, auth, owes_feedback):
+    settings.save("results_need_feedback", False)
+    await auth.login("stu")
+    sess = await _academics(client, owes_feedback["stu"])
+    assert not sess["feedback_pending"] and sess["courses"][0]["grade"] == "A"
+
+
+async def test_session_without_feedback_dates_needs_no_feedback(client, auth, owes_feedback):
+    M.AcademicCalendar.delete().where(M.AcademicCalendar.event_code.startswith("FEEDBACK")
+                                      ).execute()
+    await auth.login("stu")
+    assert not (await _academics(client, owes_feedback["stu"]))["feedback_pending"]
+
+
+async def test_cancelled_offering_needs_no_feedback(client, auth, owes_feedback):
+    co = make_offering("CS102", ltp="3-0-0-6-4", status="C",
+                       instructor=M.User.get(M.User.login_id == "ins"))
+    enrol(owes_feedback["stu"], co)
+    _give_feedback(owes_feedback)
+    await auth.login("stu")
+    assert not (await _academics(client, owes_feedback["stu"]))["feedback_pending"]
 
 
 # ---- CGPA report filters ----

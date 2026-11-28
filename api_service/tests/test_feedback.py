@@ -83,3 +83,59 @@ async def test_instructor_feedback_without_scaled_answers(client, auth, setup):
     body = await res.get_json()
     assert body["status"] == "OK"
     assert body["body"]["score"] == "No questions on the 1 - 5 scale."
+
+
+# ---- Students with pending feedback (report) ----
+
+@pytest.fixture
+def two_students(db):
+    """stu1 and stu2 in a course of SESSION; only stu1 has given feedback."""
+    ins = make_user("ins", role="FAC")
+    co = make_offering(acad_session=SESSION, status="R", instructor=ins)
+    M.Course.update(title="Data, Structures").execute()
+    stu1 = make_user("stu1", role="STU", degree="BTE", year_of_entry="2024")
+    stu2 = make_user("stu2", role="STU", degree="BTE", year_of_entry="2025")
+    enrol(stu1, co)
+    enrol(stu2, co)
+    form = M.FeedbackForm.create(form_name="End sem", form_type="END_SEM_FB")
+    M.StudentFeedbackStatus.create(
+        feedback_form=form, student=stu1, is_submitted=True,
+        course_instructor=M.CourseInstructor.get(M.CourseInstructor.offering == co))
+    make_user("aca", role="ACA")
+
+
+async def pending_report(client, **crit):
+    res = await client.post("/acadstack/feedback_pending", json={
+        "form_type": "END_SEM_FB", "acad_session": SESSION, **crit})
+    return await res.get_json()
+
+
+async def test_report_lists_the_students_who_owe_feedback(client, auth, two_students):
+    await auth.login("aca")
+    body = await pending_report(client)
+    assert body["status"] == "OK"
+    assert [(s["org_id"], s["pending"]) for s in body["body"]] == \
+        [("STU2", ["CS101 Data, Structures (Ins User)"])]
+    assert (await pending_report(client, form_type="MID_SEM_FB"))["body"].__len__() == 2
+
+
+async def test_report_filters_by_entry_year(client, auth, two_students):
+    await auth.login("aca")
+    assert (await pending_report(client, entry_year="2024"))["body"] == []
+    assert len((await pending_report(client, entry_year="2025", degree="BTE",
+                                     dept_name="CSE"))["body"]) == 1
+
+
+async def test_report_needs_a_feedback_type_and_session(client, auth, two_students):
+    await auth.login("aca")
+    assert (await pending_report(client, form_type="X"))["status"] == "ERROR"
+    assert (await pending_report(client, acad_session="nope"))["status"] == "ERROR"
+
+
+async def test_report_downloads_as_csv(client, auth, two_students):
+    await auth.login("aca")
+    res = await client.get(f"/acadstack/download_feedback_pending/END_SEM_FB/{SESSION}/-/-/-")
+    lines = (await res.get_data(as_text=True)).splitlines()
+    assert lines[0].startswith("org_id,first_name")
+    assert lines[1:] == ['STU2,Stu2,User,stu2@example.com,BTE,CSE,2025,2026-I,CS101,'
+                         '"Data, Structures",Ins User']

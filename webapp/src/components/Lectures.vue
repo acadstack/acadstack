@@ -3,7 +3,7 @@
     <span class="sec-hdr">Course lectures in academic session</span>
     <div class="row mb-2">
       <div class="col float-start">
-        <input v-model.trim="session" maxlength="10" placeholder="Session name" />
+        <input v-model.trim="session" maxlength="30" placeholder="Session name" />
         <button
           class="btn btn-outline-success me-2"
           @click="search"

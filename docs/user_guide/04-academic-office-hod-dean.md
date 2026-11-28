@@ -105,6 +105,8 @@ Before the session's **Result declaration** date students see their grades as NA
 
 **Withholding a result.** To hold back one student's result of a session (for example for unpaid dues), open the student's record and press **Withhold result** in the session's bar, and give a reason. The student then sees NA for that session's grades and cannot download its grade sheet, and *Bulk Download Grade Sheet* leaves the student out. You still see the grades, and the student's credits still count in *Generate Students Credits Data*. Press **Release result** to release it.
 
+**Results waiting for feedback.** With the `results_need_feedback` setting on (see [Settings](../university_setup.md#4-settings)), a student who has not submitted the end-semester feedback for all their courses of a session sees NA for its results, the same as a withheld result. Their record shows *End-semester feedback pending* in the session's bar, and *Bulk Download Grade Sheet* leaves them out. Their results appear once the feedback is in; **Release result** does not apply to this.
+
 ## Approvals
 
 *My Work → Action Pending* and *My Work → Pending Tasks* are the same inbox. The tabs you see depend on your role.
@@ -147,7 +149,7 @@ To change a form later pick it under **Load existing form** and press **Load**. 
 
 ### Statistics
 
-All four reports are under *Courses*. Choose the **Form Type** and the **Academic Session**, then press the magnifier. Each can be downloaded as a CSV.
+All five reports are under *Courses*. Choose the **Form Type** and the **Academic Session**, then press the magnifier. Each can be downloaded as a CSV.
 
 | Report | Shows |
 |---|---|
@@ -155,6 +157,7 @@ All four reports are under *Courses*. Choose the **Form Type** and the **Academi
 | *Dept Wise Feedback Average* | The average score of each question for each department. |
 | *Course Wise Faculty Feedback Score* | The score of each instructor in each course, with the number of votes. |
 | *Question Wise Faculty Feedback Score* | The same, split by question. |
+| *Students with Pending Feedback* | The students who have not submitted the feedback, each with the courses and instructors they owe it for. Can also be filtered by degree, department and entry year. The CSV has one row per course and instructor, for mail merges. |
 
 ![Feedback Stats](../images/user_guide/staff-feedback-stats.png)
 
@@ -168,13 +171,13 @@ All reports are under *Reports*. You see the ones your role may use. Most have a
 
 | Report | What you give it | What you get |
 |---|---|---|
-| *Check Total Credits* | Degree, department, entry year, minimum and maximum credits, session, courses to exclude | Students whose earned credits fall in the range. |
+| *Check Total Credits* | Degree, department, entry year, minimum and maximum credits, session, courses to exclude | Students whose earned credits fall in the range. Only courses whose grade earns credit under the grading scheme count, so failed and ungraded courses do not. |
 | *Check Category-wise Credits* | Degree, department, entry year, course category, minimum and maximum credits | Students and their credits in that category. |
 | *Generate Semester Grade* | A roll number, a session and an enrolment type | One student's grade sheet for the semester. |
 | *Course Wise Grade Distribution* | A degree and a session | How many students got each grade in each course. |
 | *Generation of CGPA and SGPA report* | A session, and optionally a degree and an entry year | Each student's CGPA, SGPA and credits, by department and highest CGPA first. Useful for a merit list, such as for a change of branch. It uses the stored credits data, so run *Generate Students Credits Data* for the session first. |
 | *Check the Submitted Grades* | Whether to list **Grades Submitted Till Date** or **Pending Grades**, and a session | The offerings and instructors concerned. |
-| *Bulk Download Grade Sheet* | Degree, department, entry year, enrolment type | The semester grade sheets of a whole batch. |
+| *Bulk Download Grade Sheet* | Degree, department, entry year, enrolment type, session | The semester grade sheets of a whole batch, as a ZIP file. The sheets are made in the background: the page shows the progress by itself, then how many sheets are ready, the students left out (no results, or results withheld) and a **Download** button. The result stays available for an hour, also after you leave the page and come back. |
 | *Generate Consolidated Grade Sheet* | A roll number and an enrolment type | One student's consolidated grade sheet over all semesters. |
 | *Generate Degree Certificate* | A roll number, name in a second language, thesis title (PhD only), document serial number, convocation date | A degree certificate. |
 | *Generate Course Enrolments* | Department, entry year, session | Every enrolment of the batch, as a CSV, by course and then roll number. Leave department and entry year empty for every registered student of the session, for example for exam seating. For one course, use **Download Enrolled Students List** on its offering. |

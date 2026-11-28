@@ -122,6 +122,7 @@ Messages you may meet when you request:
 | Course enrolment/Audit not open for 2026-I | The withdrawal window is closed, and audit enrolment uses it. |
 | Slot timing not setup for slot: '...'. Please contact the administrator. | The academic office has not entered the timings of that slot. Tell them. |
 | Course ... is not offered for (your degree, year and department). Kindly check the Crediting Categorization of the ... | The course is not in the course list for your programme and entry year. Ask your advisor or the academic office. |
+| Course ... is not offered for ... You took it before (in ...). To take it again, entry year ... must be added ... | You are repeating the course, but this offering lists only other entry years. Ask the academic office or the course coordinator to add your entry year to the offering's crediting categorization, then request the course again. |
 | Enrollment already exists for one of the selected courses. | You already asked for it. |
 | Please select a course to enrol! | You pressed an action without ticking a course. |
 
@@ -171,7 +172,7 @@ The home page reminds you to contact the course instructor directly for any chan
 | Grade | Your grade. Some grades may still be waiting for approval by the senate. The records confirmed by the academic section take precedence over what is shown here. |
 | Attd. | Your attendance percentage. Open it for the dates. |
 
-Once a session's results are declared, its bar has a **Grade sheet** button that downloads your grade sheet for the session as a PDF. Until then the grades show as NA. If the bar says **Result withheld**, your grades for that session are not released yet; contact the academic section.
+Once a session's results are declared, its bar has a **Grade sheet** button that downloads your grade sheet for the session as a PDF. Until then the grades show as NA. If the bar says **Result withheld**, your grades for that session are not released yet; contact the academic section. If it says your result is shown once you submit the end-semester feedback, submit the feedback for all your courses under *Courses → Course Feedback*. If the feedback period is over, contact the academic section.
 
 **Documents** lists the files kept for you, such as the fee payment proofs you uploaded, with their description and update time.
 

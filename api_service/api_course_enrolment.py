@@ -15,6 +15,7 @@ import models as DB
 import common as C
 import policy as P
 import transcript as TR
+from api_feedback import pending_feedback
 import workflows as WF
 
 
@@ -243,17 +244,18 @@ def __fetch_student_enrollments_data(enrols, include_attendance, hide_undeclared
 def __get_student_courses_perf(stu, include_attendance, hide_undeclared=True):
     level = apiVC.degree_level(stu.person.degree)
     held = result_holds(stu)
+    fb_pending = feedback_pending_sessions(stu)
     # 'CC' -> Credit for concentration
     perf_conc = get_student_courses_perf_filtered(stu, include_attendance, "CC", level,
-                                                  hide_undeclared, held)
+                                                  hide_undeclared, held, fb_pending)
 
     # 'CM' -> Credit for minor
     perf_minor = get_student_courses_perf_filtered(stu, include_attendance, "CM", level,
-                                                   hide_undeclared, held)
+                                                   hide_undeclared, held, fb_pending)
 
     # 'C' -> Credit
     perf_regu = get_student_courses_perf_filtered(stu, include_attendance, "C", level,
-                                                  hide_undeclared, held)
+                                                  hide_undeclared, held, fb_pending)
 
     user = model_to_dict(stu, exclude=[DB.User.password_hashed])
     user["enrollments"] = {"CC": perf_conc, "CM": perf_minor, "C": perf_regu}
@@ -303,14 +305,33 @@ def result_holds(stu):
             .where(DB.ResultHold.student == stu.id)}
 
 
+def feedback_pending_sessions(stu):
+    """The sessions whose results stay hidden from the student until they
+    submit their end-semester feedback: with the results_need_feedback setting
+    on, the sessions with end-semester feedback dates in which the student
+    owes such feedback. A session without those dates never collected
+    feedback, so it needs none."""
+    if not ST.get("results_need_feedback"):
+        return set()
+    with_feedback = [r.acad_session for r in DB.AcademicCalendar
+                     .select(DB.AcademicCalendar.acad_session)
+                     .where(DB.AcademicCalendar.event_code == "FEEDBACK_S")]
+    if not with_feedback:
+        return set()
+    return {r["acad_session"] for r in
+            pending_feedback(with_feedback, "END_SEM_FB", student_id=stu.id)}
+
+
 def get_student_courses_perf_filtered(stu, include_attendance, 
                                         filter_by_enrol_type=None, level=None,
-                                        hide_undeclared=True, held=None):
+                                        hide_undeclared=True, held=None,
+                                        fb_pending=None):
     """level: the student's degree_level, when the caller already has it.
     hide_undeclared: show NA for the grades of a session whose results are not
-    declared yet, or are withheld for the student; else give the reason of a
-    withheld result. held: the student's result_holds, when the caller already
-    has them."""
+    declared yet, are withheld for the student, or wait for the student's
+    feedback; else give the reason of a withheld result. held and fb_pending:
+    the student's result_holds and feedback_pending_sessions, when the caller
+    already has them."""
     if filter_by_enrol_type == "C": # 'C' -> Credit, 'A' -> Audit, etc.
         enrols = stu.enrollments.where(DB.CourseEnrollment.enrol_type 
                                        << (filter_by_enrol_type, 'A'))
@@ -330,20 +351,20 @@ def get_student_courses_perf_filtered(stu, include_attendance,
     for ad, gpa in zip(acad_sessions, gpas):
         enrol_data[ad].update(gpa)
 
-    # A withheld session still counts in the later sessions' CGPA; only its own
-    # grades and figures are hidden.
+    # A withheld session, or one waiting for feedback, still counts in the later
+    # sessions' CGPA; only its own grades and figures are hidden.
     held = result_holds(stu) if held is None else held
+    fb_pending = feedback_pending_sessions(stu) if fb_pending is None else fb_pending
     for ad in acad_sessions:
         sess = enrol_data[ad]
         sess["withheld"] = ad in held
-        if not sess["withheld"]:
-            continue
-        if hide_undeclared:
+        sess["feedback_pending"] = ad in fb_pending
+        if sess["withheld"] and not hide_undeclared:
+            sess["hold_reason"] = held[ad]
+        if hide_undeclared and (sess["withheld"] or sess["feedback_pending"]):
             for c in sess["courses"]:
                 c["grade"] = "NA"
             sess.update(sgpa="NA", ec="NA", cec="NA", cgpa="NA")
-        else:
-            sess["hold_reason"] = held[ad]
 
     return {"enrollments": enrol_data, "acad_sessions": acad_sessions}
 

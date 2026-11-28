@@ -62,8 +62,9 @@
           class="btn btn-outline-success me-2 mt-3"
           @click="search"
           type="submit"
+          :disabled="job_state == 'running'"
         >
-          <i class="bi bi-search"></i>
+          <i class="bi bi-file-earmark-zip me-1"></i>Generate grade sheets
         </button>
         <button
           class="btn btn-outline-danger me-2 mt-3"
@@ -73,19 +74,36 @@
           <i class="bi bi-eraser"></i>
         </button>
       </div>
-      <div style="margin-top:20px" v-if="job_key != ''" class="col-2">
-        <button class="btn btn-outline-primary mb-2" @click="check_status">
-          Check Status
-        </button>
-        <div v-if="job_status.status != undefined">
-          <p>Status: {{ job_status.status }}<br /></p>
+    </div>
+    <div v-if="job_key" class="card mt-2">
+      <div class="card-body">
+        <div v-if="job_state == 'running'">
+          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+          Generating the grade sheets. This can take a few minutes; the status
+          updates by itself.
         </div>
-        <div v-if="job_status.status == 'DONE'">
-          <a
-            class="btn btn-outline-success"
-            :href="`get_gradesheets/${job_key}`"
-            target="_blank"
-            >Download</a>
+        <div v-else-if="job_state == 'failed'" class="text-danger">
+          <i class="bi bi-exclamation-triangle me-1"></i>{{ job_error }}
+        </div>
+        <div v-else-if="job_state == 'done'">
+          <p class="mb-2">
+            <i class="bi bi-check-circle text-success me-1"></i>
+            {{ job_result.sheets }} of {{ job_result.students }} grade sheets are ready.
+          </p>
+          <p v-if="job_result.no_results.length" class="mb-1">
+            No results for this session and enrolment type: {{ job_result.no_results.join(", ") }}
+          </p>
+          <p v-if="job_result.withheld.length" class="mb-1">
+            Left out, results withheld: {{ job_result.withheld.join(", ") }}
+          </p>
+          <p v-if="job_result.feedback_pending.length" class="mb-1">
+            Left out, end-semester feedback not submitted: {{ job_result.feedback_pending.join(", ") }}
+          </p>
+          <p v-if="job_result.errors.length" class="mb-1 text-danger">
+            Could not be processed: {{ job_result.errors.join("; ") }}
+          </p>
+          <a class="btn btn-outline-success mt-2" :href="`get_gradesheets/${job_key}`"
+            target="_blank">Download</a>
         </div>
       </div>
     </div>
@@ -94,6 +112,16 @@
 
 <script>
 import AcadSession from "./AcadSession.vue";
+
+// The submitted request, kept so that the page can show its status after the
+// user comes back to it.
+const JOB_KEY = "BulkGradeSheetJob";
+const POLL_MS = 3000;
+
+function emptyCriteria() {
+  return { degree: "", dept_name: "", acad_session: "", enrol_type: "", for_year: "" };
+}
+
 export default {
   name: "bulkSemesterGrade",
   components: {
@@ -101,79 +129,107 @@ export default {
   },
   data: function () {
     return {
-      search_crit: {
-        degree: "",
-        dept_name: "",
-        acad_session: "",
-        enrol_type: "",
-        for_year: "",
-      },
-      job_status: {},
-      bulk_sem_grades: [],
+      search_crit: emptyCriteria(),
       job_key: "",
+      // running, done or failed
+      job_state: "",
+      job_result: null,
+      job_error: "",
+      poll_timer: null,
     };
   },
   mounted: function () {
-    if (this.$route.name == "gs.bulkdown") {
-      if (sessionStorage.CCRData) {
-        let dd = JSON.parse(sessionStorage.CCRData);
-        this.bulk_sem_grades = dd.bulk_sem_grades;
-        this.search_crit = dd.search_crit;
-      } else {
-        this.reset();
-      }
-    } else {
-      this.reset();
+    let saved = null;
+    try {
+      saved = JSON.parse(sessionStorage.getItem(JOB_KEY) || "null");
+    } catch {
+      saved = null;
     }
+    if (saved && saved.job_key) {
+      this.search_crit = saved.search_crit;
+      this.watchJob(saved.job_key);
+    }
+  },
+  beforeUnmount: function () {
+    this.stopPolling();
   },
   methods: {
     async search() {
       let vm = this;
-      if (
-        vm.search_crit.degree === "" ||
-        vm.search_crit.dept_name === "" ||
-        vm.search_crit.for_year === "" ||
-        vm.search_crit.enrol_type === "" ||
-        vm.search_crit.acad_session === ""
-      ) {
+      if (Object.values(vm.search_crit).some((v) => v === "")) {
         vm.setStatusMessage("Please specify all search condition!");
         return;
       }
-      console.log("Running Bulk_download_semester_grade");
       await vm.doHttp(
         false,
         "bulk_download_sem_grade",
         vm.search_crit,
         (b) => {
-          vm.job_key = b.job_key;
+          vm.setSuccessMessage("Request submitted. The grade sheets are being generated.");
+          try {
+            sessionStorage.setItem(JOB_KEY, JSON.stringify(
+              { job_key: b.job_key, search_crit: vm.search_crit }));
+          } catch {
+            // Only resuming after leaving the page needs it
+          }
+          vm.watchJob(b.job_key);
         },
         vm.setStatusMessage
       );
     },
-    check_status() {
+    watchJob(job_key) {
+      this.stopPolling();
+      this.job_key = job_key;
+      this.job_state = "running";
+      this.job_result = null;
+      this.job_error = "";
+      this.checkStatus();
+      this.poll_timer = setInterval(this.checkStatus, POLL_MS);
+    },
+    stopPolling() {
+      if (this.poll_timer) {
+        clearInterval(this.poll_timer);
+        this.poll_timer = null;
+      }
+    },
+    checkStatus() {
       let vm = this;
-      vm.job_status = {};
       vm.$http
-        .get("job_status/" + this.job_key)
+        .get("bulk_gradesheets_status/" + vm.job_key)
         .then(function (res) {
-          vm.job_status = res.data.body;
+          let b = res.data.body;
+          if (res.data.status != "OK") {
+            vm.stopPolling();
+            vm.job_state = "failed";
+            vm.job_error = b;
+          } else if (b.status == "done") {
+            vm.stopPolling();
+            if (b.error) {
+              vm.job_state = "failed";
+              vm.job_error = b.error;
+            } else {
+              vm.job_state = "done";
+              vm.job_result = b.result;
+            }
+          }
         })
         .catch(function (error) {
+          // A passing network error; the next poll tries again
           console.log(error);
-          vm.setStatusMessage("Error occurred when checking job status.");
         });
     },
     reset() {
+      this.stopPolling();
       this.job_key = "";
-      this.bulk_sem_grades = [];
-      this.job_status = {};
-      this.search_crit = {
-        degree: "",
-        dept_name: "",
-        acad_session: "",
-        enrol_type: "",
-        for_year: "",
-      };
+      this.job_state = "";
+      this.job_result = null;
+      this.job_error = "";
+      this.search_crit = emptyCriteria();
+      try {
+        sessionStorage.removeItem(JOB_KEY);
+      } catch {
+        // Nothing saved to remove
+      }
     },
   },
 };

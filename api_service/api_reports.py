@@ -58,6 +58,7 @@ def __get_total_credits_data(form_data):
     exclude_course = form_data.get("exclude_course") or ""
     cursor = DB.db.execute_sql(C.sql_by_id("credits_earned_report"),
                             [
+                                *apiVC.graded_rows("earns_credit"),
                                 str(exclude_course),
                                 str(entry_year), str(entry_year),
                                 str(degree), str(degree),
@@ -428,14 +429,11 @@ async def generate_students_credits_info(acad_session):
 @P.require("credits.generate")
 async def get_background_task_status(job_key):
     try:
-        task_result = TH.get_own_task_info(job_key)
-        if not task_result:
+        task_status = TH.own_task_status(job_key)
+        if not task_status:
             logging.error(f"Background job with key {job_key} not found.")
             return apiVC.error_json(f"Job info not found for {job_key}")
-        if task_result["status"] != "done":
-            return apiVC.ok_json({"status": task_result["status"], "result": "Job not done yet."})
-        
-        return apiVC.ok_json({k: v for k, v in task_result.items() if k != "owner"})
+        return apiVC.ok_json(task_status)
     except Exception as ex:
         msg = f"Failed to get the background job status for {job_key}."
         logging.exception(msg)

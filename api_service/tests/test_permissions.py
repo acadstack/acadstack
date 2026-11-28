@@ -187,6 +187,11 @@ NARROWED = {
 NEW_ROUTES = {"get_permissions": ["SUP"], "save_role_permissions": ["SUP"],
               "close_session": ["ACA", "SUP"],
               "result_hold": ["ACA"],
+              # grades.reports, like bulk_download_sem_grade whose task it reports on
+              "bulk_gradesheets_status": ['ACA', 'DEA', 'SUP'],
+              # feedback.reports, like the other feedback reports
+              "feedback_pending_report": ['ACA', 'DEA'],
+              "download_feedback_pending": ['ACA', 'DEA'],
               # students.academics passes the gate; the body then needs grades.reports,
               # or the student's own sheet
               "download_sem_grade": LOGIN,

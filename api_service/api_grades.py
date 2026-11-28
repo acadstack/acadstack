@@ -73,6 +73,8 @@ def init_routes(bp: Blueprint):
                        methods=['POST'])
     bp.add_url_rule('/get_gradesheets/<string:job_key>', 
                        view_func=get_bulk_gradesheets, methods=['GET'])
+    bp.add_url_rule('/bulk_gradesheets_status/<string:job_key>',
+                       view_func=bulk_gradesheets_status, methods=['GET'])
     bp.add_url_rule('/download_degree_certifcate/<string:entry_no>',
                        view_func=download_degree_certifcate, methods=['GET'])
     bp.add_url_rule('/download_consolidated_grade_sheet/<string:entry_no>/<string:enrol_type>',
@@ -229,9 +231,6 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type, hide_undeclared
    #TODo: check method calling with three parameters.
     all_data = get_student_courses_perf_filtered(stu, False, enrol_type,
                                                  hide_undeclared=hide_undeclared)
-    if not all_data["enrollments"]:
-        raise C.AcadStackException("Records not found for this degree "
-                                f"type for student {entry_no}")
     sem_courses = []
     for acd, courses in all_data["enrollments"].items():
         if acd == acad_session:
@@ -247,6 +246,7 @@ def _get_semester_grade_data(entry_no, acad_session, enrol_type, hide_undeclared
     report_data['cec'] = sem_courses['cec']
     report_data['cgpa'] = sem_courses['cgpa']
     report_data['withheld'] = sem_courses['withheld']
+    report_data['feedback_pending'] = sem_courses['feedback_pending']
     return report_data
 
 
@@ -290,6 +290,9 @@ async def download_sem_grade(acad_session, entry_no, enrol_type):
         if is_own and data["withheld"]:
             return apiVC.error_json(f"Your result of {acad_session} is withheld. "
                                     "Please contact the academic section.")
+        if is_own and data["feedback_pending"]:
+            return apiVC.error_json(f"Your result of {acad_session} is shown once you have "
+                                    "submitted the end-semester feedback for all your courses.")
         data['enrol_type'] = enrol_type
         # TODO: Check the HTML and the data's structure
         html = _fill_report("semester_grades.html", data)
@@ -325,55 +328,73 @@ def _get_student_entry_no_data(degree,dept_name,year_of_entry):
     return serialized
 
 
+_BULK_GS_FIELDS = ("degree", "dept_name", "for_year", "enrol_type", "acad_session")
+
+
 def _bulk_download_sem_grade(form_data, job_key):
-    try:
-        degree = form_data.get("degree")
-        dept_name = form_data.get("dept_name")
-        acad_session = form_data.get("acad_session")
-        enrol_type = form_data.get("enrol_type")
-        year_of_entry = str(form_data.get("for_year"))
-        sub_dir = 'BULK_GS_PDF'
-        missing_stu_enrol = []
-        withheld = []
-        file_folder = os.path.join(apiVC.get_upload_folder(), sub_dir, job_key)
-        zip_file = f"{os.path.join(apiVC.get_upload_folder(), sub_dir)}_{job_key}"
-        Path(file_folder).mkdir(parents=True, exist_ok=True)
-        resp = _get_student_entry_no_data(degree,dept_name,year_of_entry)
-        if not resp:
-            raise C.AcadStackException(f"No student record found in {dept_name} "
-                                f"Department for Entry Year {year_of_entry}")
-        for entry_no in resp:
+    """Runs as a background task: writes the grade sheets of the selected
+    students into a ZIP file, and returns how many were written and which
+    students were left out. Raises AcadStackException, which the task records
+    as its error, when there is nothing to download."""
+    degree = form_data["degree"]
+    dept_name = form_data["dept_name"]
+    acad_session = form_data["acad_session"]
+    enrol_type = form_data["enrol_type"]
+    year_of_entry = str(form_data["for_year"])
+    sub_dir = 'BULK_GS_PDF'
+    sheets, no_results, withheld, fb_pending, errors = 0, [], [], [], []
+    file_folder = os.path.join(apiVC.get_upload_folder(), sub_dir, job_key)
+    zip_file = f"{os.path.join(apiVC.get_upload_folder(), sub_dir)}_{job_key}"
+    Path(file_folder).mkdir(parents=True, exist_ok=True)
+    entry_nos = _get_student_entry_no_data(degree, dept_name, year_of_entry)
+    if not entry_nos:
+        raise C.AcadStackException(f"No students of program {degree} in department "
+                                   f"{dept_name} with entry year {year_of_entry}.")
+    for entry_no in entry_nos:
+        # One student's bad record must not cost the others their sheets
+        try:
             data = _get_semester_grade_data(entry_no, acad_session, enrol_type)
-            # These sheets go out to the students
-            if data and data["withheld"]:
-                withheld.append(entry_no)
-                continue
-            if data:
-                data['enrol_type'] = enrol_type
-                html = _fill_report("semester_grades.html", data)
-                out_pdf = f"{file_folder}/grades_{entry_no}_{acad_session}.pdf"
-                _html_to_pdf(html, out_pdf)
-            else:
-                missing_stu_enrol.append(entry_no)
-                continue
-        # ZIP all the pdf files
-        shutil.make_archive(zip_file, 'zip', file_folder)
-    except Exception as ex:
-        msg = "Error occurred when processing bulk semester grade generation request."
-        logging.exception(msg)
-        return apiVC.error_json(str(ex) if isinstance(ex, C.AcadStackException) else msg)
-    logging.info("Missing Students Sem Grades Sheet, While Bulk "
-                f"downloading: {missing_stu_enrol}")
-    logging.info(f"Withheld results left out of the bulk grade sheets: {withheld}")
-    return zip_file
+        except C.AcadStackException as ae:
+            errors.append(f"{entry_no}: {ae}")
+            continue
+        if not data:
+            no_results.append(entry_no)
+        # These sheets go out to the students
+        elif data["withheld"]:
+            withheld.append(entry_no)
+        elif data["feedback_pending"]:
+            fb_pending.append(entry_no)
+        else:
+            data['enrol_type'] = enrol_type
+            html = _fill_report("semester_grades.html", data)
+            _html_to_pdf(html, f"{file_folder}/grades_{entry_no}_{acad_session}.pdf")
+            sheets += 1
+    logging.info(f"Bulk grade sheets {job_key}: {sheets} written; no results: {no_results}; "
+                 f"withheld: {withheld}; feedback pending: {fb_pending}; errors: {errors}")
+    if not sheets:
+        raise C.AcadStackException(
+            f"No grade sheets to download: of the {len(entry_nos)} students, "
+            f"{len(no_results)} have no {acad_session} results of this enrolment type, "
+            f"{len(withheld)} have their results withheld, {len(fb_pending)} have not "
+            f"submitted their feedback and {len(errors)} could not "
+            f"be processed{' (' + '; '.join(errors) + ')' if errors else ''}.")
+    shutil.make_archive(zip_file, 'zip', file_folder)
+    return {"sheets": sheets, "students": len(entry_nos), "no_results": no_results,
+            "withheld": withheld, "feedback_pending": fb_pending, "errors": errors}
 
 
 @P.require("grades.reports")
 async def bulk_download_sem_grade():
     try:
-        job_key = str(uuid.uuid4())
         form_data = await request.get_json(force=True)
-        job_key = TH.create_task(_bulk_download_sem_grade, form_data, job_key, task_id=job_key)
+        form_data = {k: str(form_data.get(k) or "").strip() for k in _BULK_GS_FIELDS}
+        if not all(form_data.values()):
+            return apiVC.error_json("Select the degree, department, entry year, enrolment "
+                                    "type and academic session.")
+        if not apiVC.academic_session_valid(form_data["acad_session"]):
+            return apiVC.error_json("Unknown academic session.")
+        job_key = str(uuid.uuid4())
+        TH.create_task(_bulk_download_sem_grade, form_data, job_key, task_id=job_key)
         logging.info(f"Submitted background task (bulk grade download) with key {job_key}")
         return apiVC.ok_json({"job_key": job_key, "message": "Request successfully submitted."})
     except Exception as ex:
@@ -383,10 +404,23 @@ async def bulk_download_sem_grade():
 
 
 @P.require("grades.reports")
+async def bulk_gradesheets_status(job_key):
+    """The status of the logged-in user's bulk grade sheet task."""
+    task_status = TH.own_task_status(job_key)
+    if not task_status:
+        return apiVC.error_json("This bulk download request is no longer known to the "
+                                "server. Please submit it again.")
+    return apiVC.ok_json(task_status)
+
+
+@P.require("grades.reports")
 async def get_bulk_gradesheets(job_key):
     try:
-        if not TH.get_own_task_info(job_key):
+        task_status = TH.own_task_status(job_key)
+        if not task_status:
             return apiVC.error_json(f"Job info not found for {job_key}")
+        if task_status["status"] != "done" or task_status["error"]:
+            return apiVC.error_json("These grade sheets are not ready for download.")
         zip_file = os.path.join(apiVC.get_upload_folder(), f"BULK_GS_PDF_{job_key}.zip")
         return await send_file(zip_file)
 

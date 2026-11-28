@@ -168,6 +168,7 @@ Each setting is one row with its own save button. Press the button on the row yo
 | `lockout_limit` | How many wrong password-reset keys, and how many keys issued, are allowed for a login before it is locked out (1 to 100). | 5 |
 | `page_size` | Rows per page in search results (1 to 500). | 25 |
 | `fees_check_enabled` | When on, students must submit their fee payment details before they can enrol. | on |
+| `results_need_feedback` | When on, a student sees a session's results (grades, SGPA, CGPA, grade sheet) only after submitting the end-semester feedback for every instructor of their credit courses that session. Applies only to sessions with **Course feedback** dates. A student who missed the feedback window keeps seeing NA until the window is reopened or this setting is turned off; *Students with Pending Feedback* lists who is affected. | off |
 | `institute_name` | Your institute's name. Printed on grade sheets and certificates. | blank |
 | `institute_place` | Your institute's place. Printed on certificates ("Given at …"). | blank |
 | `app_url` | The web address of this application, starting with `http://` or `https://`. Given to users in emails. | blank |
@@ -188,7 +189,7 @@ An **academic session** is a term, such as "Fall2026", with its calendar. Sessio
 
 ### Creating a session
 
-1. In **Event dates for academic session**, type the session's name (up to 10 characters, any text, for example `Fall2026` or `2026-I`).
+1. In **Event dates for academic session**, type the session's name: any text of up to 30 characters in your university's own style, for example `Fall2026`, `2026-I` or `Monsoon 2026-27`. The application orders sessions by their dates, never by their names.
 2. Tick **Additional session** if the term runs alongside the regular ones, such as a summer term. Leave it unticked for regular sessions.
 3. Enter a start and end date for each event in the list (below). Every event except the optional ones must have its dates.
 4. Press **Save** and confirm.
@@ -204,7 +205,7 @@ Rules the screen enforces:
   - **Grades submission** end, then **Result declaration**. So instructors cannot upload grades after the results are declared.
 
   A date that breaks a rule is reported, for example "Grades submission ends must not be after result declaration", and nothing is saved. The rules apply to the dates the session will have after the save, including those you didn't change.
-- The session name is permanent, and at most 10 characters.
+- The session name is permanent, at most 30 characters, and cannot contain `/ \ ? # %` or be just `-`, because it goes into web addresses and file names.
 
 To change a session later, choose it in **Load for session** at the top, edit the dates and save. The pickers elsewhere in the application offer the current session and the next two; to load an older one, tick **Other** and type its name.
 

@@ -42,6 +42,7 @@ import RegistrationFeesDetails from "../components/RegistrationFeesDetails.vue";
 import FeesPaymentReport from "../components/FeesPaymentReport.vue";
 import GenerateCourseEnrolments from "../components/GenerateCourseEnrolments.vue";
 import FeedbackStats from "../components/FeedbackStats.vue";
+import FeedbackPending from "../components/FeedbackPending.vue";
 import SlotWiseCourses from "../components/SlotWiseCourses.vue";
 import GenCreditsData from "../components/GenCreditsData.vue";
 import GradeDistribution from "../components/GradeDistribution.vue";
@@ -221,6 +222,11 @@ const appRoutes = [{
   name: 'feedback.stats',
   path: '/feedback.stats',
   component: FeedbackStats
+},
+{
+  name: 'feedback.pending',
+  path: '/feedback.pending',
+  component: FeedbackPending
 },
 {
   name: 'credits.check',

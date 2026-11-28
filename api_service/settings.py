@@ -108,6 +108,10 @@ SETTINGS = {
                   "Rows per page in search results."),
     "fees_check_enabled": (True, lambda v: type(v) is bool,
                            "Students must submit fee payment details before enrolling."),
+    "results_need_feedback": (False, lambda v: type(v) is bool,
+                              "Students see a session's results only after submitting "
+                              "end-semester feedback for every instructor of their credit "
+                              "courses; applies to sessions with end-semester feedback dates."),
     "label_overrides": ({}, _label_overrides_valid,
                         "Labels shown for workflow codes, as {list: {code: label}}."),
     # Credit ("C") stays offered: bulk enrolment creates credit enrolments.

@@ -10,7 +10,7 @@ CREATE TABLE public.academiccalendar (
     ins_ts timestamp without time zone NOT NULL,
     upd_ts timestamp without time zone NOT NULL,
     txn_login_id character varying(40),
-    acad_session character varying(10) NOT NULL,
+    acad_session character varying(30) NOT NULL,
     event_code character varying(100) NOT NULL,
     event_value text NOT NULL
 );
@@ -31,7 +31,7 @@ CREATE TABLE public.academicsession (
     ins_ts timestamp without time zone NOT NULL,
     upd_ts timestamp without time zone NOT NULL,
     txn_login_id character varying(40),
-    code character varying(10) NOT NULL,
+    code character varying(30) NOT NULL,
     is_additional boolean NOT NULL
 );
 
@@ -230,7 +230,7 @@ CREATE TABLE public.courseinstructorfeedback (
     question_id bigint NOT NULL,
     feedback text NOT NULL,
     submission_id character varying(40) NOT NULL,
-    acad_session character varying(10) NOT NULL
+    acad_session character varying(30) NOT NULL
 );
 
 CREATE SEQUENCE public.courseinstructorfeedback_id_seq
@@ -249,7 +249,7 @@ CREATE TABLE public.courseoffering (
     ins_ts timestamp without time zone NOT NULL,
     upd_ts timestamp without time zone NOT NULL,
     txn_login_id character varying(40),
-    acad_session character varying(10) NOT NULL,
+    acad_session character varying(30) NOT NULL,
     course_id bigint,
     status character varying(2) NOT NULL,
     slot character varying(10),
@@ -389,7 +389,7 @@ CREATE TABLE public.feestransaction (
     upd_ts timestamp without time zone NOT NULL,
     txn_login_id character varying(40),
     student_id bigint NOT NULL,
-    acad_session character varying(10) NOT NULL,
+    acad_session character varying(30) NOT NULL,
     fees_txn_amt integer NOT NULL,
     fees_txn_no character varying(50) NOT NULL,
     fees_txn_dt date NOT NULL,
@@ -484,7 +484,7 @@ CREATE TABLE public.phdprogressreport (
     status character varying(10) NOT NULL,
     student_id bigint NOT NULL,
     dc_member_id bigint NOT NULL,
-    acad_session character varying(10) NOT NULL,
+    acad_session character varying(30) NOT NULL,
     is_satisfactory boolean NOT NULL,
     note text NOT NULL
 );
@@ -548,7 +548,7 @@ CREATE TABLE public.studentcredits (
     upd_ts timestamp without time zone NOT NULL,
     txn_login_id character varying(40),
     student_id bigint NOT NULL,
-    acad_session character varying(10) NOT NULL,
+    acad_session character varying(30) NOT NULL,
     cgpa real NOT NULL,
     sgpa real NOT NULL,
     cred_earned real NOT NULL,
@@ -573,7 +573,7 @@ CREATE TABLE public.resulthold (
     upd_ts timestamp without time zone NOT NULL,
     txn_login_id character varying(40),
     student_id bigint NOT NULL,
-    acad_session character varying(10) NOT NULL,
+    acad_session character varying(30) NOT NULL,
     reason text
 );
 
